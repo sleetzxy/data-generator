@@ -19,6 +19,7 @@ public class GeneratorRegistry {
         register(new SequenceGenerator());
         register(new EnumGenerator());
         register(new RegexGenerator());
+        register(new SeedGenerator());
         register(new ReferenceGenerator(referenceDataLoader));
     }
 

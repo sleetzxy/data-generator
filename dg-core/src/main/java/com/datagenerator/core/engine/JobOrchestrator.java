@@ -2,6 +2,7 @@ package com.datagenerator.core.engine;
 
 import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintLoader;
+import com.datagenerator.core.schema.ConfigLoadException;
 import com.datagenerator.core.schema.JobDefinition;
 import com.datagenerator.core.schema.SchemaDefinition;
 import com.datagenerator.core.schema.TableTask;
@@ -44,15 +45,26 @@ public class JobOrchestrator {
         long writtenRows = 0;
         long failedRows = 0;
 
-        Map<String, Object> baseWriterConfig = writerConfigMap == null ? Map.of() : writerConfigMap;
-        String writerType = String.valueOf(baseWriterConfig.get("type"));
-        DataWriter writer = pluginRegistry.getWriter(writerType);
-        WriterConfig resolvedWriter = connectionRegistry.resolveWriter(baseWriterConfig);
-        writer.init(resolvedWriter);
+        Map<String, Object> defaultWriterConfig = resolveDefaultWriter(job, writerConfigMap);
+        DataWriter writer = null;
+        String activeWriterKey = null;
 
         try {
             for (TableTask tableTask : sortedTables) {
-                SchemaDefinition schema = configLoader.loadSchema(tableTask.getSchema());
+                Map<String, Object> tableWriterConfig = resolveTableWriter(tableTask, defaultWriterConfig);
+                WriterConfig resolvedWriter = connectionRegistry.resolveWriter(tableWriterConfig);
+                String writerKey = writerKey(resolvedWriter);
+                if (writer == null || !writerKey.equals(activeWriterKey)) {
+                    if (writer != null) {
+                        writer.flush();
+                        writer.close();
+                    }
+                    writer = pluginRegistry.getWriter(resolvedWriter.type());
+                    writer.init(resolvedWriter);
+                    activeWriterKey = writerKey;
+                }
+
+                SchemaDefinition schema = resolveSchema(tableTask);
                 List<com.datagenerator.core.schema.ConstraintDefinition> constraints =
                         constraintLoader.load(schema, job, tableTask);
 
@@ -75,9 +87,53 @@ public class JobOrchestrator {
                 details.add(new TableResult(tableTask.getName(), result.writtenRows(), result.failedRows(), status));
             }
         } finally {
-            writer.close();
+            if (writer != null) {
+                writer.close();
+            }
         }
 
         return new JobResult(totalRows, writtenRows, failedRows, details);
+    }
+
+    private static Map<String, Object> resolveDefaultWriter(JobDefinition job, Map<String, Object> writerConfigMap) {
+        Map<String, Object> merged = new HashMap<>();
+        if (writerConfigMap != null) {
+            merged.putAll(writerConfigMap);
+        }
+        if (!job.getWriter().isEmpty()) {
+            merged.putAll(job.getWriter());
+        }
+        return merged;
+    }
+
+    private static Map<String, Object> resolveTableWriter(TableTask tableTask, Map<String, Object> defaultWriterConfig) {
+        Map<String, Object> merged = new HashMap<>(defaultWriterConfig);
+        if (!tableTask.getWriter().isEmpty()) {
+            merged.putAll(tableTask.getWriter());
+        }
+        if (merged.isEmpty() || merged.get("type") == null || String.valueOf(merged.get("type")).isBlank()) {
+            throw new IllegalArgumentException(
+                    "Table '" + tableTask.getName() + "' requires writer configuration");
+        }
+        return merged;
+    }
+
+    private static String writerKey(WriterConfig config) {
+        return String.join(
+                "|",
+                String.valueOf(config.type()),
+                String.valueOf(config.connection()),
+                String.valueOf(config.path()),
+                String.valueOf(config.url()));
+    }
+
+    private SchemaDefinition resolveSchema(TableTask tableTask) {
+        if (tableTask.getSchemaDefinition() != null) {
+            return tableTask.getSchemaDefinition();
+        }
+        if (tableTask.getSchema() == null || tableTask.getSchema().isBlank()) {
+            throw new ConfigLoadException("Table '" + tableTask.getName() + "' has no schema defined");
+        }
+        return configLoader.loadSchema(tableTask.getSchema());
     }
 }

@@ -2,15 +2,20 @@ package com.datagenerator.core.schema;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class TableTask {
 
     private String name;
     private String schema;
+    private SchemaDefinition schemaDefinition;
     private long count;
     private List<String> dependsOn = new ArrayList<>();
     private String constraints;
+    private List<ConstraintDefinition> inlineConstraints = new ArrayList<>();
+    private Map<String, Object> writer = new HashMap<>();
 
     public String getName() {
         return name;
@@ -26,6 +31,14 @@ public class TableTask {
 
     public void setSchema(String schema) {
         this.schema = schema;
+    }
+
+    public SchemaDefinition getSchemaDefinition() {
+        return schemaDefinition;
+    }
+
+    public void setSchemaDefinition(SchemaDefinition schemaDefinition) {
+        this.schemaDefinition = schemaDefinition;
     }
 
     public long getCount() {
@@ -50,5 +63,22 @@ public class TableTask {
 
     public void setConstraints(String constraints) {
         this.constraints = constraints;
+    }
+
+    public List<ConstraintDefinition> getInlineConstraints() {
+        return Collections.unmodifiableList(inlineConstraints);
+    }
+
+    public void setInlineConstraints(List<ConstraintDefinition> inlineConstraints) {
+        this.inlineConstraints =
+                inlineConstraints == null ? new ArrayList<>() : new ArrayList<>(inlineConstraints);
+    }
+
+    public Map<String, Object> getWriter() {
+        return Collections.unmodifiableMap(writer);
+    }
+
+    public void setWriter(Map<String, Object> writer) {
+        this.writer = writer == null ? new HashMap<>() : new HashMap<>(writer);
     }
 }

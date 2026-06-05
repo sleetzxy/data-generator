@@ -2,17 +2,23 @@ const API = '/api/v1';
 const LOG_PAGE_SIZE = 10;
 
 const DEFAULT_JOB_TEMPLATE = `job: my_job
+writer:
+  type: csv
+  connection: local-csv
+  mode: insert
 tables:
   - name: customers
-    schema: schemas/customer.yaml
     count: 100
+    schema:
+      table: customers
+      fields:
+        - name: id
+          type: BIGINT
+          generator: { strategy: sequence, start: 1, step: 1 }
+        - name: name
+          type: VARCHAR
+          generator: { strategy: random, type: string, length: 10 }
 `;
-
-const DEFAULT_WRITER = {
-    type: 'csv',
-    connection: 'local-csv',
-    mode: 'insert'
-};
 
 let editingDefinition = null;
 let allRunsCache = [];
@@ -229,7 +235,7 @@ async function runDefinition(path) {
     try {
         const result = await api('/jobs', {
             method: 'POST',
-            body: JSON.stringify({ jobConfig: path, writer: DEFAULT_WRITER })
+            body: JSON.stringify({ jobConfig: path })
         });
         showToast(`任务已提交: ${result.jobId} (${result.status})`);
         await loadDefinitions();
@@ -449,6 +455,14 @@ async function stopRun(jobId) {
     }
     if (!confirm(`确定停止任务 ${jobId}？`)) return;
     try {
+        const runs = await api('/jobs');
+        allRunsCache = runs;
+        const current = runs.find(run => run.jobId === jobId);
+        if (!current || !isActiveRun(current.status)) {
+            showToast('任务已结束');
+            await loadDefinitions();
+            return;
+        }
         await api(`/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
         showToast('任务已停止');
         await loadDefinitions();

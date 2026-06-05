@@ -1,5 +1,0 @@
-name: region_lookup
-reader:
-  type: postgresql
-  connection: dev-pg
-  query: "SELECT code FROM regions"

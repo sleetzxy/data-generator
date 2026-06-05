@@ -18,15 +18,17 @@ public class PluginRegistry {
     private final Map<String, DataWriter> writers = new HashMap<>();
     private final GeneratorRegistry generatorRegistry;
     private final ConstraintValidatorRegistry constraintRegistry;
+    private final ReferenceDataLoader referenceDataLoader;
 
     public PluginRegistry() {
         this.constraintRegistry = new ConstraintValidatorRegistry();
-        ReferenceDataLoader referenceDataLoader = new ReferenceDataLoader(this);
+        this.referenceDataLoader = new ReferenceDataLoader(this);
         this.generatorRegistry = new GeneratorRegistry(referenceDataLoader);
     }
 
     public PluginRegistry(ReferenceDataLoader referenceDataLoader) {
         this.constraintRegistry = new ConstraintValidatorRegistry();
+        this.referenceDataLoader = referenceDataLoader;
         this.generatorRegistry = new GeneratorRegistry(referenceDataLoader);
     }
 
@@ -68,6 +70,10 @@ public class PluginRegistry {
 
     public GeneratorRegistry getGeneratorRegistry() {
         return generatorRegistry;
+    }
+
+    public ReferenceDataLoader getReferenceDataLoader() {
+        return referenceDataLoader;
     }
 
     public ConstraintValidatorRegistry getConstraintRegistry() {

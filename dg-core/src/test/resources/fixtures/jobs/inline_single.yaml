@@ -1,0 +1,20 @@
+job: inline_single
+writer:
+  type: csv
+  connection: local-csv
+  mode: insert
+tables:
+  - name: customers
+    count: 10
+    schema:
+      table: customers
+      fields:
+        - name: id
+          type: BIGINT
+          generator: { strategy: sequence, start: 1, step: 1 }
+    constraints:
+      - level: field
+        field: id
+        type: range
+        min: 1
+        max: 100

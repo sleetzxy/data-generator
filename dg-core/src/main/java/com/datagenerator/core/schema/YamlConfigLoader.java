@@ -17,25 +17,24 @@ public class YamlConfigLoader {
     }
 
     public SchemaDefinition loadSchema(String path) {
-        Map<String, Object> root = loadYamlMap(path);
-        SchemaDefinition schema = new SchemaDefinition();
-        schema.setTable(YamlMappingUtils.asString(root.get("table")));
-        schema.setConstraints(YamlMappingUtils.asString(root.get("constraints")));
-        schema.setSeed(YamlMappingUtils.asMap(root.get("seed")));
+        return toSchemaDefinition(loadYamlMap(path));
+    }
 
-        List<FieldDefinition> fields = new ArrayList<>();
-        for (Map<String, Object> fieldSource : YamlMappingUtils.asMapList(root.get("fields"))) {
-            fields.add(YamlMappingUtils.toFieldDefinition(fieldSource));
-        }
-        schema.setFields(fields);
-        return schema;
+    public SchemaDefinition toSchemaDefinition(Map<String, Object> root) {
+        return YamlMappingUtils.toSchemaDefinition(root);
     }
 
     public JobDefinition loadJob(String path) {
         Map<String, Object> root = loadYamlMap(path);
         JobDefinition job = new JobDefinition();
         job.setJob(YamlMappingUtils.asString(root.get("job")));
-        job.setConstraints(YamlMappingUtils.asString(root.get("constraints")));
+        Object constraintsValue = root.get("constraints");
+        if (constraintsValue instanceof List<?>) {
+            job.setInlineConstraints(YamlMappingUtils.toConstraintDefinitions(constraintsValue));
+        } else {
+            job.setConstraints(YamlMappingUtils.asString(constraintsValue));
+        }
+        job.setWriter(YamlMappingUtils.asMap(root.get("writer")));
 
         List<TableTask> tables = new ArrayList<>();
         for (Map<String, Object> tableSource : YamlMappingUtils.asMapList(root.get("tables"))) {

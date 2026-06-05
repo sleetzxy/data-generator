@@ -82,17 +82,56 @@ final class YamlMappingUtils {
         return field;
     }
 
+    static SchemaDefinition toSchemaDefinition(Map<String, Object> source) {
+        SchemaDefinition schema = new SchemaDefinition();
+        schema.setTable(asString(source.get("table")));
+        schema.setConstraints(asString(source.get("constraints")));
+        schema.setSeed(asMap(source.get("seed")));
+
+        List<FieldDefinition> fields = new ArrayList<>();
+        for (Map<String, Object> fieldSource : asMapList(source.get("fields"))) {
+            fields.add(toFieldDefinition(fieldSource));
+        }
+        schema.setFields(fields);
+        return schema;
+    }
+
+    static List<ConstraintDefinition> toConstraintDefinitions(Object value) {
+        if (value == null) {
+            return List.of();
+        }
+        if (value instanceof List<?>) {
+            List<ConstraintDefinition> constraints = new ArrayList<>();
+            for (Map<String, Object> constraintSource : asMapList(value)) {
+                constraints.add(toConstraintDefinition(constraintSource));
+            }
+            return constraints;
+        }
+        return List.of();
+    }
+
     static TableTask toTableTask(Map<String, Object> source) {
         TableTask task = new TableTask();
         task.setName(asString(source.get("name")));
-        task.setSchema(asString(source.get("schema")));
+        Object schemaValue = source.get("schema");
+        if (schemaValue instanceof Map<?, ?>) {
+            task.setSchemaDefinition(toSchemaDefinition(asMap(schemaValue)));
+        } else {
+            task.setSchema(asString(schemaValue));
+        }
         Object count = source.get("count");
         if (count != null) {
             task.setCount(asLong(count));
         }
         Object dependsOn = source.containsKey("depends_on") ? source.get("depends_on") : source.get("dependsOn");
         task.setDependsOn(asStringList(dependsOn));
-        task.setConstraints(asString(source.get("constraints")));
+        Object constraintsValue = source.get("constraints");
+        if (constraintsValue instanceof List<?>) {
+            task.setInlineConstraints(toConstraintDefinitions(constraintsValue));
+        } else {
+            task.setConstraints(asString(constraintsValue));
+        }
+        task.setWriter(asMap(source.get("writer")));
         return task;
     }
 

@@ -1,5 +1,0 @@
-job: single_customer
-tables:
-  - name: customers
-    schema: schemas/customer.yaml
-    count: 100

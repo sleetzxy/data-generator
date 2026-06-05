@@ -5,11 +5,16 @@ data-generator:
   config-dir: classpath:configs
   writable-config-dir: ./data/configs
   connections:
-    dev-pg:
+    dev-safety:
       type: postgresql
-      url: jdbc:postgresql://localhost:5432/dev
-      username: test
-      password: test
+      url: jdbc:postgresql://172.25.61.186:5432/SAFETY_PANYU
+      username: postgres
+      password: Its@312
+    dev-road:
+      type: postgresql
+      url: jdbc:postgresql://172.25.61.186:5432/IDPS_SE_PANYU
+      username: postgres
+      password: Its@312
     dev-ch:
       type: clickhouse
       url: jdbc:clickhouse://localhost:8123/analytics

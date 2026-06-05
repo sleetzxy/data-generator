@@ -56,7 +56,9 @@ public class PostgreSqlWriter implements DataWriter {
         try (PreparedStatement statement = connection.prepareStatement(sql)) {
             for (DataRow row : rows) {
                 for (int index = 0; index < columns.size(); index++) {
-                    statement.setObject(index + 1, row.get(columns.get(index)));
+                    String columnName = columns.get(index);
+                    Object value = PostgreSqlParameterBinder.prepareValue(columnName, row.get(columnName));
+                    statement.setObject(index + 1, value);
                 }
                 statement.addBatch();
             }

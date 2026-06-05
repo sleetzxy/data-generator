@@ -1,20 +1,1062 @@
-# 小批量预览任务（快速验证配置）
+# 参考 export_city_acd_wf_join_masked.py 生成规则
 job: city_acd_wf_jq_preview
 tables:
-  - name: acd_file
-    schema: schemas/traffic/acd_file.yaml
-    count: 5
-
-  - name: acd_filehuman
-    schema: schemas/traffic/acd_filehuman.yaml
-    count: 10
-    constraints: constraints/traffic/acd_filehuman_fk.yaml
-    depends_on: [acd_file]
-
-  - name: wf_3y
-    schema: schemas/traffic/wf_3y.yaml
-    count: 5
-
-  - name: jqxx
-    schema: schemas/traffic/jqxx.yaml
-    count: 5
+- name: acd_file
+  count: 100000
+  writer:
+    type: postgresql
+    connection: dev-safety
+    mode: insert
+  schema:
+    table: acd_file_sh
+    seed:
+      reader:
+        type: postgresql
+        connection: dev-road
+        query: |
+          SELECT
+            st_astext(tt.geom) geom,
+            st_astext(tt.geom) geomwkt,
+            tt.roadclid,
+            tt.lm,
+            tt.dllx,
+            tt.xzqh,
+            tt.sgdd,
+            tt.fnode,
+            tt.tnode,
+            tt.road_type,
+            police.pcsid as pcs_id,
+            police.name as pcs_name
+          FROM (
+            SELECT
+              ST_LineInterpolatePoint((ST_Dump(geom)).geom, random()) AS geom,
+              roadclid,
+              name AS lm,
+              CASE
+                WHEN roadtype = '4' THEN '10'
+                WHEN roadtype = '5' THEN '21'
+                ELSE '0'
+              END AS dllx,
+              distric AS xzqh,
+              froadname || '往' || direction || 'xx米' AS sgdd,
+              fnode,
+              tnode,
+              roadtype AS road_type
+            FROM s_xc_roadcl_info
+            WHERE roadclid::numeric > 0
+            UNION ALL
+            SELECT
+              geom,
+              intersectionid AS roadclid,
+              hengxiangroadname AS lm,
+              '0' AS dllx,
+              xzqh,
+              hengxiangroadname || '与' || zongxiangroadname || '路口' AS sgdd,
+              '' AS fnode,
+              '' AS tnode,
+              '0' AS road_type
+            FROM fsc_t_intersection_info
+            WHERE intersectionid::numeric > 0
+          ) tt
+          LEFT JOIN LATERAL (
+            SELECT pcsid, name
+            FROM bas_police_station
+            WHERE ST_Contains(geom, tt.geom)
+            LIMIT 1
+          ) police ON true
+      mutate:
+      - sgbh
+      - sgfssj
+      - kskcsj
+      - jskcsj
+      - djbh
+      - xq
+      - lh
+      - gls
+      - ms
+      - qdms
+      - jdwz
+      - szrs
+      - swrs
+      - swrsq
+      - swrs7
+      - swrs30
+      - swrs7_1
+      - swrs_end
+      - zsrs
+      - qsrs
+      - ssrs
+      - ldcsl
+      - fjdcsl
+      - xrsl
+      - zjccss
+      - sglx
+      - rdyyfl
+      - sgrdyy
+      - tq
+      - sgxt
+      - sfty
+      - cljsg
+      - pzfs
+      - glbm
+      - glbm_name
+      - zonename
+      - my_dt
+      - jd
+      - wd
+      - zhdmwz
+      - zyglss
+      - dlaqsx
+      - jtxhfs
+      - fhsslx
+      - dlwlgl
+      - lmzk
+      - lbqk
+      - lmjg
+      - lkldlx
+      - dlxx
+      - jyaq
+      - njd
+      - dx
+      - zmtj
+      - yzwxp
+      - glxzdj
+      - dzzb
+      - msg
+      - all_jtfs_type
+      - rdlv
+      - node_id
+      - tysgzp
+      - dlmc
+      - dlmc_code
+      - direction
+      - location_mark_start
+      - location_mark_end
+      - mileage_end
+      - mileage_start_longitude
+      - mileage_start_latitude
+      - mileage_end_longitude
+      - mileage_end_latitude
+      - small_road_length
+      - mileage_start
+      - big_roadclid
+      - big_road_name
+      - big_road_type
+      - big_froadname
+      - big_troadname
+      - big_fnode
+      - big_tnode
+      - big_path
+      - big_length
+      - agg_big_roadclid
+      - agg_big_road_length
+      - agg_big_mileage_start
+      - agg_big_mileage_end
+      - kcr1
+      - kcr2
+      - bar1
+      - bar2
+    fields:
+    - name: lm
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: xzqh
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: sgdd
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: roadclid
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: geom
+      type: GEOMETRY
+      generator: {strategy: seed}
+    - name: geomwkt
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: pcs_id
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: pcs_name
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: dllx
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: fnode
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: tnode
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: road_type
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: sgbh
+      type: VARCHAR
+      generator: {strategy: regex, pattern: '30000[0-9]{16}'}
+    - name: sgfssj
+      type: TIMESTAMP
+      generator: {strategy: random, type: datetime, min: '2024-10-01 00:00:00', max: '2024-12-31 23:59:59'}
+    - name: kskcsj
+      type: TIMESTAMP
+      generator: {strategy: random, type: datetime, min: '2024-10-01 00:00:00', max: '2024-12-31 23:59:59'}
+    - name: jskcsj
+      type: TIMESTAMP
+      generator: {strategy: random, type: datetime, min: '2024-10-01 00:00:00', max: '2024-12-31 23:59:59'}
+    - name: djbh
+      type: VARCHAR
+      generator: {strategy: regex, pattern: '4401152024[0-9]{6}'}
+    - name: xq
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1, max: 7}
+    - name: lh
+      type: VARCHAR
+      generator: {strategy: regex, pattern: '[0-9]{7}'}
+    - name: gls
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 0, max: 500}
+    - name: ms
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 0, max: 999}
+    - name: qdms
+      type: VARCHAR
+      generator: {strategy: enum, values: ['0']}
+    - name: jdwz
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 0, max: 500999}
+    - name: szrs
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 0, max: 3}
+    - name: swrs
+      type: INTEGER
+      generator: {strategy: enum, values: [0, 0, 0, 0, 1]}
+    - name: swrsq
+      type: INTEGER
+      generator: {strategy: enum, values: [0, 0, 0, 0, 1]}
+    - name: swrs7
+      type: INTEGER
+      generator: {strategy: enum, values: [0, 0, 0, 0, 1]}
+    - name: swrs30
+      type: INTEGER
+      generator: {strategy: enum, values: [0, 0, 0, 0, 1]}
+    - name: swrs7_1
+      type: INTEGER
+      generator: {strategy: enum, values: [0, 0, 0, 0, 1]}
+    - name: swrs_end
+      type: INTEGER
+      generator: {strategy: enum, values: [0, 0, 0, 0, 1]}
+    - name: zsrs
+      type: INTEGER
+      generator: {strategy: enum, values: [0]}
+    - name: qsrs
+      type: INTEGER
+      generator: {strategy: enum, values: [0]}
+    - name: ssrs
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 0, max: 3}
+    - name: ldcsl
+      type: VARCHAR
+      generator: {strategy: random, type: int, min: 0, max: 5}
+    - name: fjdcsl
+      type: VARCHAR
+      generator: {strategy: random, type: int, min: 0, max: 5}
+    - name: xrsl
+      type: VARCHAR
+      generator: {strategy: random, type: int, min: 0, max: 5}
+    - name: zjccss
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1, max: 5}
+    - name: sglx
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1, max: 13}
+    - name: rdyyfl
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1, max: 50}
+    - name: sgrdyy
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1000, max: 1400}
+    - name: tq
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1, max: 4}
+    - name: sgxt
+      type: VARCHAR
+      generator: {strategy: enum, values: ['11', '21', '31', '32']}
+    - name: sfty
+      type: VARCHAR
+      generator: {strategy: enum, values: ['', '1']}
+    - name: cljsg
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1, max: 5}
+    - name: pzfs
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1, max: 2}
+    - name: glbm
+      type: VARCHAR
+      generator: {strategy: enum, values: [xq440115]}
+    - name: glbm_name
+      type: VARCHAR
+      generator: {strategy: enum, values: [番禺大队]}
+    - name: zonename
+      type: VARCHAR
+      generator: {strategy: enum, values: [番禺大队]}
+    - name: my_dt
+      type: TIMESTAMP
+      generator: {strategy: random, type: datetime, min: '2024-06-26 00:00:00', max: '2024-06-26 00:00:00'}
+    - name: jd
+      type: DOUBLE
+      generator: {strategy: enum, values: [0]}
+    - name: wd
+      type: DOUBLE
+      generator: {strategy: enum, values: [0]}
+    - name: zhdmwz
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: zyglss
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: dlaqsx
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: jtxhfs
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: fhsslx
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: dlwlgl
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: lmzk
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: lbqk
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: lmjg
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: lkldlx
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: dlxx
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: jyaq
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: njd
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: dx
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: zmtj
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: yzwxp
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: glxzdj
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: dzzb
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: msg
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: all_jtfs_type
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: rdlv
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: node_id
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: tysgzp
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: dlmc
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: dlmc_code
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: direction
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: location_mark_start
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: location_mark_end
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: mileage_end
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: mileage_start_longitude
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: mileage_start_latitude
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: mileage_end_longitude
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: mileage_end_latitude
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: small_road_length
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: mileage_start
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_roadclid
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_road_name
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_road_type
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_froadname
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_troadname
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_fnode
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_tnode
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_path
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_length
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: agg_big_roadclid
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: agg_big_road_length
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: agg_big_mileage_start
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: agg_big_mileage_end
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: kcr1
+      type: VARCHAR
+      generator: {strategy: enum, values: [王伟, 李芳, 张娜, 刘秀英, 陈敏, 杨静, 赵强, 黄磊]}
+    - name: kcr2
+      type: VARCHAR
+      generator: {strategy: enum, values: [王伟, 李芳, 张娜, 刘秀英, 陈敏, 杨静, 赵强, 黄磊]}
+    - name: bar1
+      type: VARCHAR
+      generator: {strategy: enum, values: [王伟, 李芳, 张娜, 刘秀英, 陈敏, 杨静, 赵强, 黄磊]}
+    - name: bar2
+      type: VARCHAR
+      generator: {strategy: enum, values: [王伟, 李芳, 张娜, 刘秀英, 陈敏, 杨静, 赵强, 黄磊]}
+- name: acd_filehuman
+  count: 10
+  writer:
+    type: csv
+    connection: traffic-output
+    mode: insert
+  depends_on:
+  - acd_file
+  schema:
+    table: acd_filehuman
+    fields:
+    - name: sgbh
+      type: VARCHAR
+      generator: {strategy: reference, source: acd_file, field: sgbh}
+    - name: xzqh
+      type: VARCHAR
+      generator: {strategy: reference, source: acd_file, field: xzqh}
+    - name: rybh
+      type: VARCHAR
+      generator: {strategy: sequence, start: 1, step: 1}
+    - name: xm
+      type: VARCHAR
+      generator: {strategy: enum, values: [王伟, 李芳, 张娜, 刘秀英, 陈敏, 杨静, 赵强, 黄磊]}
+    - name: xb
+      type: VARCHAR
+      generator: {strategy: enum, values: ['1', '2']}
+    - name: sfzmhm
+      type: VARCHAR
+      generator: {strategy: regex, pattern: '440115[0-9]{4}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])[0-9]{3}[0-9X]'}
+    - name: dh
+      type: VARCHAR
+      generator: {strategy: regex, pattern: '1[3-9][0-9]{9}'}
+    - name: nl
+      type: VARCHAR
+      generator: {strategy: random, type: int, min: 18, max: 70}
+    - name: hphm
+      type: VARCHAR
+      generator: {strategy: enum, values: ['', 粤A12345, 粤A67890, 粤B1D2E3, 粤C5F6G7, 粤AD12345, 粤AF67890]}
+    - name: hpzl
+      type: VARCHAR
+      generator: {strategy: enum, values: ['01', '02', '07', '15', '16', '51']}
+    - name: clpp
+      type: VARCHAR
+      generator: {strategy: enum, values: [大众牌, 丰田牌, 本田牌, 别克牌, 比亚迪牌, 吉利牌, 雅迪牌, 爱玛牌, '']}
+    - name: sgzr
+      type: VARCHAR
+      generator: {strategy: random, type: int, min: 1, max: 5}
+    - name: jtfs
+      type: VARCHAR
+      generator: {strategy: enum, values: [K3, K31, K33, H1, H2, F1, F2, F6, A1]}
+    - name: sfdsr
+      type: VARCHAR
+      generator: {strategy: enum, values: ['1', '0']}
+    - name: my_dt
+      type: VARCHAR
+      generator: {strategy: enum, values: ['2024-06-26 00:00:00.000']}
+  constraints:
+  - level: field
+    field: sgbh
+    type: foreign_key
+    ref_table: acd_file
+    ref_field: sgbh
+- name: acd_dutysimple
+  count: 5
+  writer:
+    type: csv
+    connection: traffic-output
+    mode: insert
+  schema:
+    table: acd_dutysimple_sh
+    seed:
+      reader:
+        type: postgresql
+        connection: dev-road
+        query: |
+          SELECT
+            st_astext(tt.geom) geom,
+            st_astext(tt.geom) geomwkt,
+            tt.roadclid,
+            tt.lm,
+            tt.dllx,
+            tt.xzqh,
+            tt.sgdd,
+            tt.fnode,
+            tt.tnode,
+            tt.road_type,
+            police.pcsid as pcs_id,
+            police.name as pcs_name
+          FROM (
+            SELECT
+              ST_LineInterpolatePoint((ST_Dump(geom)).geom, random()) AS geom,
+              roadclid,
+              name AS lm,
+              CASE
+                WHEN roadtype = '4' THEN '10'
+                WHEN roadtype = '5' THEN '21'
+                ELSE '0'
+              END AS dllx,
+              distric AS xzqh,
+              froadname || '往' || direction || 'xx米' AS sgdd,
+              fnode,
+              tnode,
+              roadtype AS road_type
+            FROM s_xc_roadcl_info
+            WHERE roadclid::numeric > 0
+            UNION ALL
+            SELECT
+              geom,
+              intersectionid AS roadclid,
+              hengxiangroadname AS lm,
+              '0' AS dllx,
+              xzqh,
+              hengxiangroadname || '与' || zongxiangroadname || '路口' AS sgdd,
+              '' AS fnode,
+              '' AS tnode,
+              '0' AS road_type
+            FROM fsc_t_intersection_info
+            WHERE intersectionid::numeric > 0
+          ) tt
+          LEFT JOIN LATERAL (
+            SELECT pcsid, name
+            FROM bas_police_station
+            WHERE ST_Contains(geom, tt.geom)
+            LIMIT 1
+          ) police ON true
+      mutate:
+      - sgbh
+      - djbh
+      - xq
+      - sgfssj
+      - lh
+      - gls
+      - ms
+      - jdwz
+      - ssrs
+      - zjccss
+      - rdyyfl
+      - sgrdyy
+      - tq
+      - sgxt
+      - cljsg
+      - pzfs
+      - lbqk
+      - dzzb
+      - sgss
+      - glxzdj
+      - jd
+      - wd
+      - msg
+      - swrs7_1
+      - swrs_end
+      - all_jtfs_type
+      - zonename
+      - rdlv
+      - node_id
+      - tysgzp
+      - dlmc
+      - dlmc_code
+      - direction
+      - location_mark_start
+      - location_mark_end
+      - mileage_start
+      - mileage_end
+      - mileage_start_longitude
+      - mileage_start_latitude
+      - mileage_end_longitude
+      - mileage_end_latitude
+      - small_road_length
+      - tjr1
+      - jar1
+      - jar2
+      - jbr
+      - big_roadclid
+      - big_road_name
+      - big_road_type
+      - big_froadname
+      - big_troadname
+      - big_fnode
+      - big_tnode
+      - big_path
+      - big_length
+      - agg_big_roadclid
+      - agg_big_road_length
+      - agg_big_mileage_start
+      - agg_big_mileage_end
+      - glbm
+      - glbm_name
+      - my_dt
+    fields:
+    - name: lm
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: xzqh
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: sgdd
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: roadclid
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: geom
+      type: GEOMETRY
+      generator: {strategy: seed}
+    - name: geomwkt
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: pcs_id
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: pcs_name
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: dllx
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: fnode
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: tnode
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: road_type
+      type: VARCHAR
+      generator: {strategy: seed}
+    - name: sgbh
+      type: VARCHAR
+      generator: {strategy: regex, pattern: '30000[0-9]{16}'}
+    - name: djbh
+      type: VARCHAR
+      generator: {strategy: regex, pattern: '4401152024[0-9]{6}'}
+    - name: xq
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1, max: 7}
+    - name: sgfssj
+      type: TIMESTAMP
+      generator: {strategy: random, type: datetime, min: '2024-10-01 00:00:00', max: '2024-12-31 23:59:59'}
+    - name: lh
+      type: VARCHAR
+      generator: {strategy: regex, pattern: '[0-9]{7}'}
+    - name: gls
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 0, max: 500}
+    - name: ms
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 0, max: 999}
+    - name: jdwz
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 0, max: 500999}
+    - name: ssrs
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 0, max: 3}
+    - name: zjccss
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1, max: 5}
+    - name: rdyyfl
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1, max: 50}
+    - name: sgrdyy
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1000, max: 1400}
+    - name: tq
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1, max: 4}
+    - name: sgxt
+      type: VARCHAR
+      generator: {strategy: enum, values: ['11', '21', '31', '32']}
+    - name: cljsg
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1, max: 5}
+    - name: pzfs
+      type: INTEGER
+      generator: {strategy: random, type: int, min: 1, max: 2}
+    - name: lbqk
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: dzzb
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: sgss
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: glxzdj
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: jd
+      type: DOUBLE
+      generator: {strategy: enum, values: [0]}
+    - name: wd
+      type: DOUBLE
+      generator: {strategy: enum, values: [0]}
+    - name: msg
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: swrs7_1
+      type: INTEGER
+      generator: {strategy: enum, values: [0, 0, 0, 0, 1]}
+    - name: swrs_end
+      type: INTEGER
+      generator: {strategy: enum, values: [0, 0, 0, 0, 1]}
+    - name: all_jtfs_type
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: zonename
+      type: VARCHAR
+      generator: {strategy: enum, values: [番禺大队]}
+    - name: rdlv
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: node_id
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: tysgzp
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: dlmc
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: dlmc_code
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: direction
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: location_mark_start
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: location_mark_end
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: mileage_start
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: mileage_end
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: mileage_start_longitude
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: mileage_start_latitude
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: mileage_end_longitude
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: mileage_end_latitude
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: small_road_length
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: tjr1
+      type: VARCHAR
+      generator: {strategy: enum, values: [王伟, 李芳, 张娜, 刘秀英, 陈敏, 杨静, 赵强, 黄磊]}
+    - name: jar1
+      type: VARCHAR
+      generator: {strategy: enum, values: [王伟, 李芳, 张娜, 刘秀英, 陈敏, 杨静, 赵强, 黄磊]}
+    - name: jar2
+      type: VARCHAR
+      generator: {strategy: enum, values: [王伟, 李芳, 张娜, 刘秀英, 陈敏, 杨静, 赵强, 黄磊]}
+    - name: jbr
+      type: VARCHAR
+      generator: {strategy: enum, values: [王伟, 李芳, 张娜, 刘秀英, 陈敏, 杨静, 赵强, 黄磊]}
+    - name: big_roadclid
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_road_name
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_road_type
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_froadname
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_troadname
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_fnode
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_tnode
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_path
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: big_length
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: agg_big_roadclid
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: agg_big_road_length
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: agg_big_mileage_start
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: agg_big_mileage_end
+      type: VARCHAR
+      generator: {strategy: enum, values: ['']}
+    - name: glbm
+      type: VARCHAR
+      generator: {strategy: enum, values: [xq440115]}
+    - name: glbm_name
+      type: VARCHAR
+      generator: {strategy: enum, values: [番禺大队]}
+    - name: my_dt
+      type: TIMESTAMP
+      generator: {strategy: random, type: datetime, min: '2024-06-26 00:00:00', max: '2024-06-26 00:00:00'}
+- name: acd_dutysimplehuman
+  count: 10
+  writer:
+    type: csv
+    connection: traffic-output
+    mode: insert
+  depends_on:
+  - acd_dutysimple
+  schema:
+    table: acd_dutysimplehuman
+    fields:
+    - name: sgbh
+      type: VARCHAR
+      generator: {strategy: reference, source: acd_dutysimple, field: sgbh}
+    - name: xzqh
+      type: VARCHAR
+      generator: {strategy: reference, source: acd_dutysimple, field: xzqh}
+    - name: rybh
+      type: VARCHAR
+      generator: {strategy: sequence, start: 1, step: 1}
+    - name: xm
+      type: VARCHAR
+      generator: {strategy: enum, values: [王伟, 李芳, 张娜, 刘秀英, 陈敏, 杨静, 赵强, 黄磊]}
+    - name: xb
+      type: VARCHAR
+      generator: {strategy: enum, values: ['1', '2']}
+    - name: sfzmhm
+      type: VARCHAR
+      generator: {strategy: regex, pattern: '440115[0-9]{4}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])[0-9]{3}[0-9X]'}
+    - name: dh
+      type: VARCHAR
+      generator: {strategy: regex, pattern: '1[3-9][0-9]{9}'}
+    - name: nl
+      type: VARCHAR
+      generator: {strategy: random, type: int, min: 18, max: 70}
+    - name: hphm
+      type: VARCHAR
+      generator: {strategy: enum, values: ['', 粤A12345, 粤A67890, 粤B1D2E3, 粤C5F6G7, 粤AD12345, 粤AF67890]}
+    - name: hpzl
+      type: VARCHAR
+      generator: {strategy: enum, values: ['01', '02', '07', '15', '16', '51']}
+    - name: clpp
+      type: VARCHAR
+      generator: {strategy: enum, values: [大众牌, 丰田牌, 本田牌, 别克牌, 比亚迪牌, 吉利牌, 雅迪牌, 爱玛牌, '']}
+    - name: sgzr
+      type: VARCHAR
+      generator: {strategy: random, type: int, min: 1, max: 5}
+    - name: jtfs
+      type: VARCHAR
+      generator: {strategy: enum, values: [K3, K31, K33, H1, H2, F1, F2, F6, A1]}
+    - name: sfdsr
+      type: VARCHAR
+      generator: {strategy: enum, values: ['1', '0']}
+    - name: my_dt
+      type: VARCHAR
+      generator: {strategy: enum, values: ['2024-06-26 00:00:00.000']}
+  constraints:
+  - level: field
+    field: sgbh
+    type: foreign_key
+    ref_table: acd_dutysimple
+    ref_field: sgbh
+- name: wf_3y
+  count: 5
+  writer:
+    type: csv
+    connection: traffic-output
+    mode: insert
+  schema:
+    table: wf_3y
+    fields:
+    - name: xh
+      type: VARCHAR
+      generator: {strategy: sequence, start: 1, step: 1}
+    - name: xzqh
+      type: VARCHAR
+      generator: {strategy: enum, values: ['440115']}
+    - name: wfsj
+      type: VARCHAR
+      generator: {strategy: random, type: date, min: '2023-01-01', max: '2023-12-31'}
+    - name: hphm
+      type: VARCHAR
+      generator: {strategy: regex, pattern: '[京津沪渝冀豫云辽黑湘皖鲁苏浙赣鄂粤][A-Z][A-Z0-9]{5}'}
+    - name: hpzl
+      type: VARCHAR
+      generator: {strategy: enum, values: ['01', '02', '15', '16']}
+    - name: wfxw
+      type: VARCHAR
+      generator: {strategy: enum, values: [1344B, 1102E, '12080', '10391', 1345A, '70100', '13440', '16250']}
+    - name: wf_wfms
+      type: VARCHAR
+      generator: {strategy: enum, values: [违反禁令标志指示, 不按规定使用灯光, 不按导向车道行驶, 不按规定停车, 违反禁止标线指示, 超速行驶, 闯红灯, 未按规定保持安全距离]}
+    - name: wf_wfnr
+      type: VARCHAR
+      generator: {strategy: enum, values: [机动车违反禁令标志指示的, 机动车变道、转弯时不按规定使用转向灯的, 机动车通过路口时不按导向车道行驶的, 机动车违反规定停放、临时停车的, 机动车违反禁止标线指示的,
+          机动车超过规定时速的, 机动车不按交通信号灯规定通行的, 机动车未按规定保持安全车距的]}
+    - name: wfdz
+      type: VARCHAR
+      generator: {strategy: random, type: string, minLength: 10, maxLength: 40}
+    - name: jszh
+      type: VARCHAR
+      generator: {strategy: regex, pattern: '440115[0-9]{4}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])[0-9]{3}[0-9X]'}
+    - name: dsr
+      type: VARCHAR
+      generator: {strategy: enum, values: [王伟, 李芳, 张娜, 刘秀英, 陈敏, 杨静, 赵强, 黄磊]}
+    - name: fxjg
+      type: VARCHAR
+      generator: {strategy: enum, values: [xq440115]}
+    - name: fxjgmc
+      type: VARCHAR
+      generator: {strategy: enum, values: [番禺大队]}
+    - name: cljg
+      type: VARCHAR
+      generator: {strategy: enum, values: [xq01, xq02, xq03, xq04]}
+    - name: cljgmc
+      type: VARCHAR
+      generator: {strategy: enum, values: [市桥中队, 大石中队, 洛溪中队, 钟村中队]}
+    - name: fkje
+      type: VARCHAR
+      generator: {strategy: enum, values: ['0', '50', '100', '200']}
+    - name: wf_jfs
+      type: VARCHAR
+      generator: {strategy: enum, values: ['0', '1', '2', '3', '6', '12']}
+    - name: source
+      type: VARCHAR
+      generator: {strategy: enum, values: [surveil, violation, force]}
+    - name: wfbh
+      type: VARCHAR
+      generator: {strategy: regex, pattern: '4401152023[0-9]{6}'}
+    - name: jd
+      type: VARCHAR
+      generator: {strategy: random, type: double, min: 113.0, max: 114.0}
+    - name: wd
+      type: VARCHAR
+      generator: {strategy: random, type: double, min: 22.0, max: 23.0}
+    - name: dt
+      type: VARCHAR
+      generator: {strategy: enum, values: ['2023-06-26']}
+- name: jqxx
+  count: 5
+  writer:
+    type: csv
+    connection: traffic-output
+    mode: insert
+  schema:
+    table: jqxx
+    fields:
+    - name: id
+      type: VARCHAR
+      generator: {strategy: sequence, start: 1, step: 1}
+    - name: jqbh
+      type: VARCHAR
+      generator: {strategy: regex, pattern: 'JQ2023[0-9]{6}'}
+    - name: ssxqdm
+      type: VARCHAR
+      generator: {strategy: enum, values: ['440115']}
+    - name: afsj
+      type: VARCHAR
+      generator: {strategy: regex, pattern: '2023-[0-1][0-9]-[0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-5][0-9]\.[0-9]{3}'}
+    - name: afdd
+      type: VARCHAR
+      generator: {strategy: random, type: string, minLength: 10, maxLength: 40}
+    - name: jqlb
+      type: VARCHAR
+      generator: {strategy: enum, values: [交通事故, 交通拥堵, 投诉, 举报, 其他]}
+    - name: jqxz
+      type: VARCHAR
+      generator: {strategy: enum, values: [轻微交通事故, 其它交通警情, 交通堵塞, 投诉举报, 其他警情, 纠纷]}
+    - name: jqnr
+      type: VARCHAR
+      generator: {strategy: enum, values: [报警称发生事故，请尽快处置。, 报警称发生事故，涉及摩托车，请尽快处置。, 道路拥堵缓行，请疏导。, 群众投诉/举报：疑似违法行为，请核查。, 群众报警：需要处置。]}
+    - name: jd
+      type: VARCHAR
+      generator: {strategy: random, type: double, min: 113.0, max: 114.0}
+    - name: wd
+      type: VARCHAR
+      generator: {strategy: random, type: double, min: 22.0, max: 23.0}
+    - name: jjdztms
+      type: VARCHAR
+      generator: {strategy: enum, values: [新警, 已接警，未处警, 已派警（已签收）, 到达现场, 处理完毕, 警情处置完毕]}
+    - name: cjqk
+      type: VARCHAR
+      generator: {strategy: enum, values: ['', 已受理]}

@@ -51,6 +51,31 @@ class GeneratorsTest {
     }
 
     @Test
+    void random_generatesDateTimeInRange() {
+        var gen = new RandomGenerator();
+        var val = (java.time.LocalDateTime) gen.generate(
+                emptyContext(),
+                Map.of(
+                        "type", "datetime",
+                        "min", "2024-10-01 00:00:00",
+                        "max", "2024-12-31 23:59:59"));
+        assertThat(val).isAfterOrEqualTo(java.time.LocalDateTime.parse("2024-10-01T00:00:00"));
+        assertThat(val).isBeforeOrEqualTo(java.time.LocalDateTime.parse("2024-12-31T23:59:59"));
+    }
+
+    @Test
+    void random_generatesFixedDateTimeWhenMinEqualsMax() {
+        var gen = new RandomGenerator();
+        var val = (java.time.LocalDateTime) gen.generate(
+                emptyContext(),
+                Map.of(
+                        "type", "datetime",
+                        "min", "2024-06-26 00:00:00",
+                        "max", "2024-06-26 00:00:00"));
+        assertThat(val).isEqualTo(java.time.LocalDateTime.parse("2024-06-26T00:00:00"));
+    }
+
+    @Test
     void registry_resolvesByStrategy() {
         var registry = new GeneratorRegistry();
         assertThat(registry.get("sequence")).isInstanceOf(SequenceGenerator.class);

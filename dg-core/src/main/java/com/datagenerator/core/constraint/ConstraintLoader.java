@@ -22,9 +22,29 @@ public class ConstraintLoader {
 
     public List<ConstraintDefinition> load(SchemaDefinition schema, JobDefinition job, TableTask tableTask) {
         List<ConstraintDefinition> schemaConstraints = loadPath(schema == null ? null : schema.getConstraints());
-        List<ConstraintDefinition> jobConstraints = loadPath(job == null ? null : job.getConstraints());
-        List<ConstraintDefinition> tableConstraints = loadPath(tableTask == null ? null : tableTask.getConstraints());
+        List<ConstraintDefinition> jobConstraints = loadJobConstraints(job);
+        List<ConstraintDefinition> tableConstraints = loadTableConstraints(tableTask);
         return merge(schemaConstraints, jobConstraints, tableConstraints);
+    }
+
+    private List<ConstraintDefinition> loadJobConstraints(JobDefinition job) {
+        if (job == null) {
+            return List.of();
+        }
+        if (!job.getInlineConstraints().isEmpty()) {
+            return new ArrayList<>(job.getInlineConstraints());
+        }
+        return loadPath(job.getConstraints());
+    }
+
+    private List<ConstraintDefinition> loadTableConstraints(TableTask tableTask) {
+        if (tableTask == null) {
+            return List.of();
+        }
+        if (!tableTask.getInlineConstraints().isEmpty()) {
+            return new ArrayList<>(tableTask.getInlineConstraints());
+        }
+        return loadPath(tableTask.getConstraints());
     }
 
     public static List<ConstraintDefinition> merge(

@@ -3,6 +3,10 @@ package com.datagenerator.core.generator;
 import com.datagenerator.spi.model.GenerationContext;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
+import java.time.temporal.ChronoField;
 import java.time.temporal.ChronoUnit;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
@@ -22,6 +26,7 @@ public class RandomGenerator extends AbstractValueGenerator {
             case "double" -> randomDouble(config);
             case "string" -> randomString(config);
             case "date" -> randomDate(config);
+            case "datetime" -> randomDateTime(config);
             default -> throw new IllegalArgumentException("Unsupported random type: " + type);
         };
     }
@@ -62,6 +67,36 @@ public class RandomGenerator extends AbstractValueGenerator {
         long days = ChronoUnit.DAYS.between(min, max);
         long offset = days == 0 ? 0 : ThreadLocalRandom.current().nextLong(days + 1);
         return min.plusDays(offset);
+    }
+
+    private LocalDateTime randomDateTime(Map<String, Object> config) {
+        LocalDateTime min = parseDateTime(config.getOrDefault("min", "1970-01-01 00:00:00"));
+        LocalDateTime max = parseDateTime(config.getOrDefault("max", "2099-12-31 23:59:59"));
+        long seconds = ChronoUnit.SECONDS.between(min, max);
+        long offset = seconds == 0 ? 0 : ThreadLocalRandom.current().nextLong(seconds + 1);
+        return min.plusSeconds(offset);
+    }
+
+    private static final DateTimeFormatter FLEXIBLE_DATE_TIME = new DateTimeFormatterBuilder()
+            .appendPattern("yyyy-MM-dd")
+            .optionalStart()
+            .appendLiteral(' ')
+            .appendPattern("HH:mm:ss")
+            .optionalStart()
+            .appendFraction(ChronoField.NANO_OF_SECOND, 1, 9, true)
+            .optionalEnd()
+            .optionalEnd()
+            .toFormatter();
+
+    private static LocalDateTime parseDateTime(Object value) {
+        if (value instanceof LocalDateTime localDateTime) {
+            return localDateTime;
+        }
+        String text = String.valueOf(value).trim();
+        if (text.length() == 10) {
+            return LocalDate.parse(text).atStartOfDay();
+        }
+        return LocalDateTime.parse(text, FLEXIBLE_DATE_TIME);
     }
 
     private static LocalDate parseDate(Object value) {

@@ -1,6 +1,0 @@
-constraints:
-  - level: field
-    field: sgbh
-    type: foreign_key
-    ref_table: acd_dutysimple
-    ref_field: sgbh

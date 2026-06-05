@@ -52,12 +52,12 @@ public class DataGeneratorAutoConfiguration {
     }
 
     @Bean
-    ReferenceDataLoader referenceDataLoader(List<DataReader> readers) {
+    ReferenceDataLoader referenceDataLoader(List<DataReader> readers, ConnectionRegistry connectionRegistry) {
         Map<String, DataReader> readerMap = new HashMap<>();
         for (DataReader reader : readers) {
             readerMap.put(reader.type(), reader);
         }
-        return new ReferenceDataLoader(readerMap);
+        return new ReferenceDataLoader(readerMap, connectionRegistry);
     }
 
     @Bean
@@ -96,8 +96,8 @@ public class DataGeneratorAutoConfiguration {
     }
 
     @Bean
-    TableGenerator tableGenerator(PluginRegistry pluginRegistry) {
-        return new TableGenerator(pluginRegistry);
+    TableGenerator tableGenerator(PluginRegistry pluginRegistry, YamlConfigLoader yamlConfigLoader) {
+        return new TableGenerator(pluginRegistry, yamlConfigLoader);
     }
 
     @Bean

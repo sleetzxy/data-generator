@@ -6,6 +6,7 @@ import com.datagenerator.core.constraint.ConstraintValidatorRegistry;
 import com.datagenerator.core.generator.GeneratorRegistry;
 import com.datagenerator.core.generator.SeedTemplateApplier;
 import com.datagenerator.core.schema.ConstraintDefinition;
+import com.datagenerator.core.schema.YamlConfigLoader;
 import com.datagenerator.core.schema.FieldDefinition;
 import com.datagenerator.core.schema.SchemaDefinition;
 import com.datagenerator.spi.model.ConstraintContext;
@@ -29,7 +30,15 @@ public class TableGenerator {
     }
 
     public TableGenerator(PluginRegistry pluginRegistry) {
-        this(pluginRegistry.getGeneratorRegistry());
+        this(pluginRegistry, null);
+    }
+
+    public TableGenerator(PluginRegistry pluginRegistry, YamlConfigLoader configLoader) {
+        this.generatorRegistry = pluginRegistry.getGeneratorRegistry();
+        this.seedTemplateApplier = new SeedTemplateApplier(
+                pluginRegistry.getGeneratorRegistry(),
+                pluginRegistry.getReferenceDataLoader(),
+                configLoader);
     }
 
     public TableGenerationResult generate(

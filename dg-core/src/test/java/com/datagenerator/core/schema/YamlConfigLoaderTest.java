@@ -67,6 +67,23 @@ class YamlConfigLoaderTest {
     }
 
     @Test
+    void loadJob_inlineSchemaAndConstraints_parsesTableDefinition() {
+        JobDefinition job = loader.loadJob("fixtures/jobs/inline_single.yaml");
+        assertThat(job.getJob()).isEqualTo("inline_single");
+        assertThat(job.getWriter()).containsEntry("type", "csv");
+        assertThat(job.getWriter()).containsEntry("connection", "local-csv");
+        assertThat(job.getWriter()).containsEntry("mode", "insert");
+
+        TableTask customers = job.findTable("customers").orElseThrow();
+        assertThat(customers.getSchema()).isNull();
+        assertThat(customers.getSchemaDefinition()).isNotNull();
+        assertThat(customers.getSchemaDefinition().getTable()).isEqualTo("customers");
+        assertThat(customers.getSchemaDefinition().getFields()).hasSize(1);
+        assertThat(customers.getInlineConstraints()).hasSize(1);
+        assertThat(customers.getInlineConstraints().getFirst().getType()).isEqualTo("range");
+    }
+
+    @Test
     void overridePath_resolvesTableByName() {
         JobDefinition job = loader.loadJob("fixtures/jobs/ecommerce_seed.yaml");
 

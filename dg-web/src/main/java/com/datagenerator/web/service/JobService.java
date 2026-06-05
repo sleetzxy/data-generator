@@ -32,6 +32,7 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -97,14 +98,14 @@ public class JobService {
         if (estimatedRows > syncThreshold) {
             log.info("Submitting async job {} (estimatedRows={}, threshold={})", jobId, estimatedRows, syncThreshold);
             jobLogStore.info(jobId, "超过同步阈值 " + syncThreshold + "，转为异步执行");
-            asyncJobExecutor.submit(jobId, () -> executeAndStore(jobId, job, request.getWriter(), options));
+            asyncJobExecutor.submit(jobId, () -> executeAndStore(jobId, job, resolveWriter(job, request.getWriter()), options));
             JobResponse pending = jobs.get(jobId);
             return new JobSubmitResult(pending, true);
         }
 
         log.info("Submitting sync job {} (estimatedRows={})", jobId, estimatedRows);
         jobLogStore.info(jobId, "同步执行中");
-        JobResponse response = executeAndStore(jobId, job, request.getWriter(), options);
+        JobResponse response = executeAndStore(jobId, job, resolveWriter(job, request.getWriter()), options);
         return new JobSubmitResult(response, false);
     }
 
@@ -136,9 +137,18 @@ public class JobService {
         if (response == null) {
             throw new JobNotFoundException(jobId);
         }
+        if (isTerminalStatus(response.getStatus())) {
+            return;
+        }
         if (!asyncJobExecutor.cancel(jobId)) {
             throw new IllegalArgumentException("Job cannot be cancelled in status: " + response.getStatus());
         }
+    }
+
+    private static boolean isTerminalStatus(JobStatus status) {
+        return status == JobStatus.COMPLETED
+                || status == JobStatus.FAILED
+                || status == JobStatus.CANCELLED;
     }
 
     public void remove(String jobId) {
@@ -225,6 +235,34 @@ public class JobService {
         return job;
     }
 
+    /**
+     * 请求体 writer 覆盖 Job YAML 中的 writer；二者至少配置一处。
+     */
+    private Map<String, Object> resolveWriter(JobDefinition job, Map<String, Object> requestWriter) {
+        Map<String, Object> merged = new HashMap<>();
+        if (requestWriter != null && !requestWriter.isEmpty()) {
+            merged.putAll(requestWriter);
+        }
+        if (!job.getWriter().isEmpty()) {
+            merged.putAll(job.getWriter());
+        }
+        validateWriterConfigured(job, merged);
+        return merged;
+    }
+
+    private void validateWriterConfigured(JobDefinition job, Map<String, Object> defaultWriter) {
+        for (TableTask table : job.getTables()) {
+            Map<String, Object> effective = new HashMap<>(defaultWriter);
+            effective.putAll(table.getWriter());
+            if (effective.isEmpty()
+                    || effective.get("type") == null
+                    || String.valueOf(effective.get("type")).isBlank()) {
+                throw new IllegalArgumentException(
+                        "表 '" + table.getName() + "' 缺少 writer 配置，请在表级或 job 级指定");
+            }
+        }
+    }
+
     private void applyOverrides(JobDefinition job, Map<String, Object> overrides) {
         if (overrides == null || overrides.isEmpty()) {
             return;
@@ -248,6 +286,7 @@ public class JobService {
         JobDefinition previewJob = new JobDefinition();
         previewJob.setJob(job.getJob());
         previewJob.setConstraints(job.getConstraints());
+        previewJob.setInlineConstraints(new ArrayList<>(job.getInlineConstraints()));
 
         List<TableTask> tables = new ArrayList<>();
         for (TableTask tableTask : job.getTables()) {
@@ -266,9 +305,11 @@ public class JobService {
         TableTask copy = new TableTask();
         copy.setName(source.getName());
         copy.setSchema(source.getSchema());
+        copy.setSchemaDefinition(source.getSchemaDefinition());
         copy.setCount(source.getCount());
         copy.setDependsOn(new ArrayList<>(source.getDependsOn()));
         copy.setConstraints(source.getConstraints());
+        copy.setInlineConstraints(new ArrayList<>(source.getInlineConstraints()));
         return copy;
     }
 
