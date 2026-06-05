@@ -1,6 +1,7 @@
 package com.datagenerator.api;
 
 import com.datagenerator.api.controller.JobController;
+import com.datagenerator.api.dto.JobSubmitResult;
 import com.datagenerator.api.dto.JobResponse;
 import com.datagenerator.api.dto.JobSubmitRequest;
 import com.datagenerator.api.service.JobService;
@@ -36,7 +37,8 @@ class JobControllerTest {
 
     @Test
     void submitJob_delegatesToService() throws Exception {
-        when(jobService.submit(any(JobSubmitRequest.class))).thenReturn(JobResponse.completed("job-1", 100));
+        when(jobService.submit(any(JobSubmitRequest.class)))
+                .thenReturn(new JobSubmitResult(JobResponse.completed("job-1", 100), false));
 
         mockMvc.perform(post("/api/v1/jobs")
                         .contentType(MediaType.APPLICATION_JSON)

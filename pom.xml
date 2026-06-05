@@ -28,6 +28,9 @@
         <snakeyaml.version>2.2</snakeyaml.version>
         <clickhouse-jdbc.version>0.6.3</clickhouse-jdbc.version>
         <opencsv.version>5.9</opencsv.version>
+        <generex.version>1.0.2</generex.version>
+        <aviator.version>5.4.3</aviator.version>
+        <jts.version>1.19.0</jts.version>
     </properties>
 
     <dependencyManagement>
@@ -73,6 +76,21 @@
                 <groupId>com.opencsv</groupId>
                 <artifactId>opencsv</artifactId>
                 <version>${opencsv.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.github.mifmif</groupId>
+                <artifactId>generex</artifactId>
+                <version>${generex.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.googlecode.aviator</groupId>
+                <artifactId>aviator</artifactId>
+                <version>${aviator.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.locationtech.jts</groupId>
+                <artifactId>jts-core</artifactId>
+                <version>${jts.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

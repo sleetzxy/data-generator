@@ -11,7 +11,6 @@ import java.util.Map;
 import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class LookupReferenceSourceTest {
 
@@ -73,9 +72,31 @@ class LookupReferenceSourceTest {
     }
 
     @Test
-    void referenceDataLoader_histogramThrows() {
-        ReferenceDataLoader loader = new ReferenceDataLoader(Map.of());
-        assertThatThrownBy(() -> loader.load("any", Map.of("field", "code", "distribution", "histogram")))
-                .isInstanceOf(UnsupportedOperationException.class);
+    void referenceDataLoader_histogramSamples() {
+        DataReader mockReader = new DataReader() {
+            @Override
+            public String type() {
+                return "mock";
+            }
+
+            @Override
+            public void init(ReaderConfig config) {
+            }
+
+            @Override
+            public Stream<DataRow> read(ReadRequest request) {
+                return Stream.of(
+                        new DataRow(Map.of("amount", 10)),
+                        new DataRow(Map.of("amount", 20)),
+                        new DataRow(Map.of("amount", 30)));
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        ReferenceDataLoader loader = new ReferenceDataLoader(Map.of("amounts", mockReader));
+        Object sample = loader.sample("amounts", Map.of("field", "amount", "distribution", "histogram"));
+        assertThat(((Number) sample).doubleValue()).isBetween(10.0, 30.0);
     }
 }

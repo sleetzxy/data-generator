@@ -1,5 +1,6 @@
 package com.datagenerator.app;
 
+import com.datagenerator.api.config.JobRuntimeSettings;
 import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintLoader;
 import com.datagenerator.core.constraint.ConstraintPipeline;
@@ -38,6 +39,12 @@ public class CoreAutoConfiguration {
     @Bean
     YamlConfigLoader yamlConfigLoader(ConfigPathResolver configPathResolver) {
         return new YamlConfigLoader(configPathResolver);
+    }
+
+    @Bean
+    JobRuntimeSettings jobRuntimeSettings(DataGeneratorProperties properties) {
+        DataGeneratorProperties.JobProperties job = properties.getJob();
+        return new JobRuntimeSettings(job.getSyncThreshold(), job.getBatchSize(), job.getThreadPoolSize());
     }
 
     @Bean

@@ -2,6 +2,7 @@ package com.datagenerator.api.controller;
 
 import com.datagenerator.api.dto.JobResponse;
 import com.datagenerator.api.dto.JobSubmitRequest;
+import com.datagenerator.api.dto.JobSubmitResult;
 import com.datagenerator.api.service.JobService;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -23,7 +24,11 @@ public class JobController {
 
     @PostMapping
     public ResponseEntity<JobResponse> submitJob(@RequestBody JobSubmitRequest request) {
-        return ResponseEntity.ok(jobService.submit(request));
+        JobSubmitResult result = jobService.submit(request);
+        if (result.async()) {
+            return ResponseEntity.accepted().body(result.response());
+        }
+        return ResponseEntity.ok(result.response());
     }
 
     @GetMapping("/{id}")

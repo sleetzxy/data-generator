@@ -2,7 +2,7 @@ package com.datagenerator.core.constraint;
 
 import com.datagenerator.core.constraint.composite.ConditionalValidator;
 import com.datagenerator.core.constraint.field.RangeValidator;
-import com.datagenerator.core.expression.SpelExpressionEvaluator;
+import com.datagenerator.core.expression.ExpressionEvaluatorRegistry;
 import com.datagenerator.core.schema.ConfigPathResolver;
 import com.datagenerator.core.schema.ConstraintDefinition;
 import com.datagenerator.core.schema.JobDefinition;
@@ -42,7 +42,7 @@ class ConstraintPipelineTest {
 
     @Test
     void conditionalValidator_spelExpression() {
-        var evaluator = new SpelExpressionEvaluator();
+        var evaluator = new ExpressionEvaluatorRegistry();
         var validator = new ConditionalValidator(evaluator);
         Map<String, Object> fields = new HashMap<>();
         fields.put("pay_type", "cash");

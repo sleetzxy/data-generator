@@ -23,8 +23,8 @@ public class ReferenceGenerator extends AbstractValueGenerator {
             throw new IllegalArgumentException("reference generator requires 'source'");
         }
         String distribution = String.valueOf(config.getOrDefault("distribution", "uniform"));
-        if (!"uniform".equalsIgnoreCase(distribution)) {
-            throw new UnsupportedOperationException("Unsupported distribution: " + distribution);
+        if (!"uniform".equalsIgnoreCase(distribution) && loader == null) {
+            throw new IllegalStateException("ReferenceDataLoader is not configured");
         }
 
         Object upstreamValue = pickFromUpstream(ctx, config, source);
@@ -35,11 +35,7 @@ public class ReferenceGenerator extends AbstractValueGenerator {
         if (loader == null) {
             throw new IllegalStateException("ReferenceDataLoader is not configured");
         }
-        List<Object> values = loader.load(source, config);
-        if (values.isEmpty()) {
-            throw new IllegalStateException("No reference values loaded for source: " + source);
-        }
-        return values.get(ThreadLocalRandom.current().nextInt(values.size()));
+        return loader.sample(source, config);
     }
 
     private Object pickFromUpstream(GenerationContext ctx, Map<String, Object> config, String source) {

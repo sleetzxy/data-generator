@@ -45,6 +45,9 @@ final class ConstraintRuleMapper {
         if (definition.getOnFail() != null) {
             config.put("on_fail", definition.getOnFail());
         }
+        if (definition.getGeometryRef() != null) {
+            config.put("geometry_ref", definition.getGeometryRef());
+        }
         return config;
     }
 }

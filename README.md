@@ -144,13 +144,34 @@ P1 阶段已交付：
 | 生成策略 | sequence、random、enum、regex、reference（维表引用） |
 | 约束引擎 | 字段级（range、nullable、foreign_key）；组合级 SpEL（conditional、mutex） |
 | 多表编排 | 单表快捷 Job + 多表 DAG（`depends_on` 拓扑排序） |
-| REST API | health、schemas、preview、jobs（同步执行） |
+| REST API | health、schemas、preview、jobs（同步 + 异步） |
 
-P1 **尚未** 包含（规划于 P2/P3）：
+## P2 能力（当前）
 
-- 异步任务与 `syncThreshold` 切换、任务取消（`DELETE /jobs/{id}`）
-- 采样分布参考数据、Aviator/Groovy 表达式、空间约束（JTS）
+| 能力 | 说明 |
+|------|------|
+| 采样分布 | reference 策略支持 `uniform` / `histogram` / `normal` 分布 |
+| 异步任务 | 预估行数 > `syncThreshold` 时返回 **202 Accepted**，轮询 `GET /jobs/{id}` |
+| Aviator 表达式 | `level: custom` 或 `language: aviator` 约束 |
+| 空间约束 | JTS `within` 拓扑校验（点位于参考几何体内） |
+
+P2 **尚未** 包含（规划于 P3）：
+
+- 任务取消（`DELETE /jobs/{id}`）
 - 种子模板、Groovy 自定义插件、约束 `repair` 策略
+
+## P1 能力（已完成）
+
+P1 阶段已交付：
+
+| 能力 | 说明 |
+|------|------|
+| 五模块骨架 | `dg-spi` / `dg-core` / `dg-plugins` / `dg-api` / `dg-app` |
+| 数据源插件 | PostgreSQL、ClickHouse、CSV 读写 |
+| 生成策略 | sequence、random、enum、regex、reference（维表引用） |
+| 约束引擎 | 字段级（range、nullable、foreign_key）；组合级 SpEL（conditional、mutex） |
+| 多表编排 | 单表快捷 Job + 多表 DAG（`depends_on` 拓扑排序） |
+| REST API | health、schemas、preview、jobs |
 
 ## 许可证
 

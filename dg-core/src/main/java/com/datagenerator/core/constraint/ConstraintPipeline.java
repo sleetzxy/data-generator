@@ -23,7 +23,7 @@ public class ConstraintPipeline {
     }
 
     public ConstraintResult validate(ConstraintContext ctx) {
-        for (String level : List.of("field", "composite")) {
+        for (String level : List.of("field", "composite", "spatial", "custom")) {
             ConstraintResult result = validateLevel(ctx, level);
             if (!result.isValid()) {
                 return result;
@@ -51,9 +51,16 @@ public class ConstraintPipeline {
             throw new IllegalArgumentException("Unsupported on_fail strategy: " + onFail);
         }
 
-        ConstraintValidator validator = registry.get(definition.getType());
+        ConstraintValidator validator = registry.get(resolveValidatorType(definition));
         Map<String, Object> ruleConfig = ConstraintRuleMapper.toRuleConfig(definition);
         return validator.validate(ctx, ruleConfig);
+    }
+
+    private static String resolveValidatorType(com.datagenerator.core.schema.ConstraintDefinition definition) {
+        if ("custom".equalsIgnoreCase(definition.getLevel())) {
+            return "expression";
+        }
+        return definition.getType();
     }
 
 }

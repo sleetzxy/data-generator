@@ -1,10 +1,12 @@
 package com.datagenerator.api.service;
 
+import com.datagenerator.api.config.JobRuntimeSettings;
 import com.datagenerator.api.dto.JobOptions;
 import com.datagenerator.api.dto.JobProgress;
 import com.datagenerator.api.dto.JobResponse;
 import com.datagenerator.api.dto.JobStatus;
 import com.datagenerator.api.dto.JobSubmitRequest;
+import com.datagenerator.api.dto.JobSubmitResult;
 import com.datagenerator.api.dto.PreviewOptions;
 import com.datagenerator.api.dto.PreviewRequest;
 import com.datagenerator.api.dto.TableDetail;
@@ -23,6 +25,8 @@ import com.datagenerator.core.schema.JobDefinition;
 import com.datagenerator.core.schema.OverridePathResolver;
 import com.datagenerator.core.schema.TableTask;
 import com.datagenerator.core.schema.YamlConfigLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -35,37 +39,49 @@ import java.util.concurrent.ConcurrentHashMap;
 @Service
 public class JobService {
 
+    private static final Logger log = LoggerFactory.getLogger(JobService.class);
     private static final int PREVIEW_MAX_LIMIT = 100;
 
     private final JobOrchestrator jobOrchestrator;
     private final YamlConfigLoader configLoader;
     private final ConstraintLoader constraintLoader;
     private final ConnectionRegistry connectionRegistry;
+    private final JobRuntimeSettings runtimeSettings;
+    private final AsyncJobExecutor asyncJobExecutor;
     private final ConcurrentHashMap<String, JobResponse> jobs = new ConcurrentHashMap<>();
 
     public JobService(
             JobOrchestrator jobOrchestrator,
             YamlConfigLoader configLoader,
             ConstraintLoader constraintLoader,
-            ConnectionRegistry connectionRegistry) {
+            ConnectionRegistry connectionRegistry,
+            JobRuntimeSettings runtimeSettings) {
         this.jobOrchestrator = jobOrchestrator;
         this.configLoader = configLoader;
         this.constraintLoader = constraintLoader;
         this.connectionRegistry = connectionRegistry;
+        this.runtimeSettings = runtimeSettings;
+        this.asyncJobExecutor = new AsyncJobExecutor(runtimeSettings.threadPoolSize(), jobs);
     }
 
-    public JobResponse submit(JobSubmitRequest request) {
+    public JobSubmitResult submit(JobSubmitRequest request) {
         validateJobConfig(request.getJobConfig());
         String jobId = generateJobId();
-        long start = System.currentTimeMillis();
-
         JobDefinition job = loadAndApplyOverrides(request);
         GenerationOptions options = toGenerationOptions(request.getOptions());
-        JobResult result = jobOrchestrator.run(job, request.getWriter(), options);
-        JobResponse response = toJobResponse(jobId, JobStatus.COMPLETED, result, start, null);
+        long estimatedRows = estimateTotalRows(job);
 
-        jobs.put(jobId, response);
-        return response;
+        int syncThreshold = resolveSyncThreshold(request.getOptions());
+        if (estimatedRows > syncThreshold) {
+            log.info("Submitting async job {} (estimatedRows={}, threshold={})", jobId, estimatedRows, syncThreshold);
+            asyncJobExecutor.submit(jobId, () -> executeAndStore(jobId, job, request.getWriter(), options));
+            JobResponse pending = jobs.get(jobId);
+            return new JobSubmitResult(pending, true);
+        }
+
+        log.info("Submitting sync job {} (estimatedRows={})", jobId, estimatedRows);
+        JobResponse response = executeAndStore(jobId, job, request.getWriter(), options);
+        return new JobSubmitResult(response, false);
     }
 
     public JobResponse getById(String jobId) {
@@ -101,6 +117,18 @@ public class JobService {
                 options);
 
         return toJobResponse(null, JobStatus.COMPLETED, result, start, collectingWriter.toRowMaps());
+    }
+
+    private JobResponse executeAndStore(
+            String jobId,
+            JobDefinition job,
+            Map<String, Object> writer,
+            GenerationOptions options) {
+        long start = System.currentTimeMillis();
+        JobResult result = jobOrchestrator.run(job, writer, options);
+        JobResponse response = toJobResponse(jobId, JobStatus.COMPLETED, result, start, null);
+        jobs.put(jobId, response);
+        return response;
     }
 
     private JobDefinition loadAndApplyOverrides(JobSubmitRequest request) {
@@ -189,12 +217,28 @@ public class JobService {
     }
 
     private GenerationOptions toGenerationOptions(JobOptions options) {
-        if (options == null) {
-            return GenerationOptions.defaults();
+        int batchSize = runtimeSettings.batchSize();
+        int maxRetries = GenerationOptions.DEFAULT_MAX_RETRIES;
+        if (options != null) {
+            if (options.getBatchSize() != null && options.getBatchSize() > 0) {
+                batchSize = options.getBatchSize();
+            }
+            if (options.getMaxRetries() != null && options.getMaxRetries() >= 0) {
+                maxRetries = options.getMaxRetries();
+            }
         }
-        int batchSize = options.getBatchSize() == null ? 0 : options.getBatchSize();
-        int maxRetries = options.getMaxRetries() == null ? -1 : options.getMaxRetries();
         return new GenerationOptions(batchSize, maxRetries);
+    }
+
+    private int resolveSyncThreshold(JobOptions options) {
+        if (options != null && options.getSyncThreshold() != null && options.getSyncThreshold() > 0) {
+            return options.getSyncThreshold();
+        }
+        return runtimeSettings.syncThreshold();
+    }
+
+    private static long estimateTotalRows(JobDefinition job) {
+        return job.getTables().stream().mapToLong(TableTask::getCount).sum();
     }
 
     private void validateJobConfig(String jobConfig) {
