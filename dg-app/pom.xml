@@ -27,7 +27,15 @@
         </dependency>
         <dependency>
             <groupId>com.datagenerator</groupId>
-            <artifactId>dg-plugins</artifactId>
+            <artifactId>dg-plugin-postgresql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.datagenerator</groupId>
+            <artifactId>dg-plugin-clickhouse</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.datagenerator</groupId>
+            <artifactId>dg-plugin-csv</artifactId>
         </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>

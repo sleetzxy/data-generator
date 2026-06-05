@@ -55,7 +55,17 @@
             </dependency>
             <dependency>
                 <groupId>com.datagenerator</groupId>
-                <artifactId>dg-plugins</artifactId>
+                <artifactId>dg-plugin-postgresql</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.datagenerator</groupId>
+                <artifactId>dg-plugin-clickhouse</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.datagenerator</groupId>
+                <artifactId>dg-plugin-csv</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

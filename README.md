@@ -10,12 +10,15 @@
 data-generator/          # 父 POM
 ├── dg-spi/              # 插件契约（Reader/Writer、Generator、Constraint 接口与公共模型）
 ├── dg-core/             # 核心引擎（YAML 解析、生成策略、约束引擎、DAG 编排）
-├── dg-plugins/          # 数据源插件（PostgreSQL / ClickHouse / CSV）
+├── dg-plugins/          # 插件聚合（各数据源独立子模块）
+│   ├── dg-plugin-postgresql/
+│   ├── dg-plugin-clickhouse/
+│   └── dg-plugin-csv/
 ├── dg-api/              # REST 层（Controller、DTO、任务调度）
 └── dg-app/              # Spring Boot 启动入口与配置装配
 ```
 
-依赖关系：`dg-app → dg-api → dg-core → dg-spi`，`dg-plugins → dg-spi`。
+依赖关系：`dg-app → dg-api → dg-core → dg-spi`；各 `dg-plugin-* → dg-spi`（按需引入）。
 
 ## 快速开始
 

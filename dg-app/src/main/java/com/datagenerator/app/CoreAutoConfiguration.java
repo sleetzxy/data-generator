@@ -12,13 +12,11 @@ import com.datagenerator.core.generator.GeneratorRegistry;
 import com.datagenerator.core.reference.ReferenceDataLoader;
 import com.datagenerator.core.schema.ConfigPathResolver;
 import com.datagenerator.core.schema.YamlConfigLoader;
-import com.datagenerator.plugins.autoconfig.PluginsAutoConfiguration;
 import com.datagenerator.spi.reader.DataReader;
 import com.datagenerator.spi.writer.DataWriter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Import;
 
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -27,7 +25,6 @@ import java.util.Map;
 
 @Configuration
 @EnableConfigurationProperties(DataGeneratorProperties.class)
-@Import(PluginsAutoConfiguration.class)
 public class CoreAutoConfiguration {
 
     @Bean
