@@ -25,6 +25,7 @@ public class CsvWriter implements DataWriter {
     private ICSVWriter csvWriter;
     private Writer fileWriter;
     private boolean headerWritten;
+    private String activeTable;
 
     @Override
     public String type() {
@@ -46,7 +47,7 @@ public class CsvWriter implements DataWriter {
             return new WriteResult(0, 0);
         }
 
-        ensureWriterOpen();
+        ensureWriterOpen(batch.tableName());
         List<String> columns = new ArrayList<>(rows.getFirst().getFields().keySet());
         if (!headerWritten) {
             csvWriter.writeNext(columns.toArray(new String[0]));
@@ -83,18 +84,18 @@ public class CsvWriter implements DataWriter {
             } finally {
                 csvWriter = null;
                 fileWriter = null;
+                headerWritten = false;
+                activeTable = null;
             }
         }
     }
 
-    private void ensureWriterOpen() {
-        if (csvWriter != null) {
+    private void ensureWriterOpen(String tableName) {
+        if (csvWriter != null && tableName != null && tableName.equals(activeTable)) {
             return;
         }
-        String path = config.path();
-        if (path == null || path.isBlank()) {
-            throw new IllegalArgumentException("Path must not be blank");
-        }
+        close();
+        String path = resolveOutputPath(tableName);
         try {
             Path filePath = Path.of(path);
             if (filePath.getParent() != null) {
@@ -102,9 +103,22 @@ public class CsvWriter implements DataWriter {
             }
             fileWriter = Files.newBufferedWriter(filePath, StandardCharsets.UTF_8);
             csvWriter = new CSVWriterBuilder(fileWriter).build();
+            activeTable = tableName;
         } catch (IOException e) {
             throw new RuntimeException("Failed to open CSV file: " + path, e);
         }
+    }
+
+    private String resolveOutputPath(String tableName) {
+        String basePath = config.path();
+        if (basePath == null || basePath.isBlank()) {
+            throw new IllegalArgumentException("Path must not be blank");
+        }
+        if (basePath.endsWith(".csv") || basePath.endsWith(".CSV")) {
+            return basePath;
+        }
+        String fileName = (tableName == null || tableName.isBlank() ? "output" : tableName) + ".csv";
+        return Path.of(basePath).resolve(fileName).toString();
     }
 
     private static String toCsvValue(Object value) {

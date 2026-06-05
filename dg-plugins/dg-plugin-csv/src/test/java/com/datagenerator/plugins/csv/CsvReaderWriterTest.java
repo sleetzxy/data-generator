@@ -59,4 +59,35 @@ class CsvReaderWriterTest {
             Files.deleteIfExists(file);
         }
     }
+
+    @Test
+    void csvWriter_directoryPath_usesTableNameAsFile() throws IOException {
+        Path outputDir = Files.createTempDirectory("csv-output");
+        try {
+            WriterConfig writerConfig = new WriterConfig(
+                    "csv", null, "insert", null, outputDir.toString(), null, null, null);
+            CsvWriter writer = new CsvWriter();
+            writer.init(writerConfig);
+
+            WriteResult result = writer.write(new Batch(
+                    "customers",
+                    List.of(new DataRow(Map.of("id", "1", "name", "Alice")))));
+            writer.close();
+
+            assertThat(result.writtenCount()).isEqualTo(1);
+            Path outputFile = outputDir.resolve("customers.csv");
+            assertThat(outputFile).exists();
+            assertThat(Files.readString(outputFile)).contains("Alice");
+        } finally {
+            Files.walk(outputDir)
+                    .sorted(java.util.Comparator.reverseOrder())
+                    .forEach(path -> {
+                        try {
+                            Files.deleteIfExists(path);
+                        } catch (IOException ignored) {
+                            // ignore cleanup failures in test
+                        }
+                    });
+        }
+    }
 }

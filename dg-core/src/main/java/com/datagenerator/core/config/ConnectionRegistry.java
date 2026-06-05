@@ -32,7 +32,7 @@ public class ConnectionRegistry {
                         asString(connection.get("type"))),
                 connectionName,
                 asString(source.get("query")),
-                asString(source.get("path")),
+                firstNonBlank(asString(source.get("path")), asString(connection.get("path"))),
                 asString(connection.get("url")),
                 asString(connection.get("username")),
                 asString(connection.get("password")));
@@ -47,7 +47,7 @@ public class ConnectionRegistry {
                 firstNonBlank(config.type(), asString(connection.get("type"))),
                 config.connection(),
                 config.query(),
-                config.path(),
+                firstNonBlank(config.path(), asString(connection.get("path"))),
                 asString(connection.get("url")),
                 asString(connection.get("username")),
                 asString(connection.get("password")));
@@ -64,7 +64,7 @@ public class ConnectionRegistry {
                 connectionName,
                 asString(source.get("mode")),
                 asString(source.get("table")),
-                asString(source.get("path")),
+                firstNonBlank(asString(source.get("path")), asString(connection.get("path"))),
                 asString(connection.get("url")),
                 asString(connection.get("username")),
                 asString(connection.get("password")));
@@ -80,7 +80,7 @@ public class ConnectionRegistry {
                 config.connection(),
                 config.mode(),
                 config.table(),
-                config.path(),
+                firstNonBlank(config.path(), asString(connection.get("path"))),
                 asString(connection.get("url")),
                 asString(connection.get("username")),
                 asString(connection.get("password")));

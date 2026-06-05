@@ -26,7 +26,7 @@ public class SchemaController {
     }
 
     @GetMapping("/{name}")
-    public ResponseEntity<SchemaResponse> getSchema(@PathVariable String name) {
+    public ResponseEntity<SchemaResponse> getSchema(@PathVariable("name") String name) {
         return ResponseEntity.ok(schemaService.getSchema(name));
     }
 }

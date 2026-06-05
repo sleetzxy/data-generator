@@ -32,7 +32,7 @@ public class JobDefinitionController {
     }
 
     @GetMapping("/{name}")
-    public JobDefinitionResponse get(@PathVariable String name) {
+    public JobDefinitionResponse get(@PathVariable("name") String name) {
         return jobDefinitionService.get(name);
     }
 
@@ -43,13 +43,13 @@ public class JobDefinitionController {
 
     @PutMapping("/{name}")
     public JobDefinitionResponse update(
-            @PathVariable String name,
+            @PathVariable("name") String name,
             @RequestBody JobDefinitionRequest request) {
         return jobDefinitionService.update(name, request);
     }
 
     @DeleteMapping("/{name}")
-    public ResponseEntity<Void> delete(@PathVariable String name) {
+    public ResponseEntity<Void> delete(@PathVariable("name") String name) {
         jobDefinitionService.delete(name);
         return ResponseEntity.noContent().build();
     }
