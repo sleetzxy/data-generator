@@ -1,6 +1,5 @@
-package com.datagenerator.web;
+package com.datagenerator.web.config;
 
-import com.datagenerator.web.config.JobRuntimeSettings;
 import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintLoader;
 import com.datagenerator.core.constraint.ConstraintPipeline;
@@ -25,14 +24,14 @@ import java.util.Map;
 
 @Configuration
 @EnableConfigurationProperties(DataGeneratorProperties.class)
-public class CoreAutoConfiguration {
+public class DataGeneratorAutoConfiguration {
 
     @Bean
     ConfigPathResolver configPathResolver(DataGeneratorProperties properties) {
         Path writableOverlay = Path.of(properties.getWritableConfigDir()).toAbsolutePath().normalize();
         return ConfigPathResolver.fromSetting(
                 properties.getConfigDir(),
-                CoreAutoConfiguration.class.getClassLoader(),
+                DataGeneratorAutoConfiguration.class.getClassLoader(),
                 writableOverlay);
     }
 

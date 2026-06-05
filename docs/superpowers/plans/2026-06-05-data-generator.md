@@ -66,7 +66,7 @@ data-generator/
 │   ├── pom.xml
 │   └── src/main/java/com/datagenerator/web/
 │       ├── DataGeneratorApplication.java
-│       ├── CoreAutoConfiguration.java    # 装配 core beans + PluginRegistry
+│       ├── config/DataGeneratorAutoConfiguration.java    # 装配 core beans + PluginRegistry
 │       ├── controller/JobController.java, SchemaController.java, PreviewController.java, HealthController.java
 │       ├── dto/JobSubmitRequest.java, JobResponse.java, PreviewRequest.java
 │       └── service/JobService.java, SchemaService.java
@@ -637,7 +637,7 @@ ClickHouse 测试可用 Testcontainers `clickhouse/clickhouse-server` 或 `@Disa
 // CsvWriter — OpenCSV，输出到 path
 // PluginsAutoConfiguration — 仅声明 @Bean PostgreSqlReader, ClickHouseReader, CsvReader 等
 //   不在此模块引用 PluginRegistry（dg-plugins 仅依赖 dg-spi）
-// CoreAutoConfiguration（dg-web）— 注入 List<DataReader>/List<DataWriter> 并注册到 PluginRegistry
+// DataGeneratorAutoConfiguration（dg-web）— 注入 List<DataReader>/List<DataWriter> 并注册到 PluginRegistry
 ```
 
 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`:
@@ -747,7 +747,7 @@ class EndToEndTest {
 
 ```java
 // DataGeneratorApplication — @SpringBootApplication
-// CoreAutoConfiguration — @Bean JobOrchestrator, YamlConfigLoader, ConnectionRegistry, PluginRegistry
+// DataGeneratorAutoConfiguration — @Bean JobOrchestrator, YamlConfigLoader, ConnectionRegistry, PluginRegistry
 //   注入 List<DataReader>/List<DataWriter>（来自 PluginsAutoConfiguration）并注册到 PluginRegistry
 // application.yml:
 data-generator:

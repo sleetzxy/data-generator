@@ -112,7 +112,7 @@ dg-web → dg-plugin-* → dg-spi
 - 构造函数注入，不用 `@Autowired` 字段注入
 - Controller 只做 HTTP 适配；业务在 Service；core 不依赖 Spring Web
 - 全局异常处理，不向前端泄露内部异常栈
-- 插件通过各 `dg-plugin-*` 的 `@AutoConfiguration` + `AutoConfiguration.imports` 注册，**不要**在 `CoreAutoConfiguration` 中硬编码 `@Import` 所有插件
+- 插件通过各 `dg-plugin-*` 的 `@AutoConfiguration` + `AutoConfiguration.imports` 注册，**不要**在 `DataGeneratorAutoConfiguration` 中硬编码 `@Import` 所有插件
 
 ### 测试
 
