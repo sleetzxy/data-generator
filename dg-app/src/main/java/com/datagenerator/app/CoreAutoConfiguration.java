@@ -97,8 +97,8 @@ public class CoreAutoConfiguration {
     }
 
     @Bean
-    TableGenerator tableGenerator(GeneratorRegistry generatorRegistry) {
-        return new TableGenerator(generatorRegistry);
+    TableGenerator tableGenerator(PluginRegistry pluginRegistry) {
+        return new TableGenerator(pluginRegistry);
     }
 
     @Bean

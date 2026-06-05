@@ -1,13 +1,14 @@
 package com.datagenerator.core.engine;
 
 import com.datagenerator.core.constraint.ConstraintPipeline;
+import com.datagenerator.core.constraint.ConstraintValidationOutcome;
 import com.datagenerator.core.constraint.ConstraintValidatorRegistry;
 import com.datagenerator.core.generator.GeneratorRegistry;
+import com.datagenerator.core.generator.SeedTemplateApplier;
 import com.datagenerator.core.schema.ConstraintDefinition;
 import com.datagenerator.core.schema.FieldDefinition;
 import com.datagenerator.core.schema.SchemaDefinition;
 import com.datagenerator.spi.model.ConstraintContext;
-import com.datagenerator.spi.model.ConstraintResult;
 import com.datagenerator.spi.model.DataRow;
 import com.datagenerator.spi.model.GenerationContext;
 import com.datagenerator.spi.writer.DataWriter;
@@ -20,9 +21,11 @@ import java.util.Map;
 public class TableGenerator {
 
     private final GeneratorRegistry generatorRegistry;
+    private final SeedTemplateApplier seedTemplateApplier;
 
     public TableGenerator(GeneratorRegistry generatorRegistry) {
         this.generatorRegistry = generatorRegistry;
+        this.seedTemplateApplier = new SeedTemplateApplier(generatorRegistry);
     }
 
     public TableGenerator(PluginRegistry pluginRegistry) {
@@ -37,7 +40,7 @@ public class TableGenerator {
             Map<String, List<DataRow>> upstreamTables,
             DataWriter writer,
             GenerationOptions options) {
-        ConstraintPipeline pipeline = new ConstraintPipeline(constraints, constraintRegistry);
+        ConstraintPipeline pipeline = new ConstraintPipeline(constraints, constraintRegistry, options.onConstraintFail());
         GenerationPipeline writePipeline = new GenerationPipeline(writer, options.batchSize());
 
         String tableName = schema.getTable() == null ? "unknown" : schema.getTable();
@@ -70,9 +73,10 @@ public class TableGenerator {
             int maxRetries) {
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
             DataRow row = generateRow(schema, tableName, rowIndex, upstreamTables);
-            ConstraintResult result = pipeline.validate(new ConstraintContext(row, upstreamTables, Map.of()));
-            if (result.isValid()) {
-                return row;
+            ConstraintValidationOutcome outcome = pipeline.validateRow(
+                    new ConstraintContext(row, upstreamTables, Map.of()));
+            if (outcome.isAccepted()) {
+                return outcome.row();
             }
         }
         return null;
@@ -83,8 +87,16 @@ public class TableGenerator {
             String tableName,
             int rowIndex,
             Map<String, List<DataRow>> upstreamTables) {
+        GenerationContext context = new GenerationContext(tableName, rowIndex, upstreamTables, new DataRow());
+        if (!schema.getSeed().isEmpty()) {
+            DataRow seedRow = seedTemplateApplier.apply(schema, context);
+            if (seedRow != null) {
+                context = new GenerationContext(tableName, rowIndex, upstreamTables, seedRow);
+                return seedRow;
+            }
+        }
         DataRow row = new DataRow();
-        GenerationContext context = new GenerationContext(tableName, rowIndex, upstreamTables, row);
+        context = new GenerationContext(tableName, rowIndex, upstreamTables, row);
         for (FieldDefinition field : schema.getFields()) {
             Map<String, Object> generatorConfig = new HashMap<>(field.getGenerator());
             String strategy = String.valueOf(generatorConfig.getOrDefault("strategy", ""));

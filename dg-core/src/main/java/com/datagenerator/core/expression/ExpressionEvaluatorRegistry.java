@@ -12,6 +12,7 @@ public class ExpressionEvaluatorRegistry {
     public ExpressionEvaluatorRegistry() {
         register(new SpelExpressionEvaluator());
         register(new AviatorExpressionEvaluator());
+        register(new GroovyExpressionEvaluator());
     }
 
     public void register(ExpressionEvaluator evaluator) {

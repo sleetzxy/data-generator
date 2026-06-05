@@ -5,6 +5,7 @@ import com.datagenerator.api.dto.JobSubmitRequest;
 import com.datagenerator.api.dto.JobSubmitResult;
 import com.datagenerator.api.service.JobService;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -34,5 +35,11 @@ public class JobController {
     @GetMapping("/{id}")
     public ResponseEntity<JobResponse> getJob(@PathVariable("id") String jobId) {
         return ResponseEntity.ok(jobService.getById(jobId));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> cancelJob(@PathVariable("id") String jobId) {
+        jobService.cancel(jobId);
+        return ResponseEntity.noContent().build();
     }
 }

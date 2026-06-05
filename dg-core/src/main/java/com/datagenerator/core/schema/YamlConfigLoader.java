@@ -21,6 +21,7 @@ public class YamlConfigLoader {
         SchemaDefinition schema = new SchemaDefinition();
         schema.setTable(YamlMappingUtils.asString(root.get("table")));
         schema.setConstraints(YamlMappingUtils.asString(root.get("constraints")));
+        schema.setSeed(YamlMappingUtils.asMap(root.get("seed")));
 
         List<FieldDefinition> fields = new ArrayList<>();
         for (Map<String, Object> fieldSource : YamlMappingUtils.asMapList(root.get("fields"))) {

@@ -108,6 +108,28 @@ class ConstraintPipelineTest {
     }
 
     @Test
+    void constraintPipeline_repair_clampsOutOfRangeValue() {
+        ConstraintDefinition range = fieldRange("amount", 0.01, 100.0);
+        range.setOnFail("repair");
+        var pipeline = new ConstraintPipeline(List.of(range));
+        DataRow row = new DataRow(Map.of("amount", 999999));
+        var outcome = pipeline.validateRow(new ConstraintContext(row, Map.of(), Map.of()));
+        assertThat(outcome.isAccepted()).isTrue();
+        assertThat(outcome.row().get("amount")).isEqualTo(100.0);
+    }
+
+    @Test
+    void constraintPipeline_warn_continuesWithWarning() {
+        ConstraintDefinition range = fieldRange("amount", 0.01, 100.0);
+        range.setOnFail("warn");
+        var pipeline = new ConstraintPipeline(List.of(range));
+        DataRow row = new DataRow(Map.of("amount", 999999));
+        var outcome = pipeline.validateRow(new ConstraintContext(row, Map.of(), Map.of()));
+        assertThat(outcome.isAccepted()).isTrue();
+        assertThat(outcome.warnings()).isNotEmpty();
+    }
+
+    @Test
     void constraintPipeline_runsFieldBeforeComposite() {
         ConstraintDefinition range = fieldRange("amount", 0.01, 10.0);
         ConstraintDefinition conditional = compositeConditional("amount > 0");

@@ -31,6 +31,7 @@
         <generex.version>1.0.2</generex.version>
         <aviator.version>5.4.3</aviator.version>
         <jts.version>1.19.0</jts.version>
+        <groovy.version>4.0.24</groovy.version>
     </properties>
 
     <dependencyManagement>
@@ -91,6 +92,11 @@
                 <groupId>org.locationtech.jts</groupId>
                 <artifactId>jts-core</artifactId>
                 <version>${jts.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.groovy</groupId>
+                <artifactId>groovy</artifactId>
+                <version>${groovy.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

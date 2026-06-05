@@ -5,6 +5,7 @@ import com.datagenerator.spi.model.ConstraintContext;
 import com.datagenerator.spi.model.ConstraintResult;
 
 import java.util.Map;
+import java.util.Optional;
 
 public class RangeValidator implements ConstraintValidator {
 
@@ -34,6 +35,25 @@ public class RangeValidator implements ConstraintValidator {
                     "Field '" + field + "' value " + numericValue + " exceeds maximum " + max);
         }
         return ConstraintResult.valid();
+    }
+
+    @Override
+    public Optional<Object> repair(ConstraintContext ctx, Map<String, Object> ruleConfig) {
+        String field = (String) ruleConfig.get("field");
+        Object value = ctx.currentRow().get(field);
+        if (value == null) {
+            return Optional.empty();
+        }
+        double numericValue = toDouble(value);
+        Double min = toDoubleOrNull(ruleConfig.get("min"));
+        Double max = toDoubleOrNull(ruleConfig.get("max"));
+        if (min != null && numericValue < min) {
+            return Optional.of(min);
+        }
+        if (max != null && numericValue > max) {
+            return Optional.of(max);
+        }
+        return Optional.of(value);
     }
 
     private static double toDouble(Object value) {

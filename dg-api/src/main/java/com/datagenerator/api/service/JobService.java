@@ -92,6 +92,16 @@ public class JobService {
         return response;
     }
 
+    public void cancel(String jobId) {
+        JobResponse response = jobs.get(jobId);
+        if (response == null) {
+            throw new JobNotFoundException(jobId);
+        }
+        if (!asyncJobExecutor.cancel(jobId)) {
+            throw new IllegalArgumentException("Job cannot be cancelled in status: " + response.getStatus());
+        }
+    }
+
     public JobResponse preview(PreviewRequest request) {
         validateJobConfig(request.getJobConfig());
         long start = System.currentTimeMillis();
@@ -219,6 +229,7 @@ public class JobService {
     private GenerationOptions toGenerationOptions(JobOptions options) {
         int batchSize = runtimeSettings.batchSize();
         int maxRetries = GenerationOptions.DEFAULT_MAX_RETRIES;
+        String onConstraintFail = GenerationOptions.DEFAULT_ON_FAIL;
         if (options != null) {
             if (options.getBatchSize() != null && options.getBatchSize() > 0) {
                 batchSize = options.getBatchSize();
@@ -226,8 +237,11 @@ public class JobService {
             if (options.getMaxRetries() != null && options.getMaxRetries() >= 0) {
                 maxRetries = options.getMaxRetries();
             }
+            if (options.getOnConstraintFail() != null && !options.getOnConstraintFail().isBlank()) {
+                onConstraintFail = options.getOnConstraintFail();
+            }
         }
-        return new GenerationOptions(batchSize, maxRetries);
+        return new GenerationOptions(batchSize, maxRetries, onConstraintFail);
     }
 
     private int resolveSyncThreshold(JobOptions options) {
