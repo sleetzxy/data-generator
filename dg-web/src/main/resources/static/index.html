@@ -15,15 +15,14 @@
 </header>
 
 <main class="container">
-    <nav class="tabs">
-        <button class="tab active" data-tab="definitions">任务配置</button>
-        <button class="tab" data-tab="runs">运行记录</button>
-    </nav>
-
-    <section id="panel-definitions" class="panel active">
+    <section class="panel">
         <div class="toolbar">
             <button id="btn-new-definition" class="btn primary">新建任务</button>
             <button id="btn-refresh-definitions" class="btn">刷新</button>
+            <label class="auto-refresh">
+                <input type="checkbox" id="auto-refresh" checked>
+                自动刷新 (5s)
+            </label>
         </div>
         <div class="table-wrap">
             <table>
@@ -32,36 +31,11 @@
                     <th>名称</th>
                     <th>配置路径</th>
                     <th>类型</th>
+                    <th>最近状态</th>
                     <th>操作</th>
                 </tr>
                 </thead>
                 <tbody id="definitions-body"></tbody>
-            </table>
-        </div>
-    </section>
-
-    <section id="panel-runs" class="panel">
-        <div class="toolbar">
-            <button id="btn-refresh-runs" class="btn">刷新</button>
-            <label class="auto-refresh">
-                <input type="checkbox" id="auto-refresh-runs" checked>
-                自动刷新 (5s)
-            </label>
-        </div>
-        <div class="table-wrap">
-            <table>
-                <thead>
-                <tr>
-                    <th>任务 ID</th>
-                    <th>配置文件</th>
-                    <th>状态</th>
-                    <th>提交时间</th>
-                    <th>耗时</th>
-                    <th>写入行数</th>
-                    <th>操作</th>
-                </tr>
-                </thead>
-                <tbody id="runs-body"></tbody>
             </table>
         </div>
     </section>
@@ -91,35 +65,41 @@
     </div>
 </div>
 
-<div id="detail-modal" class="modal hidden">
-    <div class="modal-backdrop"></div>
-    <div class="modal-content">
-        <div class="modal-header">
-            <h2 id="detail-title">运行详情</h2>
-            <button id="detail-close" class="icon-btn" aria-label="关闭">&times;</button>
-        </div>
-        <div class="modal-body">
-            <div id="detail-summary" class="detail-summary"></div>
-            <div class="detail-footer-actions">
-                <button id="detail-view-logs" class="btn small primary">查看日志</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 <div id="log-modal" class="modal hidden">
     <div class="modal-backdrop"></div>
     <div class="modal-content modal-wide">
-        <div class="modal-header">
-            <h2 id="log-title">执行日志</h2>
-            <button id="log-close" class="icon-btn" aria-label="关闭">&times;</button>
+        <div class="modal-header log-modal-header">
+            <div class="log-modal-header-left">
+                <button id="log-back" class="btn small hidden">← 返回列表</button>
+                <h2 id="log-title">运行记录</h2>
+            </div>
+            <div class="log-modal-header-right">
+                <button id="log-stop-run" class="btn small danger hidden">停止任务</button>
+                <button id="log-close" class="icon-btn" aria-label="关闭">&times;</button>
+            </div>
         </div>
         <div class="modal-body">
-            <div id="log-run-selector" class="log-run-selector hidden">
-                <label for="log-run-select">运行记录</label>
-                <select id="log-run-select"></select>
+            <div id="log-list-view">
+                <div class="table-wrap">
+                    <table>
+                        <thead>
+                        <tr>
+                            <th>任务 ID</th>
+                            <th>状态</th>
+                            <th>提交时间</th>
+                            <th>耗时</th>
+                            <th>写入行数</th>
+                            <th>操作</th>
+                        </tr>
+                        </thead>
+                        <tbody id="log-runs-body"></tbody>
+                    </table>
+                </div>
             </div>
-            <pre id="log-content" class="log-view">加载中...</pre>
+            <div id="log-detail-view" class="hidden">
+                <div id="log-run-summary" class="detail-summary"></div>
+                <pre id="log-content" class="log-view">加载中...</pre>
+            </div>
         </div>
     </div>
 </div>

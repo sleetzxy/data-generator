@@ -56,39 +56,12 @@ body {
     padding: 0 1.5rem 2rem;
 }
 
-.tabs {
-    display: flex;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-}
-
-.tab {
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--muted);
-    padding: 0.5rem 1rem;
-    border-radius: var(--radius);
-    cursor: pointer;
-    font-size: 0.95rem;
-}
-
-.tab.active {
-    background: var(--primary);
-    border-color: var(--primary);
-    color: #fff;
-}
-
 .panel {
-    display: none;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: var(--radius);
     padding: 1rem;
     box-shadow: var(--shadow);
-}
-
-.panel.active {
-    display: block;
 }
 
 .toolbar {
@@ -202,6 +175,7 @@ th {
 .badge.status-COMPLETED { background: #dcfce7; color: #166534; }
 .badge.status-FAILED { background: #fee2e2; color: #991b1b; }
 .badge.status-CANCELLED { background: #f1f5f9; color: #475569; }
+.badge.status-none { background: #f1f5f9; color: #94a3b8; }
 
 .modal {
     position: fixed;
@@ -334,26 +308,38 @@ th {
     margin-top: 0.75rem;
 }
 
-.log-run-selector {
+.log-modal-header {
+    gap: 0.75rem;
+}
+
+.log-modal-header-left {
     display: flex;
     align-items: center;
     gap: 0.75rem;
-    margin-bottom: 0.75rem;
+    min-width: 0;
 }
 
-.log-run-selector label {
-    font-size: 0.85rem;
-    color: var(--muted);
+.log-modal-header-left h2 {
+    margin: 0;
+    font-size: 1.1rem;
     white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.log-run-selector select {
-    flex: 1;
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 0.45rem 0.65rem;
-    font-size: 0.85rem;
-    background: #fff;
+.log-modal-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.log-run-row {
+    cursor: pointer;
+}
+
+.log-run-row:hover td {
+    background: #f8fafc;
 }
 
 .log-view {

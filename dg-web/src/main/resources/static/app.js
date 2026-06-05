@@ -14,57 +14,41 @@ const DEFAULT_WRITER = {
 };
 
 let editingDefinition = null;
-let runsRefreshTimer = null;
-let detailJobId = null;
-let logModalRuns = [];
-
-document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => switchTab(tab.dataset.tab));
-});
+let refreshTimer = null;
+let allRunsCache = [];
+let logModalContext = {
+    definitionName: null,
+    definitionPath: null,
+    runs: [],
+    selectedJobId: null,
+    view: 'list'
+};
 
 document.getElementById('btn-new-definition').addEventListener('click', () => openDefinitionModal(null));
 document.getElementById('btn-refresh-definitions').addEventListener('click', loadDefinitions);
-document.getElementById('btn-refresh-runs').addEventListener('click', loadRuns);
-document.getElementById('auto-refresh-runs').addEventListener('change', setupRunsAutoRefresh);
+document.getElementById('auto-refresh').addEventListener('change', setupAutoRefresh);
 
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-cancel').addEventListener('click', closeModal);
 document.getElementById('modal-save').addEventListener('click', saveDefinition);
 document.querySelector('#modal .modal-backdrop').addEventListener('click', closeModal);
 
-document.getElementById('detail-close').addEventListener('click', closeDetailModal);
-document.querySelector('#detail-modal .modal-backdrop').addEventListener('click', closeDetailModal);
-document.getElementById('detail-view-logs').addEventListener('click', () => {
-    if (detailJobId) {
-        viewRunLogs(detailJobId);
-    }
-});
-
 document.getElementById('log-close').addEventListener('click', closeLogModal);
 document.querySelector('#log-modal .modal-backdrop').addEventListener('click', closeLogModal);
-document.getElementById('log-run-select').addEventListener('change', (event) => {
-    loadLogsForJob(event.target.value);
+document.getElementById('log-back').addEventListener('click', showLogListView);
+document.getElementById('log-stop-run').addEventListener('click', () => {
+    if (logModalContext.selectedJobId) {
+        stopRun(logModalContext.selectedJobId);
+    }
 });
 
-function switchTab(name) {
-    document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === name));
-    document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === `panel-${name}`));
-    if (name === 'definitions') {
-        loadDefinitions();
-    } else {
-        loadRuns();
-        setupRunsAutoRefresh();
+function setupAutoRefresh() {
+    if (refreshTimer) {
+        clearInterval(refreshTimer);
     }
-}
-
-function setupRunsAutoRefresh() {
-    if (runsRefreshTimer) {
-        clearInterval(runsRefreshTimer);
-    }
-    runsRefreshTimer = null;
-    if (document.getElementById('auto-refresh-runs').checked
-        && document.getElementById('panel-runs').classList.contains('active')) {
-        runsRefreshTimer = setInterval(loadRuns, 5000);
+    refreshTimer = null;
+    if (document.getElementById('auto-refresh').checked) {
+        refreshTimer = setInterval(loadDefinitions, 5000);
     }
 }
 
@@ -95,7 +79,14 @@ function showToast(message) {
 }
 
 function statusBadge(status) {
+    if (!status) {
+        return '<span class="badge status-none">未运行</span>';
+    }
     return `<span class="badge status-${status}">${status}</span>`;
+}
+
+function isActiveRun(status) {
+    return status === 'PENDING' || status === 'RUNNING';
 }
 
 function formatTime(iso) {
@@ -116,63 +107,51 @@ function renderLogLines(logs) {
     ).join('\n');
 }
 
+function findLatestRun(path) {
+    return allRunsCache
+        .filter(run => run.jobConfig === path)
+        .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))[0] || null;
+}
+
 async function loadDefinitions() {
     const tbody = document.getElementById('definitions-body');
     try {
-        const items = await api('/job-definitions');
+        const [items, runs] = await Promise.all([
+            api('/job-definitions'),
+            api('/jobs')
+        ]);
+        allRunsCache = runs;
+
         if (!items.length) {
-            tbody.innerHTML = '<tr class="empty-row"><td colspan="4">暂无任务配置</td></tr>';
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="5">暂无任务配置</td></tr>';
+            refreshOpenLogModal();
             return;
         }
-        tbody.innerHTML = items.map(item => `
+
+        tbody.innerHTML = items.map(item => {
+            const latestRun = findLatestRun(item.path);
+            return `
             <tr>
                 <td><strong>${escapeHtml(item.name)}</strong></td>
                 <td><code>${escapeHtml(item.path)}</code></td>
                 <td>${item.readOnly
                     ? '<span class="badge builtin">内置</span>'
                     : '<span class="badge custom">自定义</span>'}</td>
+                <td>${statusBadge(latestRun?.status)}</td>
                 <td class="actions">
                     <button class="btn small" onclick="viewDefinition('${escapeAttr(item.name)}')">查看</button>
                     <button class="btn small" onclick="editDefinition('${escapeAttr(item.name)}')">编辑</button>
-                    <button class="btn small primary" onclick="runDefinition('${escapeAttr(item.path)}')">运行</button>
+                    <button class="btn small primary" onclick="runDefinition('${escapeAttr(item.path)}', '${escapeAttr(item.name)}')">运行</button>
                     <button class="btn small log-btn" onclick="viewDefinitionLogs('${escapeAttr(item.name)}', '${escapeAttr(item.path)}')">日志</button>
                     ${item.readOnly ? '' :
                         `<button class="btn small danger" onclick="deleteDefinition('${escapeAttr(item.name)}')">删除</button>`}
                 </td>
-            </tr>
-        `).join('');
-    } catch (err) {
-        tbody.innerHTML = `<tr class="empty-row"><td colspan="4">加载失败: ${escapeHtml(err.message)}</td></tr>`;
-    }
-}
+            </tr>`;
+        }).join('');
 
-async function loadRuns() {
-    const tbody = document.getElementById('runs-body');
-    try {
-        const items = await api('/jobs');
-        if (!items.length) {
-            tbody.innerHTML = '<tr class="empty-row"><td colspan="7">暂无运行记录</td></tr>';
-            return;
-        }
-        tbody.innerHTML = items.map(item => `
-            <tr>
-                <td><code>${escapeHtml(item.jobId)}</code></td>
-                <td>${escapeHtml(item.jobConfig || '-')}</td>
-                <td>${statusBadge(item.status)}</td>
-                <td>${formatTime(item.submittedAt)}</td>
-                <td>${escapeHtml(item.duration || '-')}</td>
-                <td>${item.writtenRows ?? 0} / ${item.totalRows ?? 0}</td>
-                <td class="actions">
-                    <button class="btn small" onclick="viewRunDetail('${escapeAttr(item.jobId)}')">详情</button>
-                    <button class="btn small log-btn" onclick="viewRunLogs('${escapeAttr(item.jobId)}')">日志</button>
-                    ${item.status === 'PENDING' || item.status === 'RUNNING'
-                        ? `<button class="btn small danger" onclick="cancelRun('${escapeAttr(item.jobId)}')">取消</button>`
-                        : `<button class="btn small danger" onclick="removeRun('${escapeAttr(item.jobId)}')">删除</button>`}
-                </td>
-            </tr>
-        `).join('');
+        refreshOpenLogModal();
     } catch (err) {
-        tbody.innerHTML = `<tr class="empty-row"><td colspan="7">加载失败: ${escapeHtml(err.message)}</td></tr>`;
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="5">加载失败: ${escapeHtml(err.message)}</td></tr>`;
     }
 }
 
@@ -253,14 +232,18 @@ async function deleteDefinition(name) {
     }
 }
 
-async function runDefinition(path) {
+async function runDefinition(path, name) {
     try {
         const result = await api('/jobs', {
             method: 'POST',
             body: JSON.stringify({ jobConfig: path, writer: DEFAULT_WRITER })
         });
         showToast(`任务已提交: ${result.jobId} (${result.status})`);
-        switchTab('runs');
+        await loadDefinitions();
+        openLogListModal(name, path);
+        if (isActiveRun(result.status)) {
+            openRunLogDetail(result.jobId);
+        }
     } catch (err) {
         showToast('提交失败: ' + err.message);
     }
@@ -268,111 +251,160 @@ async function runDefinition(path) {
 
 async function viewDefinitionLogs(name, path) {
     try {
-        const allRuns = await api('/jobs');
-        const runs = allRuns
+        if (!allRunsCache.length) {
+            allRunsCache = await api('/jobs');
+        }
+        const runs = allRunsCache
             .filter(run => run.jobConfig === path)
             .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
         if (!runs.length) {
             showToast(`任务 "${name}" 暂无运行记录`);
             return;
         }
-        openLogModal(`任务日志: ${name}`, runs, runs[0].jobId);
+        openLogListModal(name, path);
     } catch (err) {
-        showToast('加载日志失败: ' + err.message);
+        showToast('加载失败: ' + err.message);
     }
 }
 
-async function viewRunDetail(jobId) {
+function renderLogRunsTable(runs) {
+    const tbody = document.getElementById('log-runs-body');
+    if (!runs.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">暂无运行记录</td></tr>';
+        return;
+    }
+    tbody.innerHTML = runs.map(run => `
+        <tr class="log-run-row" onclick="openRunLogDetail('${escapeAttr(run.jobId)}')">
+            <td><code>${escapeHtml(run.jobId)}</code></td>
+            <td>${statusBadge(run.status)}</td>
+            <td>${formatTime(run.submittedAt)}</td>
+            <td>${escapeHtml(run.duration || '-')}</td>
+            <td>${run.writtenRows ?? 0} / ${run.totalRows ?? 0}</td>
+            <td class="actions" onclick="event.stopPropagation()">
+                ${isActiveRun(run.status)
+                    ? `<button class="btn small danger" onclick="stopRun('${escapeAttr(run.jobId)}')">停止</button>`
+                    : '-'}
+            </td>
+        </tr>
+    `).join('');
+}
+
+function openLogListModal(name, path) {
+    const runs = allRunsCache
+        .filter(run => run.jobConfig === path)
+        .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+
+    logModalContext = {
+        definitionName: name,
+        definitionPath: path,
+        runs,
+        selectedJobId: null,
+        view: 'list'
+    };
+
+    document.getElementById('log-title').textContent = `运行记录: ${name}`;
+    renderLogRunsTable(runs);
+    showLogListView();
+    document.getElementById('log-modal').classList.remove('hidden');
+}
+
+function showLogListView() {
+    logModalContext.view = 'list';
+    logModalContext.selectedJobId = null;
+    document.getElementById('log-list-view').classList.remove('hidden');
+    document.getElementById('log-detail-view').classList.add('hidden');
+    document.getElementById('log-back').classList.add('hidden');
+    document.getElementById('log-stop-run').classList.add('hidden');
+    if (logModalContext.definitionName) {
+        document.getElementById('log-title').textContent = `运行记录: ${logModalContext.definitionName}`;
+    }
+}
+
+async function openRunLogDetail(jobId) {
+    logModalContext.view = 'detail';
+    logModalContext.selectedJobId = jobId;
+
+    document.getElementById('log-list-view').classList.add('hidden');
+    document.getElementById('log-detail-view').classList.remove('hidden');
+    document.getElementById('log-back').classList.remove('hidden');
+    document.getElementById('log-title').textContent = `执行日志: ${jobId}`;
+
+    const logContent = document.getElementById('log-content');
+    logContent.textContent = '加载中...';
+
     try {
         const job = await api(`/jobs/${encodeURIComponent(jobId)}`);
-        detailJobId = jobId;
-        document.getElementById('detail-title').textContent = `运行详情: ${jobId}`;
+        const run = logModalContext.runs.find(item => item.jobId === jobId) || job;
         const progress = job.progress || {};
-        document.getElementById('detail-summary').innerHTML = `
+
+        document.getElementById('log-run-summary').innerHTML = `
             <div class="detail-item"><label>状态</label>${statusBadge(job.status)}</div>
-            <div class="detail-item"><label>配置文件</label>${escapeHtml(job.jobConfig || '-')}</div>
             <div class="detail-item"><label>提交时间</label>${formatTime(job.submittedAt)}</div>
             <div class="detail-item"><label>耗时</label>${escapeHtml(job.duration || '-')}</div>
             <div class="detail-item"><label>写入行数</label>${progress.writtenRows ?? 0} / ${progress.totalRows ?? 0}</div>
             ${job.errorMessage ? `<div class="detail-item detail-item-wide"><label>错误</label>${escapeHtml(job.errorMessage)}</div>` : ''}
         `;
-        document.getElementById('detail-modal').classList.remove('hidden');
-    } catch (err) {
-        showToast('加载详情失败: ' + err.message);
-    }
-}
 
-async function viewRunLogs(jobId) {
-    try {
-        const job = await api(`/jobs/${encodeURIComponent(jobId)}`);
-        openLogModal(`执行日志: ${jobId}`, [job], jobId);
-    } catch (err) {
-        showToast('加载日志失败: ' + err.message);
-    }
-}
+        document.getElementById('log-stop-run').classList.toggle('hidden', !isActiveRun(job.status));
 
-function openLogModal(title, runs, selectedJobId) {
-    logModalRuns = runs;
-    document.getElementById('log-title').textContent = title;
-    const selector = document.getElementById('log-run-selector');
-    const select = document.getElementById('log-run-select');
-
-    if (runs.length > 1) {
-        selector.classList.remove('hidden');
-        select.innerHTML = runs.map(run => `
-            <option value="${escapeAttr(run.jobId)}" ${run.jobId === selectedJobId ? 'selected' : ''}>
-                ${escapeHtml(run.jobId)} · ${run.status} · ${formatTime(run.submittedAt)}
-            </option>
-        `).join('');
-    } else {
-        selector.classList.add('hidden');
-        select.innerHTML = '';
-    }
-
-    document.getElementById('log-modal').classList.remove('hidden');
-    loadLogsForJob(selectedJobId);
-}
-
-async function loadLogsForJob(jobId) {
-    const logContent = document.getElementById('log-content');
-    logContent.textContent = '加载中...';
-    try {
         const logs = await api(`/jobs/${encodeURIComponent(jobId)}/logs`);
         logContent.innerHTML = renderLogLines(logs);
+
+        if (run && run.status !== job.status) {
+            run.status = job.status;
+        }
     } catch (err) {
         logContent.textContent = '加载失败: ' + err.message;
+        document.getElementById('log-stop-run').classList.add('hidden');
     }
 }
 
-function closeDetailModal() {
-    document.getElementById('detail-modal').classList.add('hidden');
-    detailJobId = null;
+async function refreshOpenLogModal() {
+    if (document.getElementById('log-modal').classList.contains('hidden') || !logModalContext.definitionPath) {
+        return;
+    }
+
+    const runs = allRunsCache
+        .filter(run => run.jobConfig === logModalContext.definitionPath)
+        .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+
+    if (!runs.length) {
+        closeLogModal();
+        return;
+    }
+
+    logModalContext.runs = runs;
+
+    if (logModalContext.view === 'list') {
+        renderLogRunsTable(runs);
+        return;
+    }
+
+    if (logModalContext.selectedJobId) {
+        await openRunLogDetail(logModalContext.selectedJobId);
+    }
 }
 
 function closeLogModal() {
     document.getElementById('log-modal').classList.add('hidden');
-    logModalRuns = [];
+    logModalContext = {
+        definitionName: null,
+        definitionPath: null,
+        runs: [],
+        selectedJobId: null,
+        view: 'list'
+    };
+    showLogListView();
 }
 
-async function cancelRun(jobId) {
-    if (!confirm(`确定取消任务 ${jobId}？`)) return;
+async function stopRun(jobId) {
+    if (!confirm(`确定停止任务 ${jobId}？`)) return;
     try {
         await api(`/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
-        showToast('任务已取消');
-        loadRuns();
+        showToast('任务已停止');
+        await loadDefinitions();
     } catch (err) {
-        showToast('取消失败: ' + err.message);
-    }
-}
-
-async function removeRun(jobId) {
-    if (!confirm(`确定删除运行记录 ${jobId}？`)) return;
-    try {
-        await api(`/jobs/${encodeURIComponent(jobId)}/record`, { method: 'DELETE' });
-        showToast('记录已删除');
-        loadRuns();
-    } catch (err) {
-        showToast('删除失败: ' + err.message);
+        showToast('停止失败: ' + err.message);
     }
 }
 
@@ -390,3 +422,4 @@ function escapeAttr(text) {
 }
 
 loadDefinitions();
+setupAutoRefresh();
