@@ -25,6 +25,9 @@
         <spring-boot.version>3.3.5</spring-boot.version>
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <snakeyaml.version>2.2</snakeyaml.version>
+        <clickhouse-jdbc.version>0.6.3</clickhouse-jdbc.version>
+        <opencsv.version>5.9</opencsv.version>
     </properties>
 
     <dependencyManagement>
@@ -56,6 +59,21 @@
                 <artifactId>dg-api</artifactId>
                 <version>${project.version}</version>
             </dependency>
+            <dependency>
+                <groupId>org.yaml</groupId>
+                <artifactId>snakeyaml</artifactId>
+                <version>${snakeyaml.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.clickhouse</groupId>
+                <artifactId>clickhouse-jdbc</artifactId>
+                <version>${clickhouse-jdbc.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.opencsv</groupId>
+                <artifactId>opencsv</artifactId>
+                <version>${opencsv.version}</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -68,6 +86,11 @@
                     <configuration>
                         <release>${maven.compiler.release}</release>
                     </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.springframework.boot</groupId>
+                    <artifactId>spring-boot-maven-plugin</artifactId>
+                    <version>${spring-boot.version}</version>
                 </plugin>
             </plugins>
         </pluginManagement>
