@@ -9,6 +9,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
@@ -21,18 +22,24 @@ public class ConfigPathResolver {
     private final Path configDir;
     private final ClassLoader classLoader;
     private final String classpathBase;
+    private final Path writableOverlay;
 
-    private ConfigPathResolver(Path configDir, ClassLoader classLoader, String classpathBase) {
+    private ConfigPathResolver(
+            Path configDir,
+            ClassLoader classLoader,
+            String classpathBase,
+            Path writableOverlay) {
         this.configDir = configDir;
         this.classLoader = classLoader;
         this.classpathBase = classpathBase == null ? "" : classpathBase;
+        this.writableOverlay = writableOverlay;
     }
 
     public static ConfigPathResolver forConfigDir(Path configDir) {
         if (configDir == null) {
             throw new IllegalArgumentException("configDir must not be null");
         }
-        return new ConfigPathResolver(configDir, null, "");
+        return new ConfigPathResolver(configDir, null, "", null);
     }
 
     public static ConfigPathResolver forClasspath(ClassLoader classLoader) {
@@ -43,18 +50,44 @@ public class ConfigPathResolver {
         if (classLoader == null) {
             throw new IllegalArgumentException("classLoader must not be null");
         }
-        return new ConfigPathResolver(null, classLoader, normalizeClasspathBase(basePath));
+        return new ConfigPathResolver(null, classLoader, normalizeClasspathBase(basePath), null);
     }
 
     public static ConfigPathResolver fromSetting(String configDir, ClassLoader classLoader) {
+        return fromSetting(configDir, classLoader, null);
+    }
+
+    public static ConfigPathResolver fromSetting(
+            String configDir, ClassLoader classLoader, Path writableOverlay) {
         if (configDir == null || configDir.isBlank()) {
             throw new IllegalArgumentException("configDir must not be blank");
         }
+        ConfigPathResolver primary;
         if (configDir.startsWith("classpath:")) {
             String basePath = configDir.substring("classpath:".length()).trim();
-            return forClasspath(classLoader, basePath);
+            primary = forClasspath(classLoader, basePath);
+        } else {
+            primary = forConfigDir(Path.of(configDir).toAbsolutePath().normalize());
         }
-        return forConfigDir(Path.of(configDir).toAbsolutePath().normalize());
+        if (writableOverlay == null) {
+            return primary;
+        }
+        return primary.withWritableOverlay(writableOverlay);
+    }
+
+    public ConfigPathResolver withWritableOverlay(Path overlayDir) {
+        if (overlayDir == null) {
+            return this;
+        }
+        return new ConfigPathResolver(
+                configDir,
+                classLoader,
+                classpathBase,
+                overlayDir.toAbsolutePath().normalize());
+    }
+
+    public Path writableOverlay() {
+        return writableOverlay;
     }
 
     public Path resolve(String relativePath) {
@@ -64,21 +97,53 @@ public class ConfigPathResolver {
         return Path.of(relativePath);
     }
 
-    public List<String> listYamlBasenames(String subdirectory) {
-        if (configDir != null) {
-            return listFilesystemYamlBasenames(subdirectory);
+    public Path resolveOverlay(String relativePath) {
+        if (writableOverlay == null) {
+            return null;
         }
-        return listClasspathYamlBasenames(subdirectory);
+        return writableOverlay.resolve(relativePath).normalize();
+    }
+
+    public List<String> listYamlBasenames(String subdirectory) {
+        return listYamlRelativePaths(subdirectory).stream()
+                .map(path -> {
+                    int slash = path.lastIndexOf('/');
+                    return slash >= 0 ? path.substring(slash + 1) : path;
+                })
+                .map(this::toBasename)
+                .sorted()
+                .distinct()
+                .toList();
+    }
+
+    public List<String> listYamlRelativePaths(String subdirectory) {
+        Set<String> paths = new TreeSet<>();
+        if (writableOverlay != null) {
+            paths.addAll(listOverlayYamlRelativePaths(subdirectory));
+        }
+        if (configDir != null) {
+            paths.addAll(listFilesystemYamlRelativePaths(configDir.resolve(subdirectory)));
+        } else {
+            paths.addAll(listClasspathYamlRelativePaths(subdirectory));
+        }
+        return new ArrayList<>(paths);
     }
 
     public InputStream open(String relativePath) {
         try {
+            if (writableOverlay != null) {
+                Path overlayFile = writableOverlay.resolve(relativePath).normalize();
+                if (overlayFile.startsWith(writableOverlay) && Files.isRegularFile(overlayFile)) {
+                    return Files.newInputStream(overlayFile);
+                }
+            }
             if (configDir != null) {
                 return Files.newInputStream(resolve(relativePath));
             }
             InputStream inputStream = classLoader.getResourceAsStream(toClasspathResource(relativePath));
             if (inputStream == null) {
-                throw new ConfigLoadException("Config resource not found on classpath: " + toClasspathResource(relativePath));
+                throw new ConfigLoadException(
+                        "Config resource not found on classpath: " + toClasspathResource(relativePath));
             }
             return inputStream;
         } catch (IOException exception) {
@@ -86,17 +151,31 @@ public class ConfigPathResolver {
         }
     }
 
-    private List<String> listFilesystemYamlBasenames(String subdirectory) {
-        Path dir = configDir.resolve(subdirectory).normalize();
+    public boolean existsOnOverlay(String relativePath) {
+        if (writableOverlay == null) {
+            return false;
+        }
+        Path overlayFile = writableOverlay.resolve(relativePath).normalize();
+        return overlayFile.startsWith(writableOverlay) && Files.isRegularFile(overlayFile);
+    }
+
+    private List<String> listOverlayYamlRelativePaths(String subdirectory) {
+        Path dir = writableOverlay.resolve(subdirectory).normalize();
         if (!Files.isDirectory(dir)) {
             return List.of();
         }
-        try (Stream<Path> paths = Files.list(dir)) {
+        return listFilesystemYamlRelativePaths(dir);
+    }
+
+    private List<String> listFilesystemYamlRelativePaths(Path dir) {
+        if (!Files.isDirectory(dir)) {
+            return List.of();
+        }
+        try (Stream<Path> paths = Files.walk(dir)) {
             return paths
                     .filter(Files::isRegularFile)
-                    .map(path -> path.getFileName().toString())
-                    .filter(this::isYamlFile)
-                    .map(this::toBasename)
+                    .filter(path -> isYamlFile(path.getFileName().toString()))
+                    .map(path -> dir.relativize(path).toString().replace('\\', '/'))
                     .sorted()
                     .toList();
         } catch (IOException exception) {
@@ -104,24 +183,25 @@ public class ConfigPathResolver {
         }
     }
 
-    private List<String> listClasspathYamlBasenames(String subdirectory) {
+    private List<String> listClasspathYamlRelativePaths(String subdirectory) {
         String resourcePrefix = toClasspathResource(subdirectory);
         if (!resourcePrefix.endsWith("/")) {
             resourcePrefix = resourcePrefix + "/";
         }
         try {
-            Set<String> basenames = new TreeSet<>();
+            Set<String> paths = new LinkedHashSet<>();
             Enumeration<URL> roots = classLoader.getResources(resourcePrefix);
             while (roots.hasMoreElements()) {
-                collectYamlBasenames(roots.nextElement(), resourcePrefix, basenames);
+                collectClasspathYamlRelativePaths(roots.nextElement(), resourcePrefix, paths);
             }
-            return new ArrayList<>(basenames);
+            return new ArrayList<>(paths);
         } catch (IOException exception) {
             throw new ConfigLoadException("Failed to list classpath config directory: " + resourcePrefix, exception);
         }
     }
 
-    private void collectYamlBasenames(URL rootUrl, String prefix, Set<String> basenames) throws IOException {
+    private void collectClasspathYamlRelativePaths(URL rootUrl, String prefix, Set<String> paths)
+            throws IOException {
         if ("file".equals(rootUrl.getProtocol())) {
             Path dir;
             try {
@@ -132,13 +212,7 @@ public class ConfigPathResolver {
             if (!Files.isDirectory(dir)) {
                 return;
             }
-            try (Stream<Path> paths = Files.list(dir)) {
-                paths.filter(Files::isRegularFile)
-                        .map(path -> path.getFileName().toString())
-                        .filter(this::isYamlFile)
-                        .map(this::toBasename)
-                        .forEach(basenames::add);
-            }
+            paths.addAll(listFilesystemYamlRelativePaths(dir));
             return;
         }
         if ("jar".equals(rootUrl.getProtocol())) {
@@ -151,16 +225,12 @@ public class ConfigPathResolver {
                 Enumeration<JarEntry> entries = jarFile.entries();
                 while (entries.hasMoreElements()) {
                     JarEntry entry = entries.nextElement();
-                    if (entry.isDirectory()) {
+                    if (entry.isDirectory() || !entry.getName().startsWith(entryPrefix)) {
                         continue;
                     }
-                    String name = entry.getName();
-                    if (!name.startsWith(entryPrefix) || !isYamlFile(name)) {
-                        continue;
-                    }
-                    String relative = name.substring(entryPrefix.length());
-                    if (!relative.contains("/")) {
-                        basenames.add(toBasename(relative));
+                    String relative = entry.getName().substring(entryPrefix.length());
+                    if (isYamlFile(relative)) {
+                        paths.add(relative);
                     }
                 }
             }

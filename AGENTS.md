@@ -41,7 +41,7 @@
 |---|---|
 | 语言 / 框架 | Java 21、Spring Boot 3.3 |
 | 构建 | Maven 多模块 |
-| 配置 | 本地 YAML（`dg-app/src/main/resources/configs/`） |
+| 配置 | 本地 YAML（`dg-web/src/main/resources/configs/`） |
 | 数据源 | PostgreSQL、ClickHouse、CSV（插件化） |
 
 设计文档：
@@ -60,24 +60,25 @@ data-generator/
 │   ├── dg-plugin-postgresql/
 │   ├── dg-plugin-clickhouse/
 │   └── dg-plugin-csv/
-└── dg-app/                    # Spring Boot 启动、REST 层与 CoreAutoConfiguration
+└── dg-web/                    # Web 应用（Spring Boot 启动、REST API、Web 控制台）
+    └── com.datagenerator.web  # 统一包：controller / service / dto / config
 ```
 
 **依赖方向：**
 
 ```
-dg-app → dg-core → dg-spi
-dg-app → dg-plugin-* → dg-spi
+dg-web → dg-core → dg-spi
+dg-web → dg-plugin-* → dg-spi
 ```
 
 **分层约束：**
 
 | 模块 | 职责 | 禁止 |
 |---|---|---|
-| `dg-spi` | 接口与公共模型 | 依赖 core/app |
+| `dg-spi` | 接口与公共模型 | 依赖 core/web |
 | `dg-core` | 业务引擎，无 Web | 暴露 REST、依赖具体插件实现 |
 | `dg-plugin-*` | 单一数据源 Reader/Writer | 依赖 core；各自独立 AutoConfiguration |
-| `dg-app` | 启动、REST + DTO + 服务编排、配置装配、插件 classpath | 直接返回 core 内部模型；core 业务逻辑 |
+| `dg-web` | 启动、REST + DTO + 服务编排、Web UI、配置装配、插件 classpath | 直接返回 core 内部模型；core 业务逻辑 |
 
 ---
 
@@ -136,10 +137,10 @@ dg-app → dg-plugin-* → dg-spi
 mvn clean test
 
 # 打包
-mvn -pl dg-app package -DskipTests
+mvn -pl dg-web package -DskipTests
 
 # 启动（任意目录均可，默认从 classpath 读取 configs/）
-java -jar dg-app/target/dg-app-0.1.0-SNAPSHOT.jar
+java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 ```
 
 **完成任何实现或修复后**，必须运行相关测试并确认通过，再向用户报告成功。
@@ -182,7 +183,7 @@ java -jar dg-app/target/dg-app-0.1.0-SNAPSHOT.jar
 
 | 任务 | 做法 |
 |---|---|
-| 新增数据源插件 | 新建 `dg-plugins/dg-plugin-xxx` 子模块；实现 SPI；独立 AutoConfiguration；在 `dg-app/pom.xml` 按需引入 |
+| 新增数据源插件 | 新建 `dg-plugins/dg-plugin-xxx` 子模块；实现 SPI；独立 AutoConfiguration；在 `dg-web/pom.xml` 按需引入 |
 | 新增 REST 端点 | DTO → Service → Controller；补充 `@WebMvcTest` |
 | 修改生成/约束逻辑 | 改 `dg-core`；补单元测试 |
 | 排查调用链 | `codegraph_trace` → `codegraph_explore` |

@@ -16,7 +16,7 @@
         <module>dg-spi</module>
         <module>dg-core</module>
         <module>dg-plugins</module>
-        <module>dg-app</module>
+        <module>dg-web</module>
     </modules>
 
     <properties>

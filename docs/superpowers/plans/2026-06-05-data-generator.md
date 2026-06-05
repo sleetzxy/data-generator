@@ -4,7 +4,7 @@
 
 **Goal:** 实现 P1 阶段的数据生成 REST 服务——5 模块 Maven 工程，支持 PG/CH/CSV 读写、Schema 驱动生成、维表引用、字段级 + SpEL 组合约束、单表/多表 DAG 编排、同步任务执行。
 
-**Architecture:** 模块化单体，5 个 Maven 模块（dg-spi → dg-core → dg-plugins/dg-api → dg-app）。核心流水线：解析 Job YAML → DAG 拓扑排序 → 逐表生成（Generator → Constraint Pipeline → Writer 批量写入）。插件通过 Spring Boot AutoConfiguration 注册。
+**Architecture:** 模块化单体，4 个 Maven 模块（dg-spi → dg-core → dg-plugins/dg-web）。核心流水线：解析 Job YAML → DAG 拓扑排序 → 逐表生成（Generator → Constraint Pipeline → Writer 批量写入）。插件通过 Spring Boot AutoConfiguration 注册。
 
 **Tech Stack:** Java 21, Spring Boot 3.3, Maven, SnakeYAML, JUnit 5, AssertJ, Testcontainers (PG), JDBC (PG + ClickHouse), Spring SpEL, OpenCSV
 
@@ -62,21 +62,19 @@ data-generator/
 │       ├── clickhouse/ClickHouseReader.java, ClickHouseWriter.java
 │       ├── csv/CsvReader.java, CsvWriter.java
 │       └── autoconfig/PluginsAutoConfiguration.java
-├── dg-api/
+├── dg-web/
 │   ├── pom.xml
-│   └── src/main/java/com/datagenerator/api/
+│   └── src/main/java/com/datagenerator/web/
+│       ├── DataGeneratorApplication.java
+│       ├── CoreAutoConfiguration.java    # 装配 core beans + PluginRegistry
 │       ├── controller/JobController.java, SchemaController.java, PreviewController.java, HealthController.java
 │       ├── dto/JobSubmitRequest.java, JobResponse.java, PreviewRequest.java
 │       └── service/JobService.java, SchemaService.java
-│   └── src/test/java/com/datagenerator/api/...
-├── dg-app/
-│   ├── pom.xml
-│   └── src/main/java/com/datagenerator/app/
-│       ├── DataGeneratorApplication.java
-│       └── CoreAutoConfiguration.java    # 装配 core beans + PluginRegistry
-│   └── src/main/resources/application.yml
-│   └── src/test/java/com/datagenerator/app/...
-└── configs/                             # 开发/测试用 YAML fixture
+│   └── src/main/resources/
+│       ├── application.yml
+│       └── configs/                     # 开发/测试用 YAML fixture
+│   └── src/test/java/com/datagenerator/web/...
+└── (configs 已迁入 dg-web/src/main/resources/configs/)
     ├── schemas/customer.yaml, order.yaml, order_item.yaml
     ├── references/region_lookup.yaml
     ├── constraints/order_rules.yaml
@@ -98,7 +96,7 @@ data-generator/
 ## Task 1: Maven 多模块骨架
 
 **Files:**
-- Create: `pom.xml`, `dg-spi/pom.xml`, `dg-core/pom.xml`, `dg-plugins/pom.xml`, `dg-api/pom.xml`, `dg-app/pom.xml`
+- Create: `pom.xml`, `dg-spi/pom.xml`, `dg-core/pom.xml`, `dg-plugins/pom.xml`, `dg-web/pom.xml`
 - Create: `.gitignore`
 
 - [ ] **Step 1: 创建父 POM**
@@ -115,8 +113,7 @@ data-generator/
     <module>dg-spi</module>
     <module>dg-core</module>
     <module>dg-plugins</module>
-    <module>dg-api</module>
-    <module>dg-app</module>
+    <module>dg-web</module>
   </modules>
   <properties>
     <java.version>21</java.version>
@@ -149,7 +146,7 @@ data-generator/
       </dependency>
       <dependency>
         <groupId>com.datagenerator</groupId>
-        <artifactId>dg-api</artifactId>
+        <artifactId>dg-web</artifactId>
         <version>${project.version}</version>
       </dependency>
     </dependencies>
@@ -179,8 +176,7 @@ data-generator/
 ```
 
 `dg-plugins/pom.xml` — 依赖 dg-spi + postgresql driver + clickhouse-jdbc + opencsv + spring-boot-autoconfigure
-`dg-api/pom.xml` — 依赖 dg-core + spring-boot-starter-web + spring-boot-starter-test（test scope，供 @WebMvcTest）
-`dg-app/pom.xml` — 依赖 dg-api + dg-core + dg-plugins + spring-boot-starter，配置 spring-boot-maven-plugin
+`dg-web/pom.xml` — 依赖 dg-core + dg-plugins + spring-boot-starter-web + spring-boot-starter-test，配置 spring-boot-maven-plugin
 
 - [ ] **Step 3: 创建 .gitignore**
 
@@ -641,7 +637,7 @@ ClickHouse 测试可用 Testcontainers `clickhouse/clickhouse-server` 或 `@Disa
 // CsvWriter — OpenCSV，输出到 path
 // PluginsAutoConfiguration — 仅声明 @Bean PostgreSqlReader, ClickHouseReader, CsvReader 等
 //   不在此模块引用 PluginRegistry（dg-plugins 仅依赖 dg-spi）
-// CoreAutoConfiguration（dg-app）— 注入 List<DataReader>/List<DataWriter> 并注册到 PluginRegistry
+// CoreAutoConfiguration（dg-web）— 注入 List<DataReader>/List<DataWriter> 并注册到 PluginRegistry
 ```
 
 `META-INF/spring/org.springframework.boot.autoconfigure.AutoConfiguration.imports`:
@@ -664,8 +660,8 @@ git commit -m "feat(plugins): add ClickHouse and CSV plugins with auto-configura
 ## Task 10: REST API 层
 
 **Files:**
-- Create: `dg-api/src/main/java/com/datagenerator/api/**/*.java`
-- Test: `dg-api/src/test/java/com/datagenerator/api/JobControllerTest.java`（切片测试）
+- Create: `dg-web/src/main/java/com/datagenerator/web/**/*.java`
+- Test: `dg-web/src/test/java/com/datagenerator/web/controller/JobControllerTest.java`（切片测试）
 
 - [ ] **Step 1: 写 failing MockMvc 切片 test**
 
@@ -691,7 +687,7 @@ class JobControllerTest {
 }
 ```
 
-全栈 API 测试放在 Task 11 `dg-app` 的 `EndToEndTest` 中。
+全栈 API 测试放在 Task 11 `dg-web` 的 `EndToEndTest` 中。
 
 - [ ] **Step 2: Run test — expect FAIL**
 
@@ -724,10 +720,10 @@ git commit -m "feat(api): add REST endpoints for jobs, preview, and schemas"
 ## Task 11: Spring Boot 启动模块
 
 **Files:**
-- Create: `dg-app/src/main/java/com/datagenerator/app/DataGeneratorApplication.java`
-- Create: `dg-app/src/main/resources/application.yml`
-- Create: `configs/**` (sample YAML fixtures)
-- Test: `dg-app/src/test/java/com/datagenerator/app/EndToEndTest.java`
+- Create: `dg-web/src/main/java/com/datagenerator/web/DataGeneratorApplication.java`
+- Create: `dg-web/src/main/resources/application.yml`
+- Create: `dg-web/src/main/resources/configs/**` (sample YAML fixtures)
+- Test: `dg-web/src/test/java/com/datagenerator/web/EndToEndTest.java`
 
 - [ ] **Step 1: 写 failing 端到端 test**
 
@@ -747,7 +743,7 @@ class EndToEndTest {
 
 - [ ] **Step 2: Run test — expect FAIL**
 
-- [ ] **Step 3: 实现 dg-app**
+- [ ] **Step 3: 实现 dg-web**
 
 ```java
 // DataGeneratorApplication — @SpringBootApplication
@@ -776,13 +772,13 @@ data-generator:
 
 - [ ] **Step 4: Run test — expect PASS**
 
-Run: `mvn -pl dg-app test -Dtest=EndToEndTest -q`
+Run: `mvn -pl dg-web test -Dtest=EndToEndTest -q`
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add dg-app/ configs/
-git commit -m "feat(app): add Spring Boot entrypoint with sample configs and e2e test"
+git add dg-web/
+git commit -m "feat(web): add Spring Boot entrypoint with sample configs and e2e test"
 ```
 
 ---
@@ -799,14 +795,14 @@ Expected: BUILD SUCCESS
 
 - [ ] **Step 2: 打包可执行 JAR**
 
-Run: `mvn -pl dg-app package -DskipTests`
-Expected: `dg-app/target/dg-app-0.1.0-SNAPSHOT.jar`
+Run: `mvn -pl dg-web package -DskipTests`
+Expected: `dg-web/target/dg-web-0.1.0-SNAPSHOT.jar`
 
 - [ ] **Step 3: 手动冒烟测试**
 
 Run:
 ```bash
-java -jar dg-app/target/dg-app-0.1.0-SNAPSHOT.jar
+java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 curl http://localhost:8080/api/v1/health
 curl http://localhost:8080/api/v1/schemas
 curl -X POST http://localhost:8080/api/v1/preview \

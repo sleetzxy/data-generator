@@ -1,0 +1,12 @@
+package com.datagenerator.web;
+
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+
+@SpringBootApplication(scanBasePackages = "com.datagenerator.web")
+public class DataGeneratorApplication {
+
+    public static void main(String[] args) {
+        SpringApplication.run(DataGeneratorApplication.class, args);
+    }
+}

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Data Generator 控制台</title>
+    <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<header class="header">
+    <div class="header-inner">
+        <h1>Data Generator</h1>
+        <p class="subtitle">测试数据生成任务管理</p>
+    </div>
+</header>
+
+<main class="container">
+    <nav class="tabs">
+        <button class="tab active" data-tab="definitions">任务配置</button>
+        <button class="tab" data-tab="runs">运行记录</button>
+    </nav>
+
+    <section id="panel-definitions" class="panel active">
+        <div class="toolbar">
+            <button id="btn-new-definition" class="btn primary">新建任务</button>
+            <button id="btn-refresh-definitions" class="btn">刷新</button>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>名称</th>
+                    <th>配置路径</th>
+                    <th>类型</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody id="definitions-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <section id="panel-runs" class="panel">
+        <div class="toolbar">
+            <button id="btn-refresh-runs" class="btn">刷新</button>
+            <label class="auto-refresh">
+                <input type="checkbox" id="auto-refresh-runs" checked>
+                自动刷新 (5s)
+            </label>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                <tr>
+                    <th>任务 ID</th>
+                    <th>配置文件</th>
+                    <th>状态</th>
+                    <th>提交时间</th>
+                    <th>耗时</th>
+                    <th>写入行数</th>
+                    <th>操作</th>
+                </tr>
+                </thead>
+                <tbody id="runs-body"></tbody>
+            </table>
+        </div>
+    </section>
+</main>
+
+<div id="modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modal-title">编辑任务</h2>
+            <button id="modal-close" class="icon-btn" aria-label="关闭">&times;</button>
+        </div>
+        <div class="modal-body">
+            <label id="name-field" class="field">
+                <span>任务名称</span>
+                <input type="text" id="definition-name" placeholder="例如 my_job">
+            </label>
+            <label class="field">
+                <span>YAML 内容</span>
+                <textarea id="definition-content" rows="16" spellcheck="false"></textarea>
+            </label>
+        </div>
+        <div class="modal-footer">
+            <button id="modal-cancel" class="btn">取消</button>
+            <button id="modal-save" class="btn primary">保存</button>
+        </div>
+    </div>
+</div>
+
+<div id="detail-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-wide">
+        <div class="modal-header">
+            <h2 id="detail-title">运行详情</h2>
+            <button id="detail-close" class="icon-btn" aria-label="关闭">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="detail-summary" class="detail-summary"></div>
+            <h3>执行日志</h3>
+            <pre id="detail-logs" class="log-view"></pre>
+        </div>
+    </div>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="/app.js"></script>
+</body>
+</html>

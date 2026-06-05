@@ -68,8 +68,7 @@ data-generator/                    # 父 POM
 ├── dg-spi/                        # 插件契约（四大扩展点接口 + 公共模型）
 ├── dg-core/                       # 核心引擎（全部业务逻辑）
 ├── dg-plugins/                    # 数据源插件（PG / CH / CSV）
-├── dg-api/                        # REST 层
-└── dg-app/                        # 启动装配（Spring Boot 入口）
+└── dg-web/                        # Web 层（REST + 管理界面 + Spring Boot 入口）
 ```
 
 ### 3.1 模块职责
@@ -79,19 +78,13 @@ data-generator/                    # 父 POM
 | **dg-spi** | Reader/Writer、Generator、Constraint、Expression 接口；DataRow、Plugin 等公共模型 |
 | **dg-core** | YAML 解析、参考数据、生成策略、约束引擎、DAG 编排、任务执行 |
 | **dg-plugins** | PostgreSQL、ClickHouse、CSV 的 Reader/Writer 实现 |
-| **dg-api** | Controller、DTO、任务状态查询、同步/异步调度入口 |
-| **dg-app** | 依赖聚合、Spring Boot 启动、本地配置目录加载 |
+| **dg-web** | REST Controller、DTO、任务调度、Web 管理界面、Spring Boot 启动与配置加载 |
 
 ### 3.2 模块依赖
 
 ```
-dg-app
- ├── dg-api
- ├── dg-core
- └── dg-plugins
-
-dg-api → dg-core → dg-spi
-dg-plugins → dg-spi
+dg-web → dg-core → dg-spi
+dg-web → dg-plugins → dg-spi
 ```
 
 ### 3.3 模块内包划分
@@ -189,7 +182,7 @@ public interface ExpressionEvaluator extends Plugin {
 |------|------|
 | Java `ServiceLoader` | 核心引擎零 Spring 依赖时使用 |
 | Spring Boot AutoConfiguration | 推荐，通过 `AutoConfiguration.imports` 注册 |
-| `dg-app` 显式 `@Import` | MVP 阶段最可控，插件清单写在 `application.yml` |
+| `dg-web` 显式 `@Import` | MVP 阶段最可控，插件清单写在 `application.yml` |
 
 MVP 采用：**显式配置 + AutoConfiguration 双轨**。
 
