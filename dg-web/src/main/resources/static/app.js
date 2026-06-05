@@ -143,9 +143,9 @@ async function loadDefinitions() {
                     <button class="btn small" onclick="viewDefinition('${escapeAttr(item.name)}')">查看</button>
                     <button class="btn small" onclick="editDefinition('${escapeAttr(item.name)}')">编辑</button>
                     <button class="btn small primary" onclick="runDefinition('${escapeAttr(item.path)}')">运行</button>
-                    ${activeRun
-                        ? `<button class="btn small danger" onclick="stopRun('${escapeAttr(activeRun.jobId)}')">停止</button>`
-                        : ''}
+                    <button class="btn small danger"
+                        ${activeRun ? `onclick="stopRun('${escapeAttr(activeRun.jobId)}')"` : 'disabled title="当前无运行中的任务"'}
+                    >停止</button>
                     <button class="btn small log-btn" onclick="viewDefinitionLogs('${escapeAttr(item.name)}', '${escapeAttr(item.path)}')">日志</button>
                     ${item.readOnly ? '' :
                         `<button class="btn small danger" onclick="deleteDefinition('${escapeAttr(item.name)}')">删除</button>`}
@@ -379,6 +379,10 @@ function closeLogModal() {
 }
 
 async function stopRun(jobId) {
+    if (!jobId) {
+        showToast('当前无运行中的任务');
+        return;
+    }
     if (!confirm(`确定停止任务 ${jobId}？`)) return;
     try {
         await api(`/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' });

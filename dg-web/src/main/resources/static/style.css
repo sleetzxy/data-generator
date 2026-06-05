@@ -109,6 +109,11 @@ body {
     border-color: #fecaca;
 }
 
+.btn.danger:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
 .btn.small {
     padding: 0.25rem 0.55rem;
     font-size: 0.8rem;
