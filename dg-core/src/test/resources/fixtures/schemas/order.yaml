@@ -1,0 +1,11 @@
+table: orders
+fields:
+  - name: id
+    type: BIGINT
+    generator: { strategy: sequence, start: 1, step: 1 }
+  - name: customer_id
+    type: BIGINT
+    generator: { strategy: reference, source: customers, field: id }
+  - name: amount
+    type: DECIMAL
+    generator: { strategy: random, type: double, min: 1.0, max: 100.0 }

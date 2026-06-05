@@ -18,7 +18,7 @@ public class SequenceGenerator extends AbstractValueGenerator {
     public Object generate(GenerationContext ctx, Map<String, Object> config) {
         long start = toLong(config.getOrDefault("start", 0L));
         long step = toLong(config.getOrDefault("step", 1L));
-        StateKey key = new StateKey(System.identityHashCode(ctx), start, step);
+        StateKey key = new StateKey(ctx.tableName() == null ? "" : ctx.tableName(), start, step);
         AtomicLong counter = counters.computeIfAbsent(key, ignored -> new AtomicLong(start));
         return counter.getAndAdd(step);
     }
@@ -30,6 +30,6 @@ public class SequenceGenerator extends AbstractValueGenerator {
         return Long.parseLong(String.valueOf(value));
     }
 
-    private record StateKey(int contextId, long start, long step) {
+    private record StateKey(String tableName, long start, long step) {
     }
 }

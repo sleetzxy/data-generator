@@ -1,5 +1,7 @@
 package com.datagenerator.core.reference;
 
+import com.datagenerator.core.engine.PluginRegistry;
+
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -20,7 +22,7 @@ public class ReferenceDataLoader {
 
     public ReferenceDataLoader(Map<String, com.datagenerator.spi.reader.DataReader> readers) {
         PluginRegistry pluginRegistry = new PluginRegistry();
-        readers.forEach(pluginRegistry::register);
+        readers.forEach(pluginRegistry::registerReader);
         this.registry = pluginRegistry;
     }
 

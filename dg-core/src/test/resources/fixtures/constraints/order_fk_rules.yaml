@@ -1,0 +1,12 @@
+constraints:
+  - level: field
+    field: amount
+    type: range
+    min: 0.01
+    max: 99999.99
+
+  - level: field
+    field: customer_id
+    type: foreign_key
+    ref_table: customers
+    ref_field: id

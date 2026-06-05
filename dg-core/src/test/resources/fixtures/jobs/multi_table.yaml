@@ -1,0 +1,11 @@
+job: multi_table_test
+tables:
+  - name: customers
+    schema: fixtures/schemas/customers_simple.yaml
+    count: 5
+
+  - name: orders
+    schema: fixtures/schemas/order.yaml
+    count: 10
+    constraints: fixtures/constraints/order_fk_rules.yaml
+    depends_on: [customers]
