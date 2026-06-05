@@ -8,9 +8,15 @@
 </head>
 <body>
 <header class="header">
-    <div class="header-inner">
-        <h1>Data Generator</h1>
-        <p class="subtitle">测试数据生成任务管理</p>
+    <div class="header-inner header-with-nav">
+        <div>
+            <h1>Data Generator</h1>
+            <p class="subtitle">测试数据生成任务管理</p>
+        </div>
+        <nav class="header-nav">
+            <a href="/" class="nav-link active">任务管理</a>
+            <a href="/docs.html" class="nav-link">配置指南</a>
+        </nav>
     </div>
 </header>
 
@@ -19,6 +25,7 @@
         <div class="toolbar">
             <button id="btn-new-definition" class="btn primary">新建任务</button>
             <button id="btn-refresh-definitions" class="btn">刷新</button>
+            <a href="/docs.html" class="btn">配置指南</a>
         </div>
         <div class="table-wrap">
             <table>

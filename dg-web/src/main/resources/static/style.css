@@ -50,6 +50,38 @@ body {
     font-size: 0.9rem;
 }
 
+.header-with-nav {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+}
+
+.header-nav {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.nav-link {
+    color: rgba(255, 255, 255, 0.85);
+    text-decoration: none;
+    padding: 0.4rem 0.85rem;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    border: 1px solid rgba(255, 255, 255, 0.25);
+}
+
+.nav-link:hover {
+    background: rgba(255, 255, 255, 0.12);
+    color: #fff;
+}
+
+.nav-link.active {
+    background: rgba(255, 255, 255, 0.2);
+    color: #fff;
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
 .container {
     max-width: 1200px;
     margin: 1.5rem auto;
@@ -108,6 +140,12 @@ body {
 .btn.small {
     padding: 0.25rem 0.55rem;
     font-size: 0.8rem;
+}
+
+a.btn {
+    display: inline-block;
+    text-decoration: none;
+    text-align: center;
 }
 
 .btn.log-btn {
@@ -385,6 +423,200 @@ th {
     text-align: center;
     color: var(--muted);
     padding: 2rem;
+}
+
+/* ── 配置指南页 ── */
+
+.docs-layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 0;
+    max-width: 1200px;
+    margin: 1.5rem auto;
+    padding: 0 1.5rem 2rem;
+    align-items: start;
+}
+
+.docs-sidebar {
+    position: sticky;
+    top: 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    box-shadow: var(--shadow);
+}
+
+.docs-sidebar-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    margin-bottom: 0.75rem;
+}
+
+.docs-toc {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+}
+
+.docs-toc a {
+    display: block;
+    color: var(--text);
+    text-decoration: none;
+    font-size: 0.82rem;
+    padding: 0.3rem 0.5rem;
+    border-radius: 4px;
+    line-height: 1.4;
+}
+
+.docs-toc a.toc-h3 {
+    padding-left: 1rem;
+    color: var(--muted);
+    font-size: 0.78rem;
+}
+
+.docs-toc a:hover {
+    background: #f1f5f9;
+}
+
+.docs-toc a.active {
+    background: #eff6ff;
+    color: var(--primary);
+    font-weight: 500;
+}
+
+.docs-toc-empty {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin: 0;
+}
+
+.docs-content {
+    min-width: 0;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2rem 2.5rem;
+    box-shadow: var(--shadow);
+    margin-left: 1rem;
+}
+
+.docs-body h1 {
+    font-size: 1.75rem;
+    margin: 0 0 1rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 2px solid var(--border);
+}
+
+.docs-body h2 {
+    font-size: 1.25rem;
+    margin: 2rem 0 0.75rem;
+    padding-top: 0.5rem;
+}
+
+.docs-body h3 {
+    font-size: 1.05rem;
+    margin: 1.25rem 0 0.5rem;
+    color: #334155;
+}
+
+.docs-body p {
+    margin: 0.5rem 0 0.75rem;
+    color: #334155;
+}
+
+.docs-body ul,
+.docs-body ol {
+    margin: 0.5rem 0 0.75rem;
+    padding-left: 1.5rem;
+}
+
+.docs-body li {
+    margin: 0.25rem 0;
+    color: #334155;
+}
+
+.docs-body hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1.5rem 0;
+}
+
+.docs-body code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 0.85em;
+    background: #f1f5f9;
+    padding: 0.15rem 0.35rem;
+    border-radius: 4px;
+    color: #be185d;
+}
+
+.docs-body pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    border-radius: var(--radius);
+    padding: 1rem 1.25rem;
+    overflow-x: auto;
+    font-size: 0.82rem;
+    line-height: 1.6;
+    margin: 0.75rem 0 1rem;
+}
+
+.docs-body pre code {
+    background: none;
+    padding: 0;
+    color: inherit;
+    font-size: inherit;
+}
+
+.docs-body a {
+    color: var(--primary);
+}
+
+.docs-body strong {
+    font-weight: 600;
+    color: var(--text);
+}
+
+.docs-body .table-wrap {
+    margin: 0.75rem 0 1rem;
+}
+
+.docs-loading,
+.docs-error {
+    color: var(--muted);
+    padding: 2rem 0;
+}
+
+.docs-error {
+    color: var(--danger);
+}
+
+@media (max-width: 900px) {
+    .docs-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .docs-sidebar {
+        position: static;
+        max-height: none;
+    }
+
+    .docs-content {
+        margin-left: 0;
+        margin-top: 1rem;
+        padding: 1.25rem;
+    }
+
+    .header-with-nav {
+        flex-direction: column;
+        align-items: flex-start;
+    }
 }
 
 @media (max-width: 640px) {
