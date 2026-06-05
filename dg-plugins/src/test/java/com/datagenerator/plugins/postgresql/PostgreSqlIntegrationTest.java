@@ -6,6 +6,7 @@ import com.datagenerator.spi.model.ReadRequest;
 import com.datagenerator.spi.model.ReaderConfig;
 import com.datagenerator.spi.model.WriteResult;
 import com.datagenerator.spi.model.WriterConfig;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -21,6 +22,7 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+@Disabled("Requires Docker")
 @Testcontainers
 class PostgreSqlIntegrationTest {
 
