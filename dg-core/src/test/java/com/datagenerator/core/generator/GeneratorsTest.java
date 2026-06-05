@@ -1,11 +1,16 @@
 package com.datagenerator.core.generator;
 
+import com.datagenerator.core.reference.ReferenceDataLoader;
 import com.datagenerator.spi.model.DataRow;
 import com.datagenerator.spi.model.GenerationContext;
+import com.datagenerator.spi.model.ReadRequest;
+import com.datagenerator.spi.model.ReaderConfig;
+import com.datagenerator.spi.reader.DataReader;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -57,5 +62,35 @@ class GeneratorsTest {
         var gen = new ReferenceGenerator(null);
         assertThatThrownBy(() -> gen.generate(emptyContext(), Map.of("source", "regions")))
                 .isInstanceOf(IllegalStateException.class);
+    }
+
+    @Test
+    void reference_picksFromLoadedValues() {
+        DataReader mockReader = new DataReader() {
+            @Override
+            public String type() {
+                return "mock";
+            }
+
+            @Override
+            public void init(ReaderConfig config) {
+            }
+
+            @Override
+            public Stream<DataRow> read(ReadRequest request) {
+                return Stream.of(
+                        new DataRow(Map.of("code", "BJ")),
+                        new DataRow(Map.of("code", "SH"))
+                );
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        var loader = new ReferenceDataLoader(Map.of("regions", mockReader));
+        var gen = new ReferenceGenerator(loader);
+        Object val = gen.generate(emptyContext(), Map.of("source", "regions", "field", "code"));
+        assertThat(val).isIn("BJ", "SH");
     }
 }
