@@ -2,7 +2,7 @@ server:
   port: 8080
 
 data-generator:
-  config-dir: ./configs
+  config-dir: classpath:configs
   connections:
     dev-pg:
       type: postgresql
@@ -15,6 +15,9 @@ data-generator:
     local-csv:
       type: csv
       path: ./output
+    traffic-output:
+      type: csv
+      path: ./output/traffic
   job:
     sync-threshold: 5000
     batch-size: 1000

@@ -8,7 +8,7 @@ import java.util.Map;
 @ConfigurationProperties(prefix = "data-generator")
 public class DataGeneratorProperties {
 
-    private String configDir = "./configs";
+    private String configDir = "classpath:configs";
     private Map<String, Map<String, Object>> connections = new HashMap<>();
     private JobProperties job = new JobProperties();
 

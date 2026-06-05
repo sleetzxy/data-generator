@@ -41,7 +41,7 @@
 |---|---|
 | 语言 / 框架 | Java 21、Spring Boot 3.3 |
 | 构建 | Maven 多模块 |
-| 配置 | 本地 YAML（`configs/` 目录） |
+| 配置 | 本地 YAML（`dg-app/src/main/resources/configs/`） |
 | 数据源 | PostgreSQL、ClickHouse、CSV（插件化） |
 
 设计文档：
@@ -60,14 +60,13 @@ data-generator/
 │   ├── dg-plugin-postgresql/
 │   ├── dg-plugin-clickhouse/
 │   └── dg-plugin-csv/
-├── dg-api/                    # REST 层（Controller、DTO、JobService）
-└── dg-app/                    # Spring Boot 启动与 CoreAutoConfiguration
+└── dg-app/                    # Spring Boot 启动、REST 层与 CoreAutoConfiguration
 ```
 
 **依赖方向：**
 
 ```
-dg-app → dg-api → dg-core → dg-spi
+dg-app → dg-core → dg-spi
 dg-app → dg-plugin-* → dg-spi
 ```
 
@@ -75,11 +74,10 @@ dg-app → dg-plugin-* → dg-spi
 
 | 模块 | 职责 | 禁止 |
 |---|---|---|
-| `dg-spi` | 接口与公共模型 | 依赖 core/api/app |
+| `dg-spi` | 接口与公共模型 | 依赖 core/app |
 | `dg-core` | 业务引擎，无 Web | 暴露 REST、依赖具体插件实现 |
-| `dg-plugin-*` | 单一数据源 Reader/Writer | 依赖 core/api；各自独立 AutoConfiguration |
-| `dg-api` | REST + DTO + 服务编排 | 直接返回 core 内部模型 |
-| `dg-app` | 启动、配置装配、插件 classpath | 业务逻辑 |
+| `dg-plugin-*` | 单一数据源 Reader/Writer | 依赖 core；各自独立 AutoConfiguration |
+| `dg-app` | 启动、REST + DTO + 服务编排、配置装配、插件 classpath | 直接返回 core 内部模型；core 业务逻辑 |
 
 ---
 
@@ -140,7 +138,7 @@ mvn clean test
 # 打包
 mvn -pl dg-app package -DskipTests
 
-# 启动（项目根目录，读取 ./configs）
+# 启动（任意目录均可，默认从 classpath 读取 configs/）
 java -jar dg-app/target/dg-app-0.1.0-SNAPSHOT.jar
 ```
 

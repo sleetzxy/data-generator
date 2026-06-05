@@ -9,10 +9,6 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
-import org.springframework.test.context.DynamicPropertyRegistry;
-import org.springframework.test.context.DynamicPropertySource;
-
-import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -21,12 +17,6 @@ class EndToEndTest {
 
     @Autowired
     private TestRestTemplate restTemplate;
-
-    @DynamicPropertySource
-    static void configDir(DynamicPropertyRegistry registry) {
-        Path configs = Path.of(System.getProperty("user.dir")).resolve("..").resolve("configs").normalize();
-        registry.add("data-generator.config-dir", () -> configs.toString());
-    }
 
     @Test
     void preview_singleCustomer_returns200() {

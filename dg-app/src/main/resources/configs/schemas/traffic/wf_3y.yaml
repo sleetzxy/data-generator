@@ -1,0 +1,83 @@
+# 违法结果表（对应 idps_ana_wfb_result_3y.csv 核心字段）
+table: wf_3y
+fields:
+  - name: xh
+    type: VARCHAR
+    generator: { strategy: sequence, start: 1, step: 1 }
+  - name: xzqh
+    type: VARCHAR
+    generator: { strategy: enum, values: ["440115"] }
+  - name: wfsj
+    type: VARCHAR
+    generator: { strategy: random, type: date, min: "2023-01-01", max: "2023-12-31" }
+  - name: hphm
+    type: VARCHAR
+    generator: { strategy: regex, pattern: "[京津沪渝冀豫云辽黑湘皖鲁苏浙赣鄂粤][A-Z][A-Z0-9]{5}" }
+  - name: hpzl
+    type: VARCHAR
+    generator: { strategy: enum, values: ["01", "02", "15", "16"] }
+  - name: wfxw
+    type: VARCHAR
+    generator: { strategy: enum, values: ["1344B", "1102E", "12080", "10391", "1345A", "70100", "13440", "16250"] }
+  - name: wf_wfms
+    type: VARCHAR
+    generator:
+      strategy: enum
+      values: ["违反禁令标志指示", "不按规定使用灯光", "不按导向车道行驶", "不按规定停车", "违反禁止标线指示", "超速行驶", "闯红灯", "未按规定保持安全距离"]
+  - name: wf_wfnr
+    type: VARCHAR
+    generator:
+      strategy: enum
+      values:
+        - "机动车违反禁令标志指示的"
+        - "机动车变道、转弯时不按规定使用转向灯的"
+        - "机动车通过路口时不按导向车道行驶的"
+        - "机动车违反规定停放、临时停车的"
+        - "机动车违反禁止标线指示的"
+        - "机动车超过规定时速的"
+        - "机动车不按交通信号灯规定通行的"
+        - "机动车未按规定保持安全车距的"
+  - name: wfdz
+    type: VARCHAR
+    generator: { strategy: random, type: string, minLength: 10, maxLength: 40 }
+  - name: jszh
+    type: VARCHAR
+    generator: { strategy: regex, pattern: "440115[0-9]{4}(0[1-9]|1[0-2])(0[1-9]|[12][0-9]|3[01])[0-9]{3}[0-9X]" }
+  - name: dsr
+    type: VARCHAR
+    generator:
+      strategy: enum
+      values: ["王伟", "李芳", "张娜", "刘秀英", "陈敏", "杨静", "赵强", "黄磊"]
+  - name: fxjg
+    type: VARCHAR
+    generator: { strategy: enum, values: ["xq440115"] }
+  - name: fxjgmc
+    type: VARCHAR
+    generator: { strategy: enum, values: ["番禺大队"] }
+  - name: cljg
+    type: VARCHAR
+    generator: { strategy: enum, values: ["xq01", "xq02", "xq03", "xq04"] }
+  - name: cljgmc
+    type: VARCHAR
+    generator: { strategy: enum, values: ["市桥中队", "大石中队", "洛溪中队", "钟村中队"] }
+  - name: fkje
+    type: VARCHAR
+    generator: { strategy: enum, values: ["0", "50", "100", "200"] }
+  - name: wf_jfs
+    type: VARCHAR
+    generator: { strategy: enum, values: ["0", "1", "2", "3", "6", "12"] }
+  - name: source
+    type: VARCHAR
+    generator: { strategy: enum, values: ["surveil", "violation", "force"] }
+  - name: wfbh
+    type: VARCHAR
+    generator: { strategy: regex, pattern: "4401152023[0-9]{6}" }
+  - name: jd
+    type: VARCHAR
+    generator: { strategy: random, type: double, min: 113.0, max: 114.0 }
+  - name: wd
+    type: VARCHAR
+    generator: { strategy: random, type: double, min: 22.0, max: 23.0 }
+  - name: dt
+    type: VARCHAR
+    generator: { strategy: enum, values: ["2023-06-26"] }

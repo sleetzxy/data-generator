@@ -1,0 +1,20 @@
+# 小批量预览任务（快速验证配置）
+job: city_acd_wf_jq_preview
+tables:
+  - name: acd_file
+    schema: schemas/traffic/acd_file.yaml
+    count: 5
+
+  - name: acd_filehuman
+    schema: schemas/traffic/acd_filehuman.yaml
+    count: 10
+    constraints: constraints/traffic/acd_filehuman_fk.yaml
+    depends_on: [acd_file]
+
+  - name: wf_3y
+    schema: schemas/traffic/wf_3y.yaml
+    count: 5
+
+  - name: jqxx
+    schema: schemas/traffic/jqxx.yaml
+    count: 5

@@ -1,0 +1,65 @@
+# 一般事故主表（对应 acd_file_sh.csv 核心字段）
+table: acd_file
+fields:
+  - name: sgbh
+    type: VARCHAR
+    generator: { strategy: sequence, start: 4401152024000001, step: 1 }
+  - name: xzqh
+    type: VARCHAR
+    generator: { strategy: enum, values: ["440115"] }
+  - name: djbh
+    type: VARCHAR
+    generator: { strategy: sequence, start: 440115202400001, step: 1 }
+  - name: sgfssj
+    type: VARCHAR
+    generator: { strategy: random, type: date, min: "2023-01-01", max: "2023-12-31" }
+  - name: lm
+    type: VARCHAR
+    generator:
+      strategy: enum
+      values: ["人民路", "解放路", "中山路", "环市大道", "番禺大道", "顺意街", "市桥一路"]
+  - name: lh
+    type: VARCHAR
+    generator: { strategy: regex, pattern: "[0-9]{7}" }
+  - name: gls
+    type: VARCHAR
+    generator: { strategy: random, type: int, min: 0, max: 500 }
+  - name: ms
+    type: VARCHAR
+    generator: { strategy: random, type: int, min: 0, max: 999 }
+  - name: sgdd
+    type: VARCHAR
+    generator: { strategy: random, type: string, minLength: 8, maxLength: 32 }
+  - name: swrs
+    type: INTEGER
+    generator: { strategy: enum, values: [0, 0, 0, 0, 1] }
+  - name: szrs
+    type: INTEGER
+    generator: { strategy: random, type: int, min: 0, max: 3 }
+  - name: jd
+    type: VARCHAR
+    generator: { strategy: random, type: double, min: 113.0, max: 114.0 }
+  - name: wd
+    type: VARCHAR
+    generator: { strategy: random, type: double, min: 22.0, max: 23.0 }
+  - name: glbm
+    type: VARCHAR
+    generator: { strategy: enum, values: ["xq440115"] }
+  - name: glbm_name
+    type: VARCHAR
+    generator: { strategy: enum, values: ["番禺大队"] }
+  - name: pcs_name
+    type: VARCHAR
+    generator: { strategy: enum, values: ["市桥中队", "大石中队", "洛溪中队", "钟村中队"] }
+  - name: pcs_id
+    type: VARCHAR
+    generator: { strategy: enum, values: ["xq01", "xq02", "xq03", "xq04"] }
+  - name: sglx
+    type: VARCHAR
+    generator: { strategy: random, type: int, min: 1, max: 13 }
+  - name: sgxt
+    type: VARCHAR
+    generator: { strategy: enum, values: ["11", "21", "31", "32"] }
+  - name: my_dt
+    type: VARCHAR
+    generator: { strategy: enum, values: ["2023-06-26 00:00:00.000"] }

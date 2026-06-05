@@ -1,0 +1,48 @@
+# 警情信息表（对应 ods_jqxx_info.csv 核心字段）
+table: jqxx
+fields:
+  - name: id
+    type: VARCHAR
+    generator: { strategy: sequence, start: 1, step: 1 }
+  - name: jqbh
+    type: VARCHAR
+    generator: { strategy: regex, pattern: "JQ2023[0-9]{6}" }
+  - name: ssxqdm
+    type: VARCHAR
+    generator: { strategy: enum, values: ["440115"] }
+  - name: afsj
+    type: VARCHAR
+    generator: { strategy: regex, pattern: "2023-[0-1][0-9]-[0-3][0-9] [0-2][0-9]:[0-5][0-9]:[0-5][0-9]\\.[0-9]{3}" }
+  - name: afdd
+    type: VARCHAR
+    generator: { strategy: random, type: string, minLength: 10, maxLength: 40 }
+  - name: jqlb
+    type: VARCHAR
+    generator: { strategy: enum, values: ["交通事故", "交通拥堵", "投诉", "举报", "其他"] }
+  - name: jqxz
+    type: VARCHAR
+    generator: { strategy: enum, values: ["轻微交通事故", "其它交通警情", "交通堵塞", "投诉举报", "其他警情", "纠纷"] }
+  - name: jqnr
+    type: VARCHAR
+    generator:
+      strategy: enum
+      values:
+        - "报警称发生事故，请尽快处置。"
+        - "报警称发生事故，涉及摩托车，请尽快处置。"
+        - "道路拥堵缓行，请疏导。"
+        - "群众投诉/举报：疑似违法行为，请核查。"
+        - "群众报警：需要处置。"
+  - name: jd
+    type: VARCHAR
+    generator: { strategy: random, type: double, min: 113.0, max: 114.0 }
+  - name: wd
+    type: VARCHAR
+    generator: { strategy: random, type: double, min: 22.0, max: 23.0 }
+  - name: jjdztms
+    type: VARCHAR
+    generator:
+      strategy: enum
+      values: ["新警", "已接警，未处警", "已派警（已签收）", "到达现场", "处理完毕", "警情处置完毕"]
+  - name: cjqk
+    type: VARCHAR
+    generator: { strategy: enum, values: ["", "已受理"] }

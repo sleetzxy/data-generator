@@ -18,7 +18,6 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 
-import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -29,8 +28,9 @@ public class CoreAutoConfiguration {
 
     @Bean
     ConfigPathResolver configPathResolver(DataGeneratorProperties properties) {
-        Path configDir = Path.of(properties.getConfigDir()).toAbsolutePath().normalize();
-        return ConfigPathResolver.forConfigDir(configDir);
+        return ConfigPathResolver.fromSetting(
+                properties.getConfigDir(),
+                CoreAutoConfiguration.class.getClassLoader());
     }
 
     @Bean

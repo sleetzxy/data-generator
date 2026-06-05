@@ -14,11 +14,11 @@ data-generator/          # 父 POM
 │   ├── dg-plugin-postgresql/
 │   ├── dg-plugin-clickhouse/
 │   └── dg-plugin-csv/
-├── dg-api/              # REST 层（Controller、DTO、任务调度）
-└── dg-app/              # Spring Boot 启动入口与配置装配
+└── dg-app/              # Spring Boot 启动入口、REST 层与配置装配
+    └── api/             # REST 包（Controller、DTO、JobService）
 ```
 
-依赖关系：`dg-app → dg-api → dg-core → dg-spi`；各 `dg-plugin-* → dg-spi`（按需引入）。
+依赖关系：`dg-app → dg-core → dg-spi`；各 `dg-plugin-* → dg-spi`（按需引入）。
 
 ## 快速开始
 
@@ -33,7 +33,7 @@ data-generator/          # 父 POM
 # 打包可执行 fat jar
 mvn -pl dg-app package -DskipTests
 
-# 在项目根目录启动（默认读取 ./configs）
+# 启动（默认从 classpath 读取 configs/，无需指定工作目录）
 java -jar dg-app/target/dg-app-0.1.0-SNAPSHOT.jar
 ```
 
@@ -49,24 +49,26 @@ mvn clean test
 
 ## 配置目录
 
-YAML 配置默认位于项目根目录 `configs/`（可通过 `data-generator.config-dir` 修改）：
+YAML 业务配置位于 `dg-app/src/main/resources/configs/`（打包后随 jar 内置，默认 `data-generator.config-dir: classpath:configs`）。如需外部目录覆盖，可设为绝对路径，例如 `/data/configs`：
 
 ```
-configs/
-├── schemas/           # 表/数据集 Schema 定义
-│   ├── customer.yaml
-│   ├── order.yaml
-│   └── order_item.yaml
-├── references/        # 参考数据（维表）读取配置
-│   └── region_lookup.yaml
-├── constraints/       # 可复用约束规则集
-│   └── order_rules.yaml
-└── jobs/              # 多表编排任务（DAG）
-    ├── single_customer.yaml
-    └── ecommerce_seed.yaml
+dg-app/src/main/resources/
+├── application.yml    # 应用级配置（端口、连接、任务参数）
+└── configs/
+    ├── schemas/           # 表/数据集 Schema 定义
+    │   ├── customer.yaml
+    │   ├── order.yaml
+    │   └── order_item.yaml
+    ├── references/        # 参考数据（维表）读取配置
+    │   └── region_lookup.yaml
+    ├── constraints/       # 可复用约束规则集
+    │   └── order_rules.yaml
+    └── jobs/              # 多表编排任务（DAG）
+        ├── single_customer.yaml
+        └── ecommerce_seed.yaml
 ```
 
-应用级连接与任务参数在 `dg-app/src/main/resources/application.yml` 中定义，Schema/Job YAML 通过 `connection: dev-pg` 等形式引用，避免硬编码凭证。
+应用级连接与任务参数在 `application.yml` 中定义，Schema/Job YAML 通过 `connection: dev-pg` 等形式引用，避免硬编码凭证。
 
 ## REST API 示例
 
@@ -142,7 +144,7 @@ P1 阶段已交付：
 
 | 能力 | 说明 |
 |------|------|
-| 五模块骨架 | `dg-spi` / `dg-core` / `dg-plugins` / `dg-api` / `dg-app` |
+| 四模块骨架 | `dg-spi` / `dg-core` / `dg-plugins` / `dg-app` |
 | 数据源插件 | PostgreSQL、ClickHouse、CSV 读写 |
 | 生成策略 | sequence、random、enum、regex、reference（维表引用） |
 | 约束引擎 | 字段级（range、nullable、foreign_key）；组合级 SpEL（conditional、mutex） |
@@ -173,7 +175,7 @@ P1 阶段已交付：
 
 | 能力 | 说明 |
 |------|------|
-| 五模块骨架 | `dg-spi` / `dg-core` / `dg-plugins` / `dg-api` / `dg-app` |
+| 四模块骨架 | `dg-spi` / `dg-core` / `dg-plugins` / `dg-app` |
 | 数据源插件 | PostgreSQL、ClickHouse、CSV 读写 |
 | 生成策略 | sequence、random、enum、regex、reference（维表引用） |
 | 约束引擎 | 字段级（range、nullable、foreign_key）；组合级 SpEL（conditional、mutex） |
