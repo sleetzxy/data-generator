@@ -1,4 +1,5 @@
 const API = '/api/v1';
+const LOG_PAGE_SIZE = 10;
 
 const DEFAULT_JOB_TEMPLATE = `job: my_job
 tables:
@@ -14,19 +15,17 @@ const DEFAULT_WRITER = {
 };
 
 let editingDefinition = null;
-let refreshTimer = null;
 let allRunsCache = [];
 let logModalContext = {
     definitionName: null,
     definitionPath: null,
     runs: [],
-    selectedJobId: null,
-    view: 'list'
+    page: 1,
+    selectedJobId: null
 };
 
 document.getElementById('btn-new-definition').addEventListener('click', () => openDefinitionModal(null));
 document.getElementById('btn-refresh-definitions').addEventListener('click', loadDefinitions);
-document.getElementById('auto-refresh').addEventListener('change', setupAutoRefresh);
 
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-cancel').addEventListener('click', closeModal);
@@ -35,16 +34,6 @@ document.querySelector('#modal .modal-backdrop').addEventListener('click', close
 
 document.getElementById('log-close').addEventListener('click', closeLogModal);
 document.querySelector('#log-modal .modal-backdrop').addEventListener('click', closeLogModal);
-
-function setupAutoRefresh() {
-    if (refreshTimer) {
-        clearInterval(refreshTimer);
-    }
-    refreshTimer = null;
-    if (document.getElementById('auto-refresh').checked) {
-        refreshTimer = setInterval(loadDefinitions, 5000);
-    }
-}
 
 async function api(path, options = {}) {
     const response = await fetch(`${API}${path}`, {
@@ -261,81 +250,158 @@ async function viewDefinitionLogs(name, path) {
             showToast(`任务 "${name}" 暂无运行记录`);
             return;
         }
-        openLogListModal(name, path);
+        openLogListModal(name, path, runs);
     } catch (err) {
         showToast('加载失败: ' + err.message);
     }
 }
 
-function renderLogRunsTable(runs) {
-    const tbody = document.getElementById('log-runs-body');
-    if (!runs.length) {
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="5">暂无运行记录</td></tr>';
+function getLogTotalPages(runCount) {
+    return Math.max(1, Math.ceil(runCount / LOG_PAGE_SIZE));
+}
+
+function getPagedRuns(runs, page) {
+    const start = (page - 1) * LOG_PAGE_SIZE;
+    return runs.slice(start, start + LOG_PAGE_SIZE);
+}
+
+function isSelectedRunOnCurrentPage() {
+    if (!logModalContext.selectedJobId) {
+        return false;
+    }
+    return getPagedRuns(logModalContext.runs, logModalContext.page)
+        .some(run => run.jobId === logModalContext.selectedJobId);
+}
+
+function renderLogPagination() {
+    const pagination = document.getElementById('log-pagination');
+    const totalPages = getLogTotalPages(logModalContext.runs.length);
+    const { page, runs } = logModalContext;
+
+    if (runs.length <= LOG_PAGE_SIZE) {
+        pagination.classList.add('hidden');
+        pagination.innerHTML = '';
         return;
     }
-    tbody.innerHTML = runs.map(run => `
-        <tr class="log-run-row" onclick="openRunLogDetail('${escapeAttr(run.jobId)}')">
+
+    pagination.classList.remove('hidden');
+    pagination.innerHTML = `
+        <button class="btn small" ${page <= 1 ? 'disabled' : ''} onclick="changeLogPage(${page - 1})">上一页</button>
+        <span class="pagination-info">第 ${page} / ${totalPages} 页，共 ${runs.length} 条</span>
+        <button class="btn small" ${page >= totalPages ? 'disabled' : ''} onclick="changeLogPage(${page + 1})">下一页</button>
+    `;
+}
+
+function renderLogRunsTable() {
+    const tbody = document.getElementById('log-runs-body');
+    const { runs } = logModalContext;
+    const totalPages = getLogTotalPages(runs.length);
+
+    if (logModalContext.page > totalPages) {
+        logModalContext.page = totalPages;
+    }
+    if (logModalContext.page < 1) {
+        logModalContext.page = 1;
+    }
+
+    if (!runs.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5">暂无运行记录</td></tr>';
+        renderLogPagination();
+        return;
+    }
+
+    const pagedRuns = getPagedRuns(runs, logModalContext.page);
+    const selectedOnPage = isSelectedRunOnCurrentPage();
+    if (!selectedOnPage) {
+        logModalContext.selectedJobId = null;
+    }
+
+    let html = '';
+    for (const run of pagedRuns) {
+        const expanded = logModalContext.selectedJobId === run.jobId;
+        html += `
+        <tr class="log-run-row${expanded ? ' selected' : ''}" onclick="toggleRunLogDetail('${escapeAttr(run.jobId)}')">
             <td><code>${escapeHtml(run.jobId)}</code></td>
             <td>${statusBadge(run.status)}</td>
             <td>${formatTime(run.submittedAt)}</td>
             <td>${escapeHtml(run.duration || '-')}</td>
             <td>${run.writtenRows ?? 0} / ${run.totalRows ?? 0}</td>
-        </tr>
-    `).join('');
+        </tr>`;
+        if (expanded) {
+            html += `
+        <tr class="log-detail-row">
+            <td colspan="5">
+                <div class="log-detail-panel" data-log-panel="${escapeAttr(run.jobId)}">加载中...</div>
+            </td>
+        </tr>`;
+        }
+    }
+    tbody.innerHTML = html;
+    renderLogPagination();
+
+    if (logModalContext.selectedJobId) {
+        loadRunLogDetailContent(logModalContext.selectedJobId);
+    }
 }
 
-function openLogListModal(name, path) {
-    const runs = allRunsCache
-        .filter(run => run.jobConfig === path)
-        .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
-
+function openLogListModal(name, path, runs) {
     logModalContext = {
         definitionName: name,
         definitionPath: path,
         runs,
-        selectedJobId: null,
-        view: 'list'
+        page: 1,
+        selectedJobId: null
     };
 
     document.getElementById('log-title').textContent = `运行记录: ${name}`;
-    document.getElementById('log-list-view').classList.remove('hidden');
-    document.getElementById('log-detail-view').classList.add('hidden');
-    renderLogRunsTable(runs);
+    renderLogRunsTable();
     document.getElementById('log-modal').classList.remove('hidden');
 }
 
-async function openRunLogDetail(jobId) {
-    logModalContext.view = 'detail';
-    logModalContext.selectedJobId = jobId;
+function changeLogPage(page) {
+    const totalPages = getLogTotalPages(logModalContext.runs.length);
+    if (page < 1 || page > totalPages) {
+        return;
+    }
+    logModalContext.page = page;
+    logModalContext.selectedJobId = null;
+    renderLogRunsTable();
+}
 
-    document.getElementById('log-list-view').classList.add('hidden');
-    document.getElementById('log-detail-view').classList.remove('hidden');
-    document.getElementById('log-title').textContent = `执行日志: ${jobId}`;
+function toggleRunLogDetail(jobId) {
+    logModalContext.selectedJobId = logModalContext.selectedJobId === jobId ? null : jobId;
+    renderLogRunsTable();
+}
 
-    const logContent = document.getElementById('log-content');
-    logContent.textContent = '加载中...';
+async function loadRunLogDetailContent(jobId) {
+    const panel = document.querySelector(`[data-log-panel="${cssEscape(jobId)}"]`);
+    if (!panel) {
+        return;
+    }
+    panel.textContent = '加载中...';
 
     try {
         const job = await api(`/jobs/${encodeURIComponent(jobId)}`);
         const run = logModalContext.runs.find(item => item.jobId === jobId) || job;
         const progress = job.progress || {};
 
-        document.getElementById('log-run-summary').innerHTML = `
-            <div class="detail-item"><label>状态</label>${statusBadge(job.status)}</div>
-            <div class="detail-item"><label>提交时间</label>${formatTime(job.submittedAt)}</div>
-            <div class="detail-item"><label>耗时</label>${escapeHtml(job.duration || '-')}</div>
-            <div class="detail-item"><label>写入行数</label>${progress.writtenRows ?? 0} / ${progress.totalRows ?? 0}</div>
-            ${job.errorMessage ? `<div class="detail-item detail-item-wide"><label>错误</label>${escapeHtml(job.errorMessage)}</div>` : ''}
-        `;
-
         const logs = await api(`/jobs/${encodeURIComponent(jobId)}/logs`);
-        logContent.innerHTML = renderLogLines(logs);
+        panel.innerHTML = `
+            <div class="detail-summary log-detail-summary">
+                <div class="detail-item"><label>状态</label>${statusBadge(job.status)}</div>
+                <div class="detail-item"><label>提交时间</label>${formatTime(job.submittedAt)}</div>
+                <div class="detail-item"><label>耗时</label>${escapeHtml(job.duration || '-')}</div>
+                <div class="detail-item"><label>写入行数</label>${progress.writtenRows ?? 0} / ${progress.totalRows ?? 0}</div>
+                ${job.errorMessage ? `<div class="detail-item detail-item-wide"><label>错误</label>${escapeHtml(job.errorMessage)}</div>` : ''}
+            </div>
+            <pre class="log-view">${renderLogLines(logs)}</pre>
+        `;
 
         if (run && run.status !== job.status) {
             run.status = job.status;
         }
     } catch (err) {
-        logContent.textContent = '加载失败: ' + err.message;
+        panel.textContent = '加载失败: ' + err.message;
     }
 }
 
@@ -353,29 +419,27 @@ async function refreshOpenLogModal() {
         return;
     }
 
+    const selectedJobId = logModalContext.selectedJobId;
     logModalContext.runs = runs;
+    renderLogRunsTable();
 
-    if (logModalContext.view === 'list') {
-        renderLogRunsTable(runs);
-        return;
-    }
-
-    if (logModalContext.selectedJobId) {
-        await openRunLogDetail(logModalContext.selectedJobId);
+    if (selectedJobId && logModalContext.selectedJobId === selectedJobId) {
+        await loadRunLogDetailContent(selectedJobId);
     }
 }
 
 function closeLogModal() {
     document.getElementById('log-modal').classList.add('hidden');
-    document.getElementById('log-list-view').classList.remove('hidden');
-    document.getElementById('log-detail-view').classList.add('hidden');
     logModalContext = {
         definitionName: null,
         definitionPath: null,
         runs: [],
-        selectedJobId: null,
-        view: 'list'
+        page: 1,
+        selectedJobId: null
     };
+    document.getElementById('log-runs-body').innerHTML = '';
+    document.getElementById('log-pagination').classList.add('hidden');
+    document.getElementById('log-pagination').innerHTML = '';
 }
 
 async function stopRun(jobId) {
@@ -393,6 +457,13 @@ async function stopRun(jobId) {
     }
 }
 
+function cssEscape(value) {
+    if (window.CSS && typeof window.CSS.escape === 'function') {
+        return window.CSS.escape(value);
+    }
+    return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+}
+
 function escapeHtml(text) {
     if (text == null) return '';
     return String(text)
@@ -407,4 +478,3 @@ function escapeAttr(text) {
 }
 
 loadDefinitions();
-setupAutoRefresh();

@@ -19,10 +19,6 @@
         <div class="toolbar">
             <button id="btn-new-definition" class="btn primary">新建任务</button>
             <button id="btn-refresh-definitions" class="btn">刷新</button>
-            <label class="auto-refresh">
-                <input type="checkbox" id="auto-refresh" checked>
-                自动刷新 (5s)
-            </label>
         </div>
         <div class="table-wrap">
             <table>
@@ -73,26 +69,21 @@
             <button id="log-close" class="icon-btn" aria-label="关闭">&times;</button>
         </div>
         <div class="modal-body">
-            <div id="log-list-view">
-                <div class="table-wrap">
-                    <table>
-                        <thead>
-                        <tr>
-                            <th>任务 ID</th>
-                            <th>状态</th>
-                            <th>提交时间</th>
-                            <th>耗时</th>
-                            <th>写入行数</th>
-                        </tr>
-                        </thead>
-                        <tbody id="log-runs-body"></tbody>
-                    </table>
-                </div>
+            <div class="table-wrap">
+                <table>
+                    <thead>
+                    <tr>
+                        <th>任务 ID</th>
+                        <th>状态</th>
+                        <th>提交时间</th>
+                        <th>耗时</th>
+                        <th>写入行数</th>
+                    </tr>
+                    </thead>
+                    <tbody id="log-runs-body"></tbody>
+                </table>
             </div>
-            <div id="log-detail-view" class="hidden">
-                <div id="log-run-summary" class="detail-summary"></div>
-                <pre id="log-content" class="log-view">加载中...</pre>
-            </div>
+            <div id="log-pagination" class="pagination hidden"></div>
         </div>
     </div>
 </div>
