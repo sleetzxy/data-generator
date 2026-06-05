@@ -1,0 +1,14 @@
+table: order_items
+fields:
+  - name: id
+    type: BIGINT
+    generator: { strategy: sequence, start: 1, step: 1 }
+  - name: order_id
+    type: BIGINT
+    generator: { strategy: reference, source: orders, field: id }
+  - name: product_name
+    type: VARCHAR
+    generator: { strategy: random, type: string, length: 12 }
+  - name: quantity
+    type: INT
+    generator: { strategy: random, type: int, min: 1, max: 10 }
