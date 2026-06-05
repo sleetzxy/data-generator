@@ -39,14 +39,17 @@
 
 | 项 | 说明 |
 |---|---|
-| 语言 / 框架 | Java 21、Spring Boot 3.3 |
+| 语言 / 框架 | Java 21、Spring Boot 3.3、Spring Security |
 | 构建 | Maven 多模块 |
 | 配置 | 本地 YAML（`dg-web/src/main/resources/configs/`） |
 | 数据源 | PostgreSQL、ClickHouse、CSV（插件化） |
+| 任务存储 | SQLite（`./data/dg-jobs.db`，任务记录 + 运行日志） |
 
 设计文档：
 - Spec：`docs/superpowers/specs/2026-06-05-data-generator-design.md`
 - Plan：`docs/superpowers/plans/2026-06-05-data-generator.md`
+- 任务持久化 Spec：`docs/superpowers/specs/2026-06-05-job-log-sqlite-design.md`
+- 任务持久化 Plan：`docs/superpowers/plans/2026-06-05-job-log-sqlite.md`
 
 ---
 
@@ -61,8 +64,18 @@ data-generator/
 │   ├── dg-plugin-clickhouse/
 │   └── dg-plugin-csv/
 └── dg-web/                    # Web 应用（Spring Boot 启动、REST API、Web 控制台）
-    └── com.datagenerator.web  # 统一包：controller / service / dto / config
+    └── com.datagenerator.web    # controller / service / dto / config / storage
 ```
+
+`dg-web` 包结构要点：
+
+| 包 | 职责 |
+|---|---|
+| `config/` | `DataGeneratorProperties`、`SecurityConfig`、`DataGeneratorAutoConfiguration` |
+| `storage/` | SQLite 任务持久化（`JobRepository`、`JobLogRepository`、`JobStartupRecovery`） |
+| `controller/` | REST 端点 |
+| `service/` | 业务编排（`JobService`、`JobDefinitionService`、`JobLogStore` 等） |
+| `dto/` | API 请求/响应模型 |
 
 **依赖方向：**
 
@@ -174,6 +187,7 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 | P1 | PG/CH/CSV、Schema 驱动生成、SpEL 约束、DAG 编排、同步 Job |
 | P2 | histogram/normal 分布、异步 202、Aviator、JTS within |
 | P3 | 种子模板、Groovy、repair/warn 约束、DELETE 取消任务 |
+| Web/运维 | Web 控制台、表单登录（`data-generator.auth.*`）、SQLite 任务/日志持久化、Job 定义 CRUD |
 
 详见 `README.md`。
 
@@ -184,8 +198,10 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 | 任务 | 做法 |
 |---|---|
 | 新增数据源插件 | 新建 `dg-plugins/dg-plugin-xxx` 子模块；实现 SPI；独立 AutoConfiguration；在 `dg-web/pom.xml` 按需引入 |
-| 新增 REST 端点 | DTO → Service → Controller；补充 `@WebMvcTest` |
+| 新增 REST 端点 | DTO → Service → Controller；补充 `@WebMvcTest`（`@AutoConfigureMockMvc(addFilters = false)` 若不测 Security） |
 | 修改生成/约束逻辑 | 改 `dg-core`；补单元测试 |
+| 修改任务持久化 | 改 `dg-web/.../storage/`（`JobRepository`、`JobLogRepository`）；规格见 job-log-sqlite spec |
+| 修改认证/登录 | 改 `SecurityConfig` + `DataGeneratorProperties.AuthProperties`；静态页 `static/login.html` |
 | 排查调用链 | `codegraph_trace` → `codegraph_explore` |
 
 ---
@@ -199,6 +215,8 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 | `.cursor/rules/*.mdc` | 项目级编码与工具规则 |
 | `docs/superpowers/specs/` | 产品设计规格 |
 | `docs/superpowers/plans/` | 实现计划 |
+| `docs/superpowers/specs/2026-06-05-job-log-sqlite-design.md` | 任务 SQLite 持久化设计 |
+| `docs/superpowers/plans/2026-06-05-job-log-sqlite.md` | 任务 SQLite 持久化实现计划 |
 
 ---
 
