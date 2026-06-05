@@ -155,10 +155,14 @@ P1 阶段已交付：
 | Aviator 表达式 | `level: custom` 或 `language: aviator` 约束 |
 | 空间约束 | JTS `within` 拓扑校验（点位于参考几何体内） |
 
-P2 **尚未** 包含（规划于 P3）：
+## P3 能力（当前）
 
-- 任务取消（`DELETE /jobs/{id}`）
-- 种子模板、Groovy 自定义插件、约束 `repair` 策略
+| 能力 | 说明 |
+|------|------|
+| 种子模板 | Schema `seed.template` 内联模板 + `mutate` 字段变异 |
+| Groovy 表达式 | `language: groovy` 约束与自定义表达式 |
+| 约束 repair/warn | `on_fail: repair` 自动修正；`warn` 记录告警并继续 |
+| 任务取消 | `DELETE /api/v1/jobs/{id}` 取消 PENDING/RUNNING 异步任务 |
 
 ## P1 能力（已完成）
 
