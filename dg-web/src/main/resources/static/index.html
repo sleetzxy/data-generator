@@ -93,15 +93,33 @@
 
 <div id="detail-modal" class="modal hidden">
     <div class="modal-backdrop"></div>
-    <div class="modal-content modal-wide">
+    <div class="modal-content">
         <div class="modal-header">
             <h2 id="detail-title">运行详情</h2>
             <button id="detail-close" class="icon-btn" aria-label="关闭">&times;</button>
         </div>
         <div class="modal-body">
             <div id="detail-summary" class="detail-summary"></div>
-            <h3>执行日志</h3>
-            <pre id="detail-logs" class="log-view"></pre>
+            <div class="detail-footer-actions">
+                <button id="detail-view-logs" class="btn small primary">查看日志</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div id="log-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content modal-wide">
+        <div class="modal-header">
+            <h2 id="log-title">执行日志</h2>
+            <button id="log-close" class="icon-btn" aria-label="关闭">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div id="log-run-selector" class="log-run-selector hidden">
+                <label for="log-run-select">运行记录</label>
+                <select id="log-run-select"></select>
+            </div>
+            <pre id="log-content" class="log-view">加载中...</pre>
         </div>
     </div>
 </div>

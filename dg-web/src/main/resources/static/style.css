@@ -141,6 +141,16 @@ body {
     font-size: 0.8rem;
 }
 
+.btn.log-btn {
+    color: #0369a1;
+    border-color: #bae6fd;
+    background: #f0f9ff;
+}
+
+.btn.log-btn:hover {
+    background: #e0f2fe;
+}
+
 .table-wrap {
     overflow-x: auto;
 }
@@ -312,6 +322,38 @@ th {
     font-size: 0.75rem;
     color: var(--muted);
     margin-bottom: 0.15rem;
+}
+
+.detail-item-wide {
+    grid-column: 1 / -1;
+}
+
+.detail-footer-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 0.75rem;
+}
+
+.log-run-selector {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.log-run-selector label {
+    font-size: 0.85rem;
+    color: var(--muted);
+    white-space: nowrap;
+}
+
+.log-run-selector select {
+    flex: 1;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.85rem;
+    background: #fff;
 }
 
 .log-view {
