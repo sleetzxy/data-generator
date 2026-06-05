@@ -3,4 +3,5 @@ target/
 *.iml
 .env
 data/
+output/
 *.db
