@@ -36,7 +36,7 @@ class JobControllerTest {
     private JobService jobService;
 
     @Test
-    void submitJob_delegatesToService() throws Exception {
+    void submitJob_validRequest_delegatesToService() throws Exception {
         when(jobService.submit(any(JobSubmitRequest.class)))
                 .thenReturn(new JobSubmitResult(JobResponse.completed("job-1", 100), false));
 

@@ -42,6 +42,7 @@ class JobServiceAsyncTest {
 
         JobService jobService = new JobService(
                 orchestrator,
+                mock(PreviewJobOrchestratorFactory.class),
                 configLoader,
                 constraintLoader,
                 connectionRegistry,

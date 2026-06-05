@@ -17,8 +17,6 @@ import com.datagenerator.core.constraint.ConstraintLoader;
 import com.datagenerator.core.engine.GenerationOptions;
 import com.datagenerator.core.engine.JobOrchestrator;
 import com.datagenerator.core.engine.JobResult;
-import com.datagenerator.core.engine.PluginRegistry;
-import com.datagenerator.core.engine.TableGenerator;
 import com.datagenerator.core.engine.TableResult;
 import com.datagenerator.core.schema.ConfigLoadException;
 import com.datagenerator.core.schema.JobDefinition;
@@ -43,6 +41,7 @@ public class JobService {
     private static final int PREVIEW_MAX_LIMIT = 100;
 
     private final JobOrchestrator jobOrchestrator;
+    private final PreviewJobOrchestratorFactory previewOrchestratorFactory;
     private final YamlConfigLoader configLoader;
     private final ConstraintLoader constraintLoader;
     private final ConnectionRegistry connectionRegistry;
@@ -52,11 +51,13 @@ public class JobService {
 
     public JobService(
             JobOrchestrator jobOrchestrator,
+            PreviewJobOrchestratorFactory previewOrchestratorFactory,
             YamlConfigLoader configLoader,
             ConstraintLoader constraintLoader,
             ConnectionRegistry connectionRegistry,
             JobRuntimeSettings runtimeSettings) {
         this.jobOrchestrator = jobOrchestrator;
+        this.previewOrchestratorFactory = previewOrchestratorFactory;
         this.configLoader = configLoader;
         this.constraintLoader = constraintLoader;
         this.connectionRegistry = connectionRegistry;
@@ -110,15 +111,7 @@ public class JobService {
         JobDefinition previewJob = preparePreviewJob(job, request.getPreview());
 
         CollectingWriter collectingWriter = new CollectingWriter();
-        PluginRegistry previewRegistry = new PluginRegistry();
-        previewRegistry.registerWriter(CollectingWriter.TYPE, collectingWriter);
-
-        JobOrchestrator previewOrchestrator = new JobOrchestrator(
-                configLoader,
-                constraintLoader,
-                new TableGenerator(previewRegistry),
-                previewRegistry,
-                connectionRegistry);
+        JobOrchestrator previewOrchestrator = previewOrchestratorFactory.create(collectingWriter);
 
         GenerationOptions options = toGenerationOptions(request.getOptions());
         JobResult result = previewOrchestrator.run(
