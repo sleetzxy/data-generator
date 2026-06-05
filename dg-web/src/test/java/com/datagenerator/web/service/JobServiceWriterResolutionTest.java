@@ -23,14 +23,18 @@ class JobServiceWriterResolutionTest {
 
     @BeforeEach
     void setUp() {
+        JobRuntimeSettings runtimeSettings = new JobRuntimeSettings(5000, 1000, 2);
+        JobServiceTestSupport.JobServiceContext context = JobServiceTestSupport.createContext(runtimeSettings);
         jobService = new JobService(
                 mock(JobOrchestrator.class),
                 mock(PreviewJobOrchestratorFactory.class),
                 mock(YamlConfigLoader.class),
                 mock(ConstraintLoader.class),
                 mock(ConnectionRegistry.class),
-                new JobRuntimeSettings(5000, 1000, 2),
-                new JobLogStore());
+                runtimeSettings,
+                context.jobRepository(),
+                context.jobLogStore(),
+                context.asyncJobExecutor());
     }
 
     @Test

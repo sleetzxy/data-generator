@@ -25,18 +25,17 @@ import com.datagenerator.core.schema.JobDefinition;
 import com.datagenerator.core.schema.OverridePathResolver;
 import com.datagenerator.core.schema.TableTask;
 import com.datagenerator.core.schema.YamlConfigLoader;
+import com.datagenerator.web.storage.JobRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class JobService {
@@ -52,7 +51,7 @@ public class JobService {
     private final JobRuntimeSettings runtimeSettings;
     private final AsyncJobExecutor asyncJobExecutor;
     private final JobLogStore jobLogStore;
-    private final ConcurrentHashMap<String, JobResponse> jobs = new ConcurrentHashMap<>();
+    private final JobRepository jobRepository;
 
     public JobService(
             JobOrchestrator jobOrchestrator,
@@ -61,15 +60,18 @@ public class JobService {
             ConstraintLoader constraintLoader,
             ConnectionRegistry connectionRegistry,
             JobRuntimeSettings runtimeSettings,
-            JobLogStore jobLogStore) {
+            JobRepository jobRepository,
+            JobLogStore jobLogStore,
+            AsyncJobExecutor asyncJobExecutor) {
         this.jobOrchestrator = jobOrchestrator;
         this.previewOrchestratorFactory = previewOrchestratorFactory;
         this.configLoader = configLoader;
         this.constraintLoader = constraintLoader;
         this.connectionRegistry = connectionRegistry;
         this.runtimeSettings = runtimeSettings;
+        this.jobRepository = jobRepository;
         this.jobLogStore = jobLogStore;
-        this.asyncJobExecutor = new AsyncJobExecutor(runtimeSettings.threadPoolSize(), jobs, jobLogStore);
+        this.asyncJobExecutor = asyncJobExecutor;
     }
 
     public JobSubmitResult submit(JobSubmitRequest request) {
@@ -90,7 +92,7 @@ public class JobService {
                 submittedAt,
                 null,
                 null);
-        jobs.put(jobId, placeholder);
+        jobRepository.insert(placeholder);
         jobLogStore.info(jobId, "任务已提交，配置文件: " + request.getJobConfig());
         jobLogStore.info(jobId, "预估生成行数: " + estimatedRows);
 
@@ -99,7 +101,7 @@ public class JobService {
             log.info("Submitting async job {} (estimatedRows={}, threshold={})", jobId, estimatedRows, syncThreshold);
             jobLogStore.info(jobId, "超过同步阈值 " + syncThreshold + "，转为异步执行");
             asyncJobExecutor.submit(jobId, () -> executeAndStore(jobId, job, resolveWriter(job, request.getWriter()), options));
-            JobResponse pending = jobs.get(jobId);
+            JobResponse pending = jobRepository.findById(jobId).orElseThrow();
             return new JobSubmitResult(pending, true);
         }
 
@@ -110,33 +112,26 @@ public class JobService {
     }
 
     public List<JobSummaryResponse> listAll() {
-        return jobs.values().stream()
-                .sorted(Comparator.comparing(JobResponse::getSubmittedAt, Comparator.nullsLast(String::compareTo))
-                        .reversed())
+        return jobRepository.listAll().stream()
                 .map(this::toSummary)
                 .toList();
     }
 
     public JobResponse getById(String jobId) {
-        JobResponse response = jobs.get(jobId);
-        if (response == null) {
-            throw new JobNotFoundException(jobId);
-        }
-        return response;
+        return jobRepository.findById(jobId)
+                .orElseThrow(() -> new JobNotFoundException(jobId));
     }
 
     public List<JobLogEntry> getLogs(String jobId) {
-        if (!jobs.containsKey(jobId)) {
+        if (jobRepository.findById(jobId).isEmpty()) {
             throw new JobNotFoundException(jobId);
         }
         return jobLogStore.getLogs(jobId);
     }
 
     public void cancel(String jobId) {
-        JobResponse response = jobs.get(jobId);
-        if (response == null) {
-            throw new JobNotFoundException(jobId);
-        }
+        JobResponse response = jobRepository.findById(jobId)
+                .orElseThrow(() -> new JobNotFoundException(jobId));
         if (isTerminalStatus(response.getStatus())) {
             return;
         }
@@ -152,15 +147,13 @@ public class JobService {
     }
 
     public void remove(String jobId) {
-        JobResponse response = jobs.get(jobId);
-        if (response == null) {
-            throw new JobNotFoundException(jobId);
-        }
+        JobResponse response = jobRepository.findById(jobId)
+                .orElseThrow(() -> new JobNotFoundException(jobId));
         if (response.getStatus() == JobStatus.PENDING || response.getStatus() == JobStatus.RUNNING) {
             throw new IllegalArgumentException("Running job cannot be removed: " + jobId);
         }
-        jobs.remove(jobId);
         jobLogStore.remove(jobId);
+        jobRepository.delete(jobId);
     }
 
     public JobResponse preview(PreviewRequest request) {
@@ -188,9 +181,10 @@ public class JobService {
             Map<String, Object> writer,
             GenerationOptions options) {
         long start = System.currentTimeMillis();
-        JobResponse current = jobs.get(jobId);
+        JobResponse current = jobRepository.findById(jobId).orElse(null);
         if (current != null) {
             current.setStatus(JobStatus.RUNNING);
+            jobRepository.update(current);
         }
         jobLogStore.info(jobId, "开始生成数据，共 " + job.getTables().size() + " 张表");
         try {
@@ -210,7 +204,7 @@ public class JobService {
                     current == null ? null : current.getSubmittedAt(),
                     null,
                     null);
-            jobs.put(jobId, response);
+            jobRepository.update(response);
             jobLogStore.info(
                     jobId,
                     "任务完成，耗时 " + response.getDuration()
@@ -224,7 +218,7 @@ public class JobService {
             failed.setStatus(JobStatus.FAILED);
             failed.setErrorMessage(exception.getMessage());
             failed.setDetails(List.of(new TableDetail("_error", 0, 0, exception.getMessage())));
-            jobs.put(jobId, failed);
+            jobRepository.update(failed);
             throw exception;
         }
     }

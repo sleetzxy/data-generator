@@ -1,12 +1,16 @@
 package com.datagenerator.web.service;
 
+import com.datagenerator.web.config.JobRuntimeSettings;
 import com.datagenerator.web.dto.JobProgress;
 import com.datagenerator.web.dto.JobResponse;
 import com.datagenerator.web.dto.JobStatus;
 import com.datagenerator.web.dto.TableDetail;
+import com.datagenerator.web.storage.JobRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -15,65 +19,81 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 
 /**
- * 异步任务执行器：后台线程池执行造数任务并更新内存 JobStore。
+ * 异步任务执行器：后台线程池执行造数任务并持久化状态。
  */
+@Component
 public class AsyncJobExecutor {
 
     private static final Logger log = LoggerFactory.getLogger(AsyncJobExecutor.class);
 
     private final ExecutorService executor;
-    private final ConcurrentHashMap<String, JobResponse> jobs;
+    private final JobRepository jobRepository;
     private final JobLogStore jobLogStore;
     private final ConcurrentHashMap<String, Future<?>> futures = new ConcurrentHashMap<>();
     private final Set<String> cancelled = ConcurrentHashMap.newKeySet();
 
     public AsyncJobExecutor(
-            int threadPoolSize,
-            ConcurrentHashMap<String, JobResponse> jobs,
+            JobRuntimeSettings runtimeSettings,
+            JobRepository jobRepository,
             JobLogStore jobLogStore) {
-        this.executor = Executors.newFixedThreadPool(Math.max(1, threadPoolSize));
-        this.jobs = jobs;
+        this.executor = Executors.newFixedThreadPool(Math.max(1, runtimeSettings.threadPoolSize()));
+        this.jobRepository = jobRepository;
         this.jobLogStore = jobLogStore;
     }
 
     public void submit(String jobId, Runnable task) {
-        JobResponse current = jobs.get(jobId);
-        if (current == null) {
-            current = new JobResponse(
-                    jobId, JobStatus.PENDING, emptyProgress(), List.of(), null, null, null, null, null);
-        }
-        jobs.put(jobId, pending(current));
+        JobResponse current = jobRepository.findById(jobId).orElseGet(() -> {
+            JobResponse created = new JobResponse(
+                    jobId,
+                    JobStatus.PENDING,
+                    emptyProgress(),
+                    List.of(),
+                    null,
+                    null,
+                    Instant.now().toString(),
+                    null,
+                    null);
+            jobRepository.insert(created);
+            return created;
+        });
+        persistStatus(current, JobStatus.PENDING);
         Future<?> future = executor.submit(() -> {
             if (cancelled.contains(jobId)) {
-                jobs.put(jobId, cancelled(jobs.get(jobId)));
+                markCancelled(jobId);
                 jobLogStore.warn(jobId, "任务在启动前已取消");
                 return;
             }
-            jobs.put(jobId, running(jobs.get(jobId)));
+            persistStatus(loadJob(jobId), JobStatus.RUNNING);
             jobLogStore.info(jobId, "任务开始执行");
             try {
                 if (cancelled.contains(jobId)) {
-                    jobs.put(jobId, cancelled(jobs.get(jobId)));
+                    markCancelled(jobId);
                     jobLogStore.warn(jobId, "任务已取消");
                     return;
                 }
                 task.run();
             } catch (Exception exception) {
                 if (cancelled.contains(jobId)) {
-                    jobs.put(jobId, cancelled(jobs.get(jobId)));
+                    markCancelled(jobId);
                     jobLogStore.warn(jobId, "任务已取消");
                     return;
                 }
-                log.error("Async job {} failed", jobId, exception);
-                jobLogStore.error(jobId, "任务执行失败: " + exception.getMessage());
-                jobs.put(jobId, failed(jobs.get(jobId), exception.getMessage()));
+                JobResponse latest = loadJob(jobId);
+                if (latest.getStatus() == JobStatus.RUNNING || latest.getStatus() == JobStatus.PENDING) {
+                    log.error("Async job {} failed", jobId, exception);
+                    jobLogStore.error(jobId, "任务执行失败: " + exception.getMessage());
+                    latest.setStatus(JobStatus.FAILED);
+                    latest.setErrorMessage(exception.getMessage());
+                    latest.setDetails(List.of(new TableDetail("_error", 0, 0, exception.getMessage())));
+                    jobRepository.update(latest);
+                }
             }
         });
         futures.put(jobId, future);
     }
 
     public boolean cancel(String jobId) {
-        JobResponse current = jobs.get(jobId);
+        JobResponse current = loadJobOrNull(jobId);
         if (current == null) {
             return false;
         }
@@ -85,38 +105,31 @@ public class AsyncJobExecutor {
         if (future != null) {
             future.cancel(true);
         }
-        jobs.put(jobId, cancelled(current));
+        persistStatus(current, JobStatus.CANCELLED);
         jobLogStore.warn(jobId, "任务已被用户取消");
         log.info("Cancelled async job {}", jobId);
         return true;
     }
 
-    private static JobResponse pending(JobResponse current) {
-        return withStatus(current, JobStatus.PENDING);
+    private JobResponse loadJob(String jobId) {
+        return jobRepository.findById(jobId).orElseThrow(
+                () -> new IllegalStateException("Job not found: " + jobId));
     }
 
-    private static JobResponse running(JobResponse current) {
-        return withStatus(current, JobStatus.RUNNING);
+    private JobResponse loadJobOrNull(String jobId) {
+        return jobRepository.findById(jobId).orElse(null);
     }
 
-    private static JobResponse cancelled(JobResponse current) {
-        return withStatus(current, JobStatus.CANCELLED);
-    }
-
-    private static JobResponse failed(JobResponse current, String message) {
-        JobResponse response = withStatus(current, JobStatus.FAILED);
-        response.setErrorMessage(message);
-        TableDetail detail = new TableDetail("_error", 0, 0, message);
-        response.setDetails(List.of(detail));
-        return response;
-    }
-
-    private static JobResponse withStatus(JobResponse current, JobStatus status) {
-        if (current == null) {
-            return new JobResponse(null, status, emptyProgress(), List.of(), null, null, null, null, null);
+    private void markCancelled(String jobId) {
+        JobResponse current = loadJobOrNull(jobId);
+        if (current != null) {
+            persistStatus(current, JobStatus.CANCELLED);
         }
+    }
+
+    private void persistStatus(JobResponse current, JobStatus status) {
         current.setStatus(status);
-        return current;
+        jobRepository.update(current);
     }
 
     private static JobProgress emptyProgress() {

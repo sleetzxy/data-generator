@@ -12,6 +12,7 @@ public class DataGeneratorProperties {
     private String writableConfigDir = "./data/configs";
     private Map<String, Map<String, Object>> connections = new HashMap<>();
     private JobProperties job = new JobProperties();
+    private StorageProperties storage = new StorageProperties();
 
     public String getConfigDir() {
         return configDir;
@@ -43,6 +44,27 @@ public class DataGeneratorProperties {
 
     public void setJob(JobProperties job) {
         this.job = job;
+    }
+
+    public StorageProperties getStorage() {
+        return storage;
+    }
+
+    public void setStorage(StorageProperties storage) {
+        this.storage = storage;
+    }
+
+    public static class StorageProperties {
+
+        private String sqlitePath = "./data/dg-jobs.db";
+
+        public String getSqlitePath() {
+            return sqlitePath;
+        }
+
+        public void setSqlitePath(String sqlitePath) {
+            this.sqlitePath = sqlitePath;
+        }
     }
 
     public static class JobProperties {
