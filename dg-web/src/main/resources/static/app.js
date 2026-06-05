@@ -35,12 +35,6 @@ document.querySelector('#modal .modal-backdrop').addEventListener('click', close
 
 document.getElementById('log-close').addEventListener('click', closeLogModal);
 document.querySelector('#log-modal .modal-backdrop').addEventListener('click', closeLogModal);
-document.getElementById('log-back').addEventListener('click', showLogListView);
-document.getElementById('log-stop-run').addEventListener('click', () => {
-    if (logModalContext.selectedJobId) {
-        stopRun(logModalContext.selectedJobId);
-    }
-});
 
 function setupAutoRefresh() {
     if (refreshTimer) {
@@ -113,6 +107,12 @@ function findLatestRun(path) {
         .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))[0] || null;
 }
 
+function findActiveRun(path) {
+    return allRunsCache
+        .filter(run => run.jobConfig === path && isActiveRun(run.status))
+        .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))[0] || null;
+}
+
 async function loadDefinitions() {
     const tbody = document.getElementById('definitions-body');
     try {
@@ -130,6 +130,7 @@ async function loadDefinitions() {
 
         tbody.innerHTML = items.map(item => {
             const latestRun = findLatestRun(item.path);
+            const activeRun = findActiveRun(item.path);
             return `
             <tr>
                 <td><strong>${escapeHtml(item.name)}</strong></td>
@@ -141,7 +142,10 @@ async function loadDefinitions() {
                 <td class="actions">
                     <button class="btn small" onclick="viewDefinition('${escapeAttr(item.name)}')">查看</button>
                     <button class="btn small" onclick="editDefinition('${escapeAttr(item.name)}')">编辑</button>
-                    <button class="btn small primary" onclick="runDefinition('${escapeAttr(item.path)}', '${escapeAttr(item.name)}')">运行</button>
+                    <button class="btn small primary" onclick="runDefinition('${escapeAttr(item.path)}')">运行</button>
+                    ${activeRun
+                        ? `<button class="btn small danger" onclick="stopRun('${escapeAttr(activeRun.jobId)}')">停止</button>`
+                        : ''}
                     <button class="btn small log-btn" onclick="viewDefinitionLogs('${escapeAttr(item.name)}', '${escapeAttr(item.path)}')">日志</button>
                     ${item.readOnly ? '' :
                         `<button class="btn small danger" onclick="deleteDefinition('${escapeAttr(item.name)}')">删除</button>`}
@@ -232,7 +236,7 @@ async function deleteDefinition(name) {
     }
 }
 
-async function runDefinition(path, name) {
+async function runDefinition(path) {
     try {
         const result = await api('/jobs', {
             method: 'POST',
@@ -240,10 +244,6 @@ async function runDefinition(path, name) {
         });
         showToast(`任务已提交: ${result.jobId} (${result.status})`);
         await loadDefinitions();
-        openLogListModal(name, path);
-        if (isActiveRun(result.status)) {
-            openRunLogDetail(result.jobId);
-        }
     } catch (err) {
         showToast('提交失败: ' + err.message);
     }
@@ -270,7 +270,7 @@ async function viewDefinitionLogs(name, path) {
 function renderLogRunsTable(runs) {
     const tbody = document.getElementById('log-runs-body');
     if (!runs.length) {
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">暂无运行记录</td></tr>';
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5">暂无运行记录</td></tr>';
         return;
     }
     tbody.innerHTML = runs.map(run => `
@@ -280,11 +280,6 @@ function renderLogRunsTable(runs) {
             <td>${formatTime(run.submittedAt)}</td>
             <td>${escapeHtml(run.duration || '-')}</td>
             <td>${run.writtenRows ?? 0} / ${run.totalRows ?? 0}</td>
-            <td class="actions" onclick="event.stopPropagation()">
-                ${isActiveRun(run.status)
-                    ? `<button class="btn small danger" onclick="stopRun('${escapeAttr(run.jobId)}')">停止</button>`
-                    : '-'}
-            </td>
         </tr>
     `).join('');
 }
@@ -303,21 +298,10 @@ function openLogListModal(name, path) {
     };
 
     document.getElementById('log-title').textContent = `运行记录: ${name}`;
-    renderLogRunsTable(runs);
-    showLogListView();
-    document.getElementById('log-modal').classList.remove('hidden');
-}
-
-function showLogListView() {
-    logModalContext.view = 'list';
-    logModalContext.selectedJobId = null;
     document.getElementById('log-list-view').classList.remove('hidden');
     document.getElementById('log-detail-view').classList.add('hidden');
-    document.getElementById('log-back').classList.add('hidden');
-    document.getElementById('log-stop-run').classList.add('hidden');
-    if (logModalContext.definitionName) {
-        document.getElementById('log-title').textContent = `运行记录: ${logModalContext.definitionName}`;
-    }
+    renderLogRunsTable(runs);
+    document.getElementById('log-modal').classList.remove('hidden');
 }
 
 async function openRunLogDetail(jobId) {
@@ -326,7 +310,6 @@ async function openRunLogDetail(jobId) {
 
     document.getElementById('log-list-view').classList.add('hidden');
     document.getElementById('log-detail-view').classList.remove('hidden');
-    document.getElementById('log-back').classList.remove('hidden');
     document.getElementById('log-title').textContent = `执行日志: ${jobId}`;
 
     const logContent = document.getElementById('log-content');
@@ -345,8 +328,6 @@ async function openRunLogDetail(jobId) {
             ${job.errorMessage ? `<div class="detail-item detail-item-wide"><label>错误</label>${escapeHtml(job.errorMessage)}</div>` : ''}
         `;
 
-        document.getElementById('log-stop-run').classList.toggle('hidden', !isActiveRun(job.status));
-
         const logs = await api(`/jobs/${encodeURIComponent(jobId)}/logs`);
         logContent.innerHTML = renderLogLines(logs);
 
@@ -355,7 +336,6 @@ async function openRunLogDetail(jobId) {
         }
     } catch (err) {
         logContent.textContent = '加载失败: ' + err.message;
-        document.getElementById('log-stop-run').classList.add('hidden');
     }
 }
 
@@ -387,6 +367,8 @@ async function refreshOpenLogModal() {
 
 function closeLogModal() {
     document.getElementById('log-modal').classList.add('hidden');
+    document.getElementById('log-list-view').classList.remove('hidden');
+    document.getElementById('log-detail-view').classList.add('hidden');
     logModalContext = {
         definitionName: null,
         definitionPath: null,
@@ -394,7 +376,6 @@ function closeLogModal() {
         selectedJobId: null,
         view: 'list'
     };
-    showLogListView();
 }
 
 async function stopRun(jobId) {

@@ -68,15 +68,9 @@
 <div id="log-modal" class="modal hidden">
     <div class="modal-backdrop"></div>
     <div class="modal-content modal-wide">
-        <div class="modal-header log-modal-header">
-            <div class="log-modal-header-left">
-                <button id="log-back" class="btn small hidden">← 返回列表</button>
-                <h2 id="log-title">运行记录</h2>
-            </div>
-            <div class="log-modal-header-right">
-                <button id="log-stop-run" class="btn small danger hidden">停止任务</button>
-                <button id="log-close" class="icon-btn" aria-label="关闭">&times;</button>
-            </div>
+        <div class="modal-header">
+            <h2 id="log-title">运行记录</h2>
+            <button id="log-close" class="icon-btn" aria-label="关闭">&times;</button>
         </div>
         <div class="modal-body">
             <div id="log-list-view">
@@ -89,7 +83,6 @@
                             <th>提交时间</th>
                             <th>耗时</th>
                             <th>写入行数</th>
-                            <th>操作</th>
                         </tr>
                         </thead>
                         <tbody id="log-runs-body"></tbody>
