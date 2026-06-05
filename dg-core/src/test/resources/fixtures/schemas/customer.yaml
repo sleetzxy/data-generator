@@ -1,0 +1,14 @@
+table: customers
+fields:
+  - name: id
+    type: BIGINT
+    generator: { strategy: sequence, start: 1, step: 1 }
+  - name: name
+    type: VARCHAR
+    generator: { strategy: random, type: string, length: 10 }
+  - name: region_code
+    type: VARCHAR
+    generator:
+      strategy: reference
+      source: region_lookup
+      reader: { type: postgresql, connection: dev-pg, query: "SELECT code FROM regions" }

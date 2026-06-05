@@ -1,0 +1,17 @@
+job: ecommerce_seed
+constraints: constraints/global_rules.yaml
+tables:
+  - name: customers
+    schema: schemas/customer.yaml
+    count: 1000
+
+  - name: orders
+    schema: schemas/order.yaml
+    count: 5000
+    constraints: constraints/order_rules.yaml
+    depends_on: [customers]
+
+  - name: order_items
+    schema: schemas/order_item.yaml
+    count: 20000
+    depends_on: [orders]
