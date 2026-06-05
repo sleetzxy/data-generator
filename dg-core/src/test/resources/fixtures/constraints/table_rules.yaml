@@ -1,0 +1,6 @@
+constraints:
+  - level: field
+    field: amount
+    type: range
+    min: 1.0
+    max: 100.0

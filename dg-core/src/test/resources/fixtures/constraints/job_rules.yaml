@@ -1,0 +1,6 @@
+constraints:
+  - level: field
+    field: customer_id
+    type: foreign_key
+    ref_table: customers
+    ref_field: id
