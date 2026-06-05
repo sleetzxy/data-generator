@@ -5,7 +5,7 @@ async function loadGuide() {
     const toc = document.getElementById('docs-toc');
 
     try {
-        const response = await fetch(DOCS_PATH);
+        const response = await fetch(DOCS_PATH, { credentials: 'same-origin' });
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }

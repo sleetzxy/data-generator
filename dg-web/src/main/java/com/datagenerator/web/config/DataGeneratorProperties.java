@@ -13,6 +13,7 @@ public class DataGeneratorProperties {
     private Map<String, Map<String, Object>> connections = new HashMap<>();
     private JobProperties job = new JobProperties();
     private StorageProperties storage = new StorageProperties();
+    private AuthProperties auth = new AuthProperties();
 
     public String getConfigDir() {
         return configDir;
@@ -52,6 +53,45 @@ public class DataGeneratorProperties {
 
     public void setStorage(StorageProperties storage) {
         this.storage = storage;
+    }
+
+    public AuthProperties getAuth() {
+        return auth;
+    }
+
+    public void setAuth(AuthProperties auth) {
+        this.auth = auth;
+    }
+
+    public static class AuthProperties {
+
+        private boolean enabled = true;
+        private String username = "admin";
+        private String password = "admin123";
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getUsername() {
+            return username;
+        }
+
+        public void setUsername(String username) {
+            this.username = username;
+        }
+
+        public String getPassword() {
+            return password;
+        }
+
+        public void setPassword(String password) {
+            this.password = password;
+        }
     }
 
     public static class StorageProperties {

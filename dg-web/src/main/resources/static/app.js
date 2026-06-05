@@ -43,9 +43,14 @@ document.querySelector('#log-modal .modal-backdrop').addEventListener('click', c
 
 async function api(path, options = {}) {
     const response = await fetch(`${API}${path}`, {
+        credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json', ...options.headers },
         ...options
     });
+    if (response.status === 401) {
+        window.location.href = '/login.html';
+        return;
+    }
     if (!response.ok) {
         let message = response.statusText;
         try {

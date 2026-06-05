@@ -7,6 +7,7 @@ import com.datagenerator.web.dto.JobSubmitRequest;
 import com.datagenerator.web.service.JobService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -22,6 +23,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(controllers = JobController.class)
+@AutoConfigureMockMvc(addFilters = false)
 @Import({WebTestApplication.class, JobControllerTest.ControllerTestConfig.class})
 class JobControllerTest {
 

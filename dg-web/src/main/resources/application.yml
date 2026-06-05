@@ -4,6 +4,10 @@ server:
 data-generator:
   config-dir: classpath:configs
   writable-config-dir: ./data/configs
+  auth:
+    enabled: true
+    username: admin
+    password: admin123
   connections:
     dev-safety:
       type: postgresql
