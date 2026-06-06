@@ -24,6 +24,7 @@ tables:
 `;
 
 let editingDefinition = null;
+let editingScheduleFileName = null;
 let allRunsCache = [];
 let previewContext = {
     displayName: null,
@@ -53,6 +54,11 @@ document.querySelector('#log-modal .modal-backdrop').addEventListener('click', c
 
 document.getElementById('preview-close').addEventListener('click', closePreviewModal);
 document.querySelector('#preview-modal .modal-backdrop').addEventListener('click', closePreviewModal);
+
+document.getElementById('schedule-close').addEventListener('click', closeScheduleModal);
+document.getElementById('schedule-cancel').addEventListener('click', closeScheduleModal);
+document.getElementById('schedule-save').addEventListener('click', saveSchedule);
+document.querySelector('#schedule-modal .modal-backdrop').addEventListener('click', closeScheduleModal);
 
 document.addEventListener('click', (event) => {
     if (!event.target.closest('.action-menu')) {
@@ -104,6 +110,20 @@ function statusBadge(status) {
         return '<span class="badge status-none">未运行</span>';
     }
     return `<span class="badge status-${status}">${status}</span>`;
+}
+
+function renderScheduleBadge(schedule) {
+    if (!schedule || !schedule.enabled) {
+        return '<span class="badge schedule-off">关闭</span>';
+    }
+    return '<span class="badge schedule-on">启用</span>';
+}
+
+function renderScheduleCron(schedule) {
+    if (!schedule || !schedule.enabled || !schedule.cron) {
+        return '<span class="muted">—</span>';
+    }
+    return `<code>${escapeHtml(schedule.cron)}</code>`;
 }
 
 function isActiveRun(status) {
@@ -165,7 +185,7 @@ async function loadDefinitions() {
         allRunsCache = runs;
 
         if (!items.length) {
-            tbody.innerHTML = '<tr class="empty-row"><td colspan="6">暂无任务配置</td></tr>';
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="8">暂无任务配置</td></tr>';
             refreshOpenLogModal();
             return;
         }
@@ -184,6 +204,8 @@ async function loadDefinitions() {
                 <td>${isBuiltin
                     ? '<span class="badge builtin">内置</span>'
                     : '<span class="badge custom">自定义</span>'}</td>
+                <td>${renderScheduleBadge(item.schedule)}</td>
+                <td>${renderScheduleCron(item.schedule)}</td>
                 <td>${statusBadge(latestRun?.status)}</td>
                 <td class="actions">${renderActionsCell(item, index, displayName, fileName, item.path, activeRun, isBuiltin)}</td>
             </tr>`;
@@ -191,7 +213,7 @@ async function loadDefinitions() {
 
         refreshOpenLogModal();
     } catch (err) {
-        tbody.innerHTML = `<tr class="empty-row"><td colspan="6">加载失败: ${escapeHtml(err.message)}</td></tr>`;
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="8">加载失败: ${escapeHtml(err.message)}</td></tr>`;
     }
 }
 
@@ -207,6 +229,7 @@ function renderActionsCell(item, index, displayName, fileName, path, activeRun, 
             ${stopDisabled ? 'disabled title="当前无运行中的任务"' : `onclick="stopRun('${escapeAttr(stopJobId)}'); closeActionMenus()"`}>停止</button>`;
     if (!isBuiltin) {
         menuItems += `
+        <button type="button" class="action-menu-item" onclick="openScheduleModal('${escapeAttr(fileName)}'); closeActionMenus()">调度设置</button>
         <button type="button" class="action-menu-item" onclick="editDefinition('${escapeAttr(fileName)}'); closeActionMenus()">编辑</button>
         <button type="button" class="action-menu-item danger" onclick="deleteDefinition('${escapeAttr(fileName)}'); closeActionMenus()">删除</button>`;
     }
@@ -483,10 +506,63 @@ async function runDefinition(path) {
             method: 'POST',
             body: JSON.stringify({ jobConfig: path })
         });
-        showToast(`任务已提交: ${result.jobId} (${result.status})`);
+        if (result.status === 'PENDING') {
+            showToast(`任务已加入队列: ${result.jobId}`);
+        } else {
+            showToast(`任务已提交: ${result.jobId} (${result.status})`);
+        }
         await loadDefinitions();
     } catch (err) {
         showToast('提交失败: ' + err.message);
+    }
+}
+
+async function openScheduleModal(fileName) {
+    try {
+        const [definition, schedule] = await Promise.all([
+            api(`/job-definitions/${encodeURIComponent(fileName)}`),
+            api(`/job-definitions/${encodeURIComponent(fileName)}/schedule`)
+        ]);
+        editingScheduleFileName = fileName;
+        const displayName = definition.name || fileName;
+        document.getElementById('schedule-modal-title').textContent = `调度设置: ${displayName}`;
+        document.getElementById('schedule-enabled').checked = schedule.enabled;
+        document.getElementById('schedule-cron').value = schedule.cron || '';
+        const editable = schedule.editable !== false;
+        document.getElementById('schedule-enabled').disabled = !editable;
+        document.getElementById('schedule-cron').disabled = !editable;
+        document.getElementById('schedule-save').style.display = editable ? '' : 'none';
+        document.getElementById('schedule-next-run').textContent =
+            schedule.nextRunAt ? formatTime(schedule.nextRunAt) : '—';
+        document.getElementById('schedule-modal').classList.remove('hidden');
+    } catch (err) {
+        showToast('加载调度配置失败: ' + err.message);
+    }
+}
+
+function closeScheduleModal() {
+    document.getElementById('schedule-modal').classList.add('hidden');
+    editingScheduleFileName = null;
+}
+
+async function saveSchedule() {
+    if (!editingScheduleFileName) {
+        return;
+    }
+    const enabled = document.getElementById('schedule-enabled').checked;
+    const cron = document.getElementById('schedule-cron').value.trim();
+    try {
+        const saved = await api(`/job-definitions/${encodeURIComponent(editingScheduleFileName)}/schedule`, {
+            method: 'PUT',
+            body: JSON.stringify({ enabled, cron })
+        });
+        document.getElementById('schedule-next-run').textContent =
+            saved.nextRunAt ? formatTime(saved.nextRunAt) : '—';
+        showToast('调度已保存');
+        closeScheduleModal();
+        loadDefinitions();
+    } catch (err) {
+        showToast('保存失败: ' + err.message);
     }
 }
 

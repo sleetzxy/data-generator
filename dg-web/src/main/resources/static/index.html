@@ -38,6 +38,8 @@
                     <th>名称</th>
                     <th>配置路径</th>
                     <th>类型</th>
+                    <th>调度</th>
+                    <th>Cron</th>
                     <th>最近状态</th>
                     <th>操作</th>
                 </tr>
@@ -109,6 +111,35 @@
                 </table>
             </div>
             <div id="log-pagination" class="pagination hidden"></div>
+        </div>
+    </div>
+</div>
+
+<div id="schedule-modal" class="modal hidden">
+    <div class="modal-backdrop"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="schedule-modal-title">调度设置</h2>
+            <button id="schedule-close" class="icon-btn" aria-label="关闭">&times;</button>
+        </div>
+        <div class="modal-body">
+            <label class="field field-checkbox">
+                <input type="checkbox" id="schedule-enabled">
+                <span>启用定时调度</span>
+            </label>
+            <label class="field">
+                <span>Cron 表达式</span>
+                <input type="text" id="schedule-cron" placeholder="0 0 2 * * ?" spellcheck="false">
+                <small class="field-hint">Spring 6 字段格式：秒 分 时 日 月 周</small>
+            </label>
+            <div class="field">
+                <span>下次执行</span>
+                <div id="schedule-next-run" class="schedule-next-run">—</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button id="schedule-cancel" class="btn">取消</button>
+            <button id="schedule-save" class="btn primary">保存</button>
         </div>
     </div>
 </div>
