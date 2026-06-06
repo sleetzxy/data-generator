@@ -1,0 +1,21 @@
+# 本地开发配置模板：复制为 application-local.yml 后填入真实连接（该文件已被 .gitignore 忽略）
+#
+#   cp application-local.yml.example application-local.yml
+#
+# application.yml 会通过 spring.config.import 自动加载 application-local.yml（若存在）。
+
+data-generator:
+  auth:
+    username: admin
+    password: your-secure-password
+  connections:
+    dev-safety:
+      type: postgresql
+      url: jdbc:postgresql://your-host:5432/SAFETY_PANYU
+      username: postgres
+      password: your-password
+    dev-road:
+      type: postgresql
+      url: jdbc:postgresql://your-host:5432/IDPS_SE_PANYU
+      username: postgres
+      password: your-password

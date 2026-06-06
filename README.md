@@ -128,11 +128,13 @@ mvn -pl dg-web package -DskipTests
 java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 ```
 
-服务默认监听 `http://localhost:8080`。可通过环境变量或 `application.yml` 覆盖 `data-generator.*` 配置。
+服务默认监听 `http://localhost:8080`。可通过环境变量、`application.yml` 或 `application-local.yml` 覆盖 `data-generator.*` 配置（本地敏感项推荐后者，见 `application-local.yml.example`）。
 
 ### Web 控制台
 
-启动后访问 `http://localhost:8080`，会跳转到登录页。默认账号见 `application.yml` 中 `data-generator.auth`（生产环境请务必修改密码）。
+启动后访问 `http://localhost:8080`，会跳转到登录页。默认账号见 `application.yml` 中 `data-generator.auth`。
+
+> **安全提示：** 默认凭据（`admin` / `admin123`）仅供本地试用。生产或公网部署前必须修改用户名与密码；数据库连接密码请写入 `application-local.yml`（参考 `application-local.yml.example`），勿提交到版本库。
 
 控制台提供：
 
@@ -170,13 +172,15 @@ data-generator:
   auth:
     enabled: true                       # false 时关闭登录（仅建议本地调试）
     username: admin
-    password: admin123                  # 生产环境务必修改
+    password: admin123                  # 生产环境务必修改；可覆盖于 application-local.yml
   storage:
     sqlite-path: ./data/dg-jobs.db      # 任务记录与运行日志 SQLite 库
   connections:                          # 数据源连接（Schema/Job YAML 引用 connection 名）
     dev-pg:
       type: postgresql
       url: jdbc:postgresql://localhost:5432/dev
+      username: postgres
+      password: changeme                # 真实密码写入 application-local.yml
   job:
     sync-threshold: 5000                # 超过此行数转异步
     batch-size: 1000
@@ -286,8 +290,9 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/jobs \
 ### 查询任务与日志
 
 ```bash
-# 列出历史任务
-curl -b cookies.txt http://localhost:8080/api/v1/jobs
+# 列出历史任务（分页，默认 page=1 size=50）
+curl -b cookies.txt http://localhost:8080/api/v1/jobs?page=1&size=50
+# 响应: {"items":[...],"total":100,"page":1,"size":50}
 
 # 查询单个任务
 curl -b cookies.txt http://localhost:8080/api/v1/jobs/{jobId}
@@ -329,7 +334,7 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}/record
 | 种子模板 | Schema `seed.template` 内联模板 + `mutate` 字段变异 |
 | Groovy 表达式 | `language: groovy` 约束与自定义表达式 |
 | 约束 repair/warn | `on_fail: repair` 自动修正；`warn` 记录告警并继续 |
-| 任务取消 | `DELETE /api/v1/jobs/{id}` 取消 PENDING/RUNNING 异步任务 |
+| 任务取消 | `DELETE /api/v1/jobs/{id}` 取消 PENDING/RUNNING 任务（同步/异步） |
 
 ### Web 与运维（当前）
 

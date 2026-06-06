@@ -1,6 +1,7 @@
 package com.datagenerator.web.service;
 
 import com.datagenerator.web.config.JobRuntimeSettings;
+import com.datagenerator.web.dto.JobListResponse;
 import com.datagenerator.web.dto.JobLogEntry;
 import com.datagenerator.web.dto.JobOptions;
 import com.datagenerator.web.dto.JobProgress;
@@ -29,6 +30,7 @@ import com.datagenerator.web.storage.JobRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
@@ -42,6 +44,7 @@ public class JobService {
 
     private static final Logger log = LoggerFactory.getLogger(JobService.class);
     private static final int PREVIEW_MAX_LIMIT = 100;
+    private static final int MAX_PAGE_SIZE = 200;
 
     private final JobOrchestrator jobOrchestrator;
     private final PreviewJobOrchestratorFactory previewOrchestratorFactory;
@@ -52,6 +55,7 @@ public class JobService {
     private final AsyncJobExecutor asyncJobExecutor;
     private final JobLogStore jobLogStore;
     private final JobRepository jobRepository;
+    private final JobCancellationRegistry cancellationRegistry;
 
     public JobService(
             JobOrchestrator jobOrchestrator,
@@ -62,7 +66,8 @@ public class JobService {
             JobRuntimeSettings runtimeSettings,
             JobRepository jobRepository,
             JobLogStore jobLogStore,
-            AsyncJobExecutor asyncJobExecutor) {
+            AsyncJobExecutor asyncJobExecutor,
+            JobCancellationRegistry cancellationRegistry) {
         this.jobOrchestrator = jobOrchestrator;
         this.previewOrchestratorFactory = previewOrchestratorFactory;
         this.configLoader = configLoader;
@@ -72,6 +77,7 @@ public class JobService {
         this.jobRepository = jobRepository;
         this.jobLogStore = jobLogStore;
         this.asyncJobExecutor = asyncJobExecutor;
+        this.cancellationRegistry = cancellationRegistry;
     }
 
     public JobSubmitResult submit(JobSubmitRequest request) {
@@ -111,10 +117,15 @@ public class JobService {
         return new JobSubmitResult(response, false);
     }
 
-    public List<JobSummaryResponse> listAll() {
-        return jobRepository.listAll().stream()
+    public JobListResponse list(int page, int size) {
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
+        int offset = (safePage - 1) * safeSize;
+        long total = jobRepository.countAll();
+        List<JobSummaryResponse> items = jobRepository.listPage(offset, safeSize).stream()
                 .map(this::toSummary)
                 .toList();
+        return new JobListResponse(items, total, safePage, safeSize);
     }
 
     public JobResponse getById(String jobId) {
@@ -135,9 +146,20 @@ public class JobService {
         if (isTerminalStatus(response.getStatus())) {
             return;
         }
-        if (!asyncJobExecutor.cancel(jobId)) {
-            throw new IllegalArgumentException("Job cannot be cancelled in status: " + response.getStatus());
+        cancellationRegistry.markCancelled(jobId);
+        if (asyncJobExecutor.cancel(jobId)) {
+            return;
         }
+        if (cancellationRegistry.interruptRunning(jobId)) {
+            JobResponse current = jobRepository.findById(jobId).orElseThrow();
+            if (!isTerminalStatus(current.getStatus())) {
+                current.setStatus(JobStatus.CANCELLED);
+                jobRepository.update(current);
+                jobLogStore.warn(jobId, "任务已被用户取消");
+            }
+            return;
+        }
+        throw new IllegalArgumentException("Job cannot be cancelled in status: " + response.getStatus());
     }
 
     private static boolean isTerminalStatus(JobStatus status) {
@@ -146,6 +168,7 @@ public class JobService {
                 || status == JobStatus.CANCELLED;
     }
 
+    @Transactional
     public void remove(String jobId) {
         JobResponse response = jobRepository.findById(jobId)
                 .orElseThrow(() -> new JobNotFoundException(jobId));
@@ -182,18 +205,24 @@ public class JobService {
             GenerationOptions options) {
         long start = System.currentTimeMillis();
         JobResponse current = jobRepository.findById(jobId).orElse(null);
-        if (current != null) {
-            current.setStatus(JobStatus.RUNNING);
-            jobRepository.update(current);
-        }
-        jobLogStore.info(jobId, "开始生成数据，共 " + job.getTables().size() + " 张表");
+        cancellationRegistry.registerRunning(jobId);
         try {
+            if (current != null) {
+                current.setStatus(JobStatus.RUNNING);
+                jobRepository.update(current);
+            }
+            jobLogStore.info(jobId, "开始生成数据，共 " + job.getTables().size() + " 张表");
             JobResult result = jobOrchestrator.run(job, writer, options);
             for (TableResult tableResult : result.details()) {
                 jobLogStore.info(
                         jobId,
                         "表 " + tableResult.table() + " 完成: 写入 "
                                 + tableResult.rows() + " 行, 失败 " + tableResult.failedRows() + " 行");
+            }
+            if (isJobCancelled(jobId)) {
+                jobLogStore.warn(jobId, "任务执行完毕但已被取消，保持 CANCELLED 状态");
+                return jobRepository.findById(jobId).orElseThrow(
+                        () -> new IllegalStateException("Job not found: " + jobId));
             }
             JobResponse response = toJobResponse(
                     jobId,
@@ -211,6 +240,9 @@ public class JobService {
                             + "，共写入 " + result.writtenRows() + " 行");
             return response;
         } catch (Exception exception) {
+            if (isJobCancelled(jobId)) {
+                throw exception;
+            }
             jobLogStore.error(jobId, "任务执行失败: " + exception.getMessage());
             JobResponse failed = current == null
                     ? new JobResponse(jobId, JobStatus.FAILED, emptyProgress(), List.of(), null, null, null, exception.getMessage(), null)
@@ -220,6 +252,8 @@ public class JobService {
             failed.setDetails(List.of(new TableDetail("_error", 0, 0, exception.getMessage())));
             jobRepository.update(failed);
             throw exception;
+        } finally {
+            cancellationRegistry.unregisterRunning(jobId);
         }
     }
 
@@ -415,5 +449,14 @@ public class JobService {
 
     private static JobProgress emptyProgress() {
         return new JobProgress(0, 0, 0, 0, 0);
+    }
+
+    private boolean isJobCancelled(String jobId) {
+        if (cancellationRegistry.isCancelled(jobId) || asyncJobExecutor.isCancelled(jobId)) {
+            return true;
+        }
+        return jobRepository.findById(jobId)
+                .map(job -> job.getStatus() == JobStatus.CANCELLED)
+                .orElse(false);
     }
 }

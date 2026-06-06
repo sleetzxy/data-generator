@@ -14,6 +14,8 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
+import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
 @Configuration
 @EnableWebSecurity
@@ -29,11 +31,15 @@ public class SecurityConfig {
     @Bean
     @ConditionalOnProperty(prefix = "data-generator.auth", name = "enabled", havingValue = "true", matchIfMissing = true)
     SecurityFilterChain authenticatedFilterChain(HttpSecurity http) throws Exception {
+        CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
+        requestHandler.setCsrfRequestAttributeName(null);
+
         http
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 LOGIN_PAGE,
                                 "/style.css",
+                                "/csrf.js",
                                 "/api/v1/auth/login",
                                 "/api/v1/health")
                         .permitAll()
@@ -49,7 +55,9 @@ public class SecurityConfig {
                         .logoutSuccessUrl("/login.html?logout=true")
                         .permitAll())
                 .exceptionHandling(ex -> ex.authenticationEntryPoint(this::commenceAuthentication))
-                .csrf(csrf -> csrf.disable());
+                .csrf(csrf -> csrf
+                        .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
+                        .csrfTokenRequestHandler(requestHandler));
         return http.build();
     }
 

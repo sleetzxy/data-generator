@@ -79,6 +79,19 @@ class JobRepositoryTest {
                 .containsExactly("job-run");
     }
 
+    @Test
+    void listPage_and_countAll_supportPagination() {
+        for (int index = 0; index < 5; index++) {
+            JobResponse job = sampleJob("job-" + index, JobStatus.COMPLETED);
+            job.setSubmittedAt("2026-06-0" + (index + 1) + "T00:00:00Z");
+            repository.insert(job);
+        }
+
+        assertThat(repository.countAll()).isEqualTo(5);
+        assertThat(repository.listPage(0, 2)).hasSize(2);
+        assertThat(repository.listPage(0, 2).get(0).getJobId()).isEqualTo("job-4");
+    }
+
     private static JobResponse sampleJob(String jobId, JobStatus status) {
         return new JobResponse(
                 jobId,

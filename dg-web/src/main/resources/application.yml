@@ -1,6 +1,10 @@
 server:
   port: 8080
 
+spring:
+  config:
+    import: optional:classpath:application-local.yml
+
 data-generator:
   config-dir: classpath:configs
   writable-config-dir: ./data/configs
@@ -11,14 +15,14 @@ data-generator:
   connections:
     dev-safety:
       type: postgresql
-      url: jdbc:postgresql://172.25.61.186:5432/SAFETY_PANYU
+      url: jdbc:postgresql://localhost:5432/safety
       username: postgres
-      password: Its@312
+      password: changeme
     dev-road:
       type: postgresql
-      url: jdbc:postgresql://172.25.61.186:5432/IDPS_SE_PANYU
+      url: jdbc:postgresql://localhost:5432/road
       username: postgres
-      password: Its@312
+      password: changeme
     dev-ch:
       type: clickhouse
       url: jdbc:clickhouse://localhost:8123/analytics

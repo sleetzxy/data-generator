@@ -6,17 +6,18 @@ import com.datagenerator.web.dto.JobResponse;
 import com.datagenerator.web.dto.JobStatus;
 import com.datagenerator.web.dto.TableDetail;
 import com.datagenerator.web.storage.JobRepository;
+import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.time.Instant;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 异步任务执行器：后台线程池执行造数任务并持久化状态。
@@ -29,16 +30,18 @@ public class AsyncJobExecutor {
     private final ExecutorService executor;
     private final JobRepository jobRepository;
     private final JobLogStore jobLogStore;
+    private final JobCancellationRegistry cancellationRegistry;
     private final ConcurrentHashMap<String, Future<?>> futures = new ConcurrentHashMap<>();
-    private final Set<String> cancelled = ConcurrentHashMap.newKeySet();
 
     public AsyncJobExecutor(
             JobRuntimeSettings runtimeSettings,
             JobRepository jobRepository,
-            JobLogStore jobLogStore) {
+            JobLogStore jobLogStore,
+            JobCancellationRegistry cancellationRegistry) {
         this.executor = Executors.newFixedThreadPool(Math.max(1, runtimeSettings.threadPoolSize()));
         this.jobRepository = jobRepository;
         this.jobLogStore = jobLogStore;
+        this.cancellationRegistry = cancellationRegistry;
     }
 
     public void submit(String jobId, Runnable task) {
@@ -58,22 +61,22 @@ public class AsyncJobExecutor {
         });
         persistStatus(current, JobStatus.PENDING);
         Future<?> future = executor.submit(() -> {
-            if (cancelled.contains(jobId)) {
-                markCancelled(jobId);
-                jobLogStore.warn(jobId, "任务在启动前已取消");
-                return;
-            }
-            persistStatus(loadJob(jobId), JobStatus.RUNNING);
-            jobLogStore.info(jobId, "任务开始执行");
             try {
-                if (cancelled.contains(jobId)) {
+                if (cancellationRegistry.isCancelled(jobId)) {
+                    markCancelled(jobId);
+                    jobLogStore.warn(jobId, "任务在启动前已取消");
+                    return;
+                }
+                persistStatus(loadJob(jobId), JobStatus.RUNNING);
+                jobLogStore.info(jobId, "任务开始执行");
+                if (cancellationRegistry.isCancelled(jobId)) {
                     markCancelled(jobId);
                     jobLogStore.warn(jobId, "任务已取消");
                     return;
                 }
                 task.run();
             } catch (Exception exception) {
-                if (cancelled.contains(jobId)) {
+                if (cancellationRegistry.isCancelled(jobId)) {
                     markCancelled(jobId);
                     jobLogStore.warn(jobId, "任务已取消");
                     return;
@@ -87,6 +90,9 @@ public class AsyncJobExecutor {
                     latest.setDetails(List.of(new TableDetail("_error", 0, 0, exception.getMessage())));
                     jobRepository.update(latest);
                 }
+            } finally {
+                futures.remove(jobId);
+                cancellationRegistry.clear(jobId);
             }
         });
         futures.put(jobId, future);
@@ -100,15 +106,34 @@ public class AsyncJobExecutor {
         if (current.getStatus() != JobStatus.PENDING && current.getStatus() != JobStatus.RUNNING) {
             return false;
         }
-        cancelled.add(jobId);
-        Future<?> future = futures.remove(jobId);
-        if (future != null) {
-            future.cancel(true);
+        Future<?> future = futures.get(jobId);
+        if (future == null) {
+            return false;
         }
+        cancellationRegistry.markCancelled(jobId);
+        futures.remove(jobId);
+        future.cancel(true);
         persistStatus(current, JobStatus.CANCELLED);
         jobLogStore.warn(jobId, "任务已被用户取消");
         log.info("Cancelled async job {}", jobId);
         return true;
+    }
+
+    public boolean isCancelled(String jobId) {
+        return cancellationRegistry.isCancelled(jobId);
+    }
+
+    @PreDestroy
+    void shutdown() {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException exception) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
     }
 
     private JobResponse loadJob(String jobId) {

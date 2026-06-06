@@ -97,6 +97,19 @@ public class JobRepository {
                 """, this::mapRow);
     }
 
+    public List<JobResponse> listPage(int offset, int limit) {
+        return jdbcTemplate.query("""
+                SELECT job_id, status, job_config, submitted_at, duration, error_message,
+                       total_tables, completed_tables, total_rows, written_rows, failed_rows, details_json
+                FROM jobs ORDER BY submitted_at DESC LIMIT ? OFFSET ?
+                """, this::mapRow, limit, offset);
+    }
+
+    public long countAll() {
+        Long count = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM jobs", Long.class);
+        return count == null ? 0L : count;
+    }
+
     public List<JobResponse> findByStatusIn(List<JobStatus> statuses) {
         if (statuses.isEmpty()) {
             return List.of();

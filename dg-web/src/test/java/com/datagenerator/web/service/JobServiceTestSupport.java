@@ -14,14 +14,16 @@ public final class JobServiceTestSupport {
     public record JobServiceContext(
             JobRepository jobRepository,
             JobLogStore jobLogStore,
-            AsyncJobExecutor asyncJobExecutor) {}
+            AsyncJobExecutor asyncJobExecutor,
+            JobCancellationRegistry cancellationRegistry) {}
 
     public static JobServiceContext createContext(JobRuntimeSettings runtimeSettings) {
         JdbcTemplate jdbcTemplate = SqliteTestSupport.createInMemoryJdbcTemplate();
         JobRepository jobRepository = new JobRepository(jdbcTemplate, SqliteTestSupport.objectMapper());
         JobLogStore jobLogStore = new JobLogStore(new JobLogRepository(jdbcTemplate));
+        JobCancellationRegistry cancellationRegistry = new JobCancellationRegistry();
         AsyncJobExecutor asyncJobExecutor = new AsyncJobExecutor(
-                runtimeSettings, jobRepository, jobLogStore);
-        return new JobServiceContext(jobRepository, jobLogStore, asyncJobExecutor);
+                runtimeSettings, jobRepository, jobLogStore, cancellationRegistry);
+        return new JobServiceContext(jobRepository, jobLogStore, asyncJobExecutor, cancellationRegistry);
     }
 }

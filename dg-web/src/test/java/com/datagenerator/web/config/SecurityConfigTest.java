@@ -8,6 +8,7 @@ import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.redirectedUrl;
@@ -40,10 +41,19 @@ class SecurityConfigTest {
     @Test
     void formLogin_withValidCredentials_redirectsToHome() throws Exception {
         mockMvc.perform(post("/api/v1/auth/login")
+                        .with(csrf())
                         .param("username", "testuser")
                         .param("password", "testpass"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/"));
+    }
+
+    @Test
+    void formLogin_withoutCsrf_returnsForbidden() throws Exception {
+        mockMvc.perform(post("/api/v1/auth/login")
+                        .param("username", "testuser")
+                        .param("password", "testpass"))
+                .andExpect(status().isForbidden());
     }
 
     @Test

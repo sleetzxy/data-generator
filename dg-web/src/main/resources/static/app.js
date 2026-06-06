@@ -42,9 +42,17 @@ document.getElementById('log-close').addEventListener('click', closeLogModal);
 document.querySelector('#log-modal .modal-backdrop').addEventListener('click', closeLogModal);
 
 async function api(path, options = {}) {
+    const method = (options.method || 'GET').toUpperCase();
+    const headers = { 'Content-Type': 'application/json', ...options.headers };
+    if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS' && typeof getCsrfToken === 'function') {
+        const csrfToken = getCsrfToken();
+        if (csrfToken) {
+            headers['X-XSRF-TOKEN'] = csrfToken;
+        }
+    }
     const response = await fetch(`${API}${path}`, {
         credentials: 'same-origin',
-        headers: { 'Content-Type': 'application/json', ...options.headers },
+        headers,
         ...options
     });
     if (response.status === 401) {
@@ -113,12 +121,27 @@ function findActiveRun(path) {
         .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))[0] || null;
 }
 
+async function fetchAllJobs() {
+    const all = [];
+    let page = 1;
+    const size = 100;
+    while (true) {
+        const data = await api(`/jobs?page=${page}&size=${size}`);
+        all.push(...(data.items || []));
+        if (all.length >= data.total || !data.items?.length) {
+            break;
+        }
+        page++;
+    }
+    return all;
+}
+
 async function loadDefinitions() {
     const tbody = document.getElementById('definitions-body');
     try {
         const [items, runs] = await Promise.all([
             api('/job-definitions'),
-            api('/jobs')
+            fetchAllJobs()
         ]);
         allRunsCache = runs;
 
@@ -252,7 +275,7 @@ async function runDefinition(path) {
 async function viewDefinitionLogs(name, path) {
     try {
         if (!allRunsCache.length) {
-            allRunsCache = await api('/jobs');
+            allRunsCache = await fetchAllJobs();
         }
         const runs = allRunsCache
             .filter(run => run.jobConfig === path)
@@ -460,7 +483,7 @@ async function stopRun(jobId) {
     }
     if (!confirm(`确定停止任务 ${jobId}？`)) return;
     try {
-        const runs = await api('/jobs');
+        const runs = await fetchAllJobs();
         allRunsCache = runs;
         const current = runs.find(run => run.jobId === jobId);
         if (!current || !isActiveRun(current.status)) {

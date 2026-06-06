@@ -1,5 +1,6 @@
 package com.datagenerator.web.controller;
 
+import com.datagenerator.web.dto.JobListResponse;
 import com.datagenerator.web.dto.JobLogEntry;
 import com.datagenerator.web.dto.JobResponse;
 import com.datagenerator.web.dto.JobSubmitRequest;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -28,8 +30,10 @@ public class JobController {
     }
 
     @GetMapping
-    public List<JobSummaryResponse> listJobs() {
-        return jobService.listAll();
+    public JobListResponse listJobs(
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return jobService.list(page, size);
     }
 
     @PostMapping
