@@ -28,6 +28,13 @@ public class GlobalExceptionHandler {
                 .body(new ErrorResponse(HttpStatus.NOT_FOUND.value(), exception.getMessage()));
     }
 
+    @ExceptionHandler(ReadOnlyScheduleException.class)
+    public ResponseEntity<ErrorResponse> handleReadOnlySchedule(ReadOnlyScheduleException exception) {
+        log.warn("Read-only schedule: {}", exception.getMessage());
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(new ErrorResponse(HttpStatus.FORBIDDEN.value(), exception.getMessage()));
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleInternalError(Exception exception) {
         log.error("Unhandled exception", exception);

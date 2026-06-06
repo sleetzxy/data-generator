@@ -3,6 +3,7 @@ package com.datagenerator.web.controller;
 import com.datagenerator.web.dto.JobDefinitionResponse;
 import com.datagenerator.web.service.JobDefinitionService;
 import com.datagenerator.web.testsupport.WebTestApplication;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
@@ -47,5 +48,12 @@ class JobDefinitionControllerTest {
                 .andExpect(jsonPath("$.path").value("jobs/single_customer.yaml"))
                 .andExpect(jsonPath("$.builtin").value(true))
                 .andExpect(jsonPath("$.readOnly").value(true));
+    }
+
+    @Disabled("Task 10: schedule endpoints not yet implemented")
+    @Test
+    void updateSchedule_builtinJob_returns403() {
+        // PUT /api/v1/job-definitions/{name}/schedule
+        // ReadOnlyScheduleException → 403 FORBIDDEN via GlobalExceptionHandler
     }
 }
