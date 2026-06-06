@@ -2,10 +2,12 @@ package com.datagenerator.web.service;
 
 import com.datagenerator.web.dto.JobDefinitionRequest;
 import com.datagenerator.web.dto.JobDefinitionResponse;
+import com.datagenerator.web.storage.JobScheduleRepository;
 import com.datagenerator.core.schema.ConfigLoadException;
 import com.datagenerator.core.schema.ConfigPathResolver;
 import com.datagenerator.core.schema.JobDefinition;
 import com.datagenerator.core.schema.YamlConfigLoader;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
 
@@ -25,11 +27,24 @@ public class JobDefinitionService {
 
     private final ConfigPathResolver pathResolver;
     private final YamlConfigLoader configLoader;
+    private final JobScheduleService scheduleService;
+    private final JobScheduleManager scheduleManager;
+    private final JobScheduleExecutor scheduleExecutor;
+    private final JobScheduleRepository scheduleRepository;
     private final Yaml yaml = new Yaml();
 
-    public JobDefinitionService(ConfigPathResolver pathResolver) {
+    public JobDefinitionService(
+            ConfigPathResolver pathResolver,
+            JobScheduleService scheduleService,
+            @Lazy JobScheduleManager scheduleManager,
+            JobScheduleExecutor scheduleExecutor,
+            JobScheduleRepository scheduleRepository) {
         this.pathResolver = pathResolver;
         this.configLoader = new YamlConfigLoader(pathResolver);
+        this.scheduleService = scheduleService;
+        this.scheduleManager = scheduleManager;
+        this.scheduleExecutor = scheduleExecutor;
+        this.scheduleRepository = scheduleRepository;
     }
 
     public List<JobDefinitionResponse> list() {
@@ -85,6 +100,9 @@ public class JobDefinitionService {
         if (overlayFile == null || !Files.isRegularFile(overlayFile)) {
             throw new IllegalArgumentException("Job definition not found: " + name);
         }
+        scheduleManager.cancel(configPath);
+        scheduleExecutor.clearQueue(configPath);
+        scheduleRepository.deleteByConfigPath(configPath);
         try {
             Files.delete(overlayFile);
         } catch (IOException exception) {
@@ -106,23 +124,35 @@ public class JobDefinitionService {
         if (displayName == null || displayName.isBlank()) {
             displayName = fileName;
         }
-        return new JobDefinitionResponse(fileName, configPath, id, displayName, content, builtin, builtin);
+        JobDefinitionResponse response =
+                new JobDefinitionResponse(fileName, configPath, id, displayName, content, builtin, builtin);
+        response.setSchedule(scheduleService.resolveSchedule(configPath, builtin));
+        return response;
     }
 
     private void validateContent(String content, String excludeConfigPath) {
         if (content == null || content.isBlank()) {
             throw new IllegalArgumentException("Job content is required");
         }
-        String id = extractRequiredId(content);
+        Map<?, ?> root = parseRootMapping(content);
+        boolean custom = excludeConfigPath == null || !isBuiltin(excludeConfigPath);
+        if (custom && root.containsKey("schedule")) {
+            throw new IllegalArgumentException("Custom job YAML must not contain schedule block");
+        }
+        String id = requireId(root);
         validateIdFormat(id);
         validateIdUnique(id, excludeConfigPath);
     }
 
-    private String extractRequiredId(String content) {
+    private Map<?, ?> parseRootMapping(String content) {
         Object loaded = yaml.load(content);
         if (!(loaded instanceof Map<?, ?> root)) {
             throw new IllegalArgumentException("Job YAML must be a mapping");
         }
+        return root;
+    }
+
+    private String requireId(Map<?, ?> root) {
         Object idValue = root.get("id");
         if (idValue == null || String.valueOf(idValue).isBlank()) {
             throw new IllegalArgumentException("Job YAML id field is required");

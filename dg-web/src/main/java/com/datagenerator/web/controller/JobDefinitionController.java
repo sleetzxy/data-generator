@@ -2,7 +2,11 @@ package com.datagenerator.web.controller;
 
 import com.datagenerator.web.dto.JobDefinitionRequest;
 import com.datagenerator.web.dto.JobDefinitionResponse;
+import com.datagenerator.web.dto.JobScheduleRequest;
+import com.datagenerator.web.dto.JobScheduleResponse;
 import com.datagenerator.web.service.JobDefinitionService;
+import com.datagenerator.web.service.JobScheduleManager;
+import com.datagenerator.web.service.JobScheduleService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -21,9 +25,16 @@ import java.util.List;
 public class JobDefinitionController {
 
     private final JobDefinitionService jobDefinitionService;
+    private final JobScheduleService jobScheduleService;
+    private final JobScheduleManager scheduleManager;
 
-    public JobDefinitionController(JobDefinitionService jobDefinitionService) {
+    public JobDefinitionController(
+            JobDefinitionService jobDefinitionService,
+            JobScheduleService jobScheduleService,
+            JobScheduleManager scheduleManager) {
         this.jobDefinitionService = jobDefinitionService;
+        this.jobScheduleService = jobScheduleService;
+        this.scheduleManager = scheduleManager;
     }
 
     @GetMapping
@@ -52,5 +63,22 @@ public class JobDefinitionController {
     public ResponseEntity<Void> delete(@PathVariable("name") String name) {
         jobDefinitionService.delete(name);
         return ResponseEntity.noContent().build();
+    }
+
+    @GetMapping("/{name}/schedule")
+    public JobScheduleResponse getSchedule(@PathVariable("name") String name) {
+        JobDefinitionResponse definition = jobDefinitionService.get(name);
+        return jobScheduleService.resolveSchedule(definition.getPath(), definition.isBuiltin());
+    }
+
+    @PutMapping("/{name}/schedule")
+    public JobScheduleResponse updateSchedule(
+            @PathVariable("name") String name,
+            @RequestBody JobScheduleRequest request) {
+        JobDefinitionResponse definition = jobDefinitionService.get(name);
+        String configPath = definition.getPath();
+        JobScheduleResponse saved = jobScheduleService.saveSchedule(configPath, request);
+        scheduleManager.reschedule(configPath);
+        return saved;
     }
 }

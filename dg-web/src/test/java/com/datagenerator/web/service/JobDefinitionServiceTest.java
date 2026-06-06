@@ -1,15 +1,20 @@
 package com.datagenerator.web.service;
 
 import com.datagenerator.core.schema.ConfigPathResolver;
+import com.datagenerator.web.storage.JobScheduleRepository;
+import com.datagenerator.web.storage.SqliteTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 
 class JobDefinitionServiceTest {
 
@@ -19,6 +24,9 @@ class JobDefinitionServiceTest {
     private Path primaryDir;
     private Path overlayDir;
     private JobDefinitionService service;
+    private JobScheduleManager scheduleManager;
+    private JobScheduleExecutor scheduleExecutor;
+    private JobScheduleRepository scheduleRepository;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -26,8 +34,14 @@ class JobDefinitionServiceTest {
         overlayDir = tempDir.resolve("overlay");
         Files.createDirectories(primaryDir);
         Files.createDirectories(overlayDir);
+        JdbcTemplate jdbcTemplate = SqliteTestSupport.createInMemoryJdbcTemplate();
+        scheduleRepository = new JobScheduleRepository(jdbcTemplate);
         ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlayDir);
-        service = new JobDefinitionService(resolver);
+        JobScheduleService scheduleService = new JobScheduleService(resolver, scheduleRepository);
+        scheduleManager = mock(JobScheduleManager.class);
+        scheduleExecutor = mock(JobScheduleExecutor.class);
+        service = new JobDefinitionService(
+                resolver, scheduleService, scheduleManager, scheduleExecutor, scheduleRepository);
     }
 
     @Test
@@ -66,7 +80,7 @@ class JobDefinitionServiceTest {
                 primaryDir.resolve("jobs/builtin.yaml"),
                 "id: builtin\nname: 内置任务\ntables: []");
         ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlayDir);
-        JobDefinitionService builtinService = new JobDefinitionService(resolver);
+        JobDefinitionService builtinService = createService(resolver);
 
         assertThatThrownBy(() -> builtinService.update("builtin", request("builtin", """
                 id: builtin
@@ -88,7 +102,7 @@ class JobDefinitionServiceTest {
                 overlayDir.resolve("jobs/builtin.yaml"),
                 "id: builtin\nname: 覆盖副本\ntables: []");
         ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlayDir);
-        JobDefinitionService builtinService = new JobDefinitionService(resolver);
+        JobDefinitionService builtinService = createService(resolver);
 
         assertThat(builtinService.list())
                 .extracting("fileName", "builtin", "readOnly")
@@ -103,6 +117,9 @@ class JobDefinitionServiceTest {
 
         assertThatThrownBy(() -> service.get("demo_job"))
                 .isInstanceOf(com.datagenerator.core.schema.ConfigLoadException.class);
+        verify(scheduleManager).cancel("jobs/demo_job.yaml");
+        verify(scheduleExecutor).clearQueue("jobs/demo_job.yaml");
+        assertThat(scheduleRepository.findByConfigPath("jobs/demo_job.yaml")).isEmpty();
     }
 
     @Test
@@ -112,7 +129,7 @@ class JobDefinitionServiceTest {
                 primaryDir.resolve("jobs/builtin.yaml"),
                 "id: builtin\nname: 内置任务\ntables: []");
         ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlayDir);
-        JobDefinitionService builtinService = new JobDefinitionService(resolver);
+        JobDefinitionService builtinService = createService(resolver);
 
         assertThatThrownBy(() -> builtinService.delete("builtin"))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -137,6 +154,20 @@ class JobDefinitionServiceTest {
     }
 
     @Test
+    void create_customJobWithScheduleBlock_rejected() {
+        assertThatThrownBy(() -> service.create(request("demo_job", """
+                id: demo_job
+                name: 演示任务
+                schedule:
+                  enabled: true
+                  cron: "0 0 2 * * ?"
+                tables: []
+                """)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("must not contain schedule block");
+    }
+
+    @Test
     void create_duplicateId_rejectsRequest() throws Exception {
         Files.createDirectories(primaryDir.resolve("jobs"));
         Files.writeString(primaryDir.resolve("jobs/existing.yaml"), "id: shared_id\nname: 已有任务\ntables: []");
@@ -144,6 +175,16 @@ class JobDefinitionServiceTest {
         assertThatThrownBy(() -> service.create(request("new_job", "id: shared_id\nname: 新任务\ntables: []")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Job id already exists");
+    }
+
+    private JobDefinitionService createService(ConfigPathResolver resolver) {
+        JobScheduleService scheduleService = new JobScheduleService(resolver, scheduleRepository);
+        return new JobDefinitionService(
+                resolver,
+                scheduleService,
+                mock(JobScheduleManager.class),
+                mock(JobScheduleExecutor.class),
+                scheduleRepository);
     }
 
     private static com.datagenerator.web.dto.JobDefinitionRequest request(String name, String content) {

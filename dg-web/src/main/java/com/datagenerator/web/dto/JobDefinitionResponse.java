@@ -16,6 +16,7 @@ public class JobDefinitionResponse {
     /** 是否只读（内置任务不可编辑/删除） */
     @JsonProperty("readOnly")
     private boolean readOnly;
+    private JobScheduleResponse schedule;
 
     public JobDefinitionResponse() {
     }
@@ -95,5 +96,13 @@ public class JobDefinitionResponse {
 
     public void setReadOnly(boolean readOnly) {
         this.readOnly = readOnly;
+    }
+
+    public JobScheduleResponse getSchedule() {
+        return schedule;
+    }
+
+    public void setSchedule(JobScheduleResponse schedule) {
+        this.schedule = schedule;
     }
 }
