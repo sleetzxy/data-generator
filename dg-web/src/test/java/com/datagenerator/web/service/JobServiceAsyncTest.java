@@ -121,7 +121,9 @@ class JobServiceAsyncTest {
                 context.jobRepository(),
                 context.jobLogStore(),
                 context.asyncJobExecutor(),
-                context.cancellationRegistry());
+                context.cancellationRegistry(),
+                context.scheduleExecutor());
+        JobServiceTestSupport.wireEnqueueToDoSubmit(jobService, context.scheduleExecutor());
 
         JobSubmitRequest request = new JobSubmitRequest();
         request.setJobConfig("jobs/small.yaml");
@@ -180,18 +182,7 @@ class JobServiceAsyncTest {
         when(configLoader.loadJob("jobs/large.yaml")).thenReturn(job);
 
         JobRuntimeSettings runtimeSettings = new JobRuntimeSettings(100, 1000, 2);
-        JobServiceTestSupport.JobServiceContext context = JobServiceTestSupport.createContext(runtimeSettings);
-        return new JobService(
-                orchestrator,
-                mock(PreviewJobOrchestratorFactory.class),
-                configLoader,
-                constraintLoader,
-                connectionRegistry,
-                runtimeSettings,
-                context.jobRepository(),
-                context.jobLogStore(),
-                context.asyncJobExecutor(),
-                context.cancellationRegistry());
+        return JobServiceTestSupport.createJobService(runtimeSettings, orchestrator, configLoader);
     }
 
     private static JobOrchestrator mockOrchestratorReturningSuccess() {

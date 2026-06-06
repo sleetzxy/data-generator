@@ -13,6 +13,7 @@ import com.datagenerator.web.dto.JobSummaryResponse;
 import com.datagenerator.web.dto.PreviewOptions;
 import com.datagenerator.web.dto.PreviewRequest;
 import com.datagenerator.web.dto.TableDetail;
+import com.datagenerator.web.dto.TriggerSource;
 import com.datagenerator.web.exception.JobNotFoundException;
 import com.datagenerator.web.internal.CollectingWriter;
 import com.datagenerator.core.config.ConnectionRegistry;
@@ -29,6 +30,7 @@ import com.datagenerator.core.schema.YamlConfigLoader;
 import com.datagenerator.web.storage.JobRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -56,6 +58,7 @@ public class JobService {
     private final JobLogStore jobLogStore;
     private final JobRepository jobRepository;
     private final JobCancellationRegistry cancellationRegistry;
+    private final JobScheduleExecutor scheduleExecutor;
 
     public JobService(
             JobOrchestrator jobOrchestrator,
@@ -67,7 +70,8 @@ public class JobService {
             JobRepository jobRepository,
             JobLogStore jobLogStore,
             AsyncJobExecutor asyncJobExecutor,
-            JobCancellationRegistry cancellationRegistry) {
+            JobCancellationRegistry cancellationRegistry,
+            @Lazy JobScheduleExecutor scheduleExecutor) {
         this.jobOrchestrator = jobOrchestrator;
         this.previewOrchestratorFactory = previewOrchestratorFactory;
         this.configLoader = configLoader;
@@ -78,9 +82,64 @@ public class JobService {
         this.jobLogStore = jobLogStore;
         this.asyncJobExecutor = asyncJobExecutor;
         this.cancellationRegistry = cancellationRegistry;
+        this.scheduleExecutor = scheduleExecutor;
     }
 
     public JobSubmitResult submit(JobSubmitRequest request) {
+        return scheduleExecutor.enqueue(request.getJobConfig(), TriggerSource.MANUAL, request);
+    }
+
+    public JobResponse createQueuedJob(String configPath, TriggerSource triggerSource) {
+        validateJobConfig(configPath);
+        String jobId = generateJobId();
+        String submittedAt = Instant.now().toString();
+        JobResponse placeholder = new JobResponse(
+                jobId,
+                JobStatus.PENDING,
+                emptyProgress(),
+                List.of(),
+                null,
+                configPath,
+                submittedAt,
+                null,
+                null);
+        placeholder.setTriggerSource(triggerSource);
+        jobRepository.insert(placeholder);
+        jobLogStore.info(jobId, "已加入队列");
+        return placeholder;
+    }
+
+    public void executeAccepted(String jobId, JobSubmitRequest request) {
+        JobResponse stored = jobRepository.findById(jobId)
+                .orElseThrow(() -> new JobNotFoundException(jobId));
+        JobDefinition job = loadAndApplyOverrides(request);
+        GenerationOptions options = toGenerationOptions(request.getOptions());
+        Map<String, Object> writer = resolveWriter(job, request.getWriter());
+        long estimatedRows = estimateTotalRows(job);
+
+        jobLogStore.info(jobId, "任务已提交，配置文件: " + request.getJobConfig());
+        jobLogStore.info(jobId, "预估生成行数: " + estimatedRows);
+
+        boolean forceAsync = stored.getTriggerSource() == TriggerSource.SCHEDULED;
+        int syncThreshold = resolveSyncThreshold(request.getOptions());
+        if (forceAsync || estimatedRows > syncThreshold) {
+            log.info("Executing accepted job {} async (forceAsync={}, estimatedRows={}, threshold={})",
+                    jobId, forceAsync, estimatedRows, syncThreshold);
+            if (forceAsync) {
+                jobLogStore.info(jobId, "定时触发，转为异步执行");
+            } else {
+                jobLogStore.info(jobId, "超过同步阈值 " + syncThreshold + "，转为异步执行");
+            }
+            asyncJobExecutor.submit(jobId, () -> executeAndStore(jobId, job, writer, options));
+            return;
+        }
+
+        log.info("Executing accepted job {} sync (estimatedRows={})", jobId, estimatedRows);
+        jobLogStore.info(jobId, "同步执行中");
+        executeAndStore(jobId, job, writer, options);
+    }
+
+    JobSubmitResult doSubmit(JobSubmitRequest request, TriggerSource triggerSource) {
         validateJobConfig(request.getJobConfig());
         String jobId = generateJobId();
         String submittedAt = Instant.now().toString();
@@ -98,14 +157,21 @@ public class JobService {
                 submittedAt,
                 null,
                 null);
+        placeholder.setTriggerSource(triggerSource);
         jobRepository.insert(placeholder);
         jobLogStore.info(jobId, "任务已提交，配置文件: " + request.getJobConfig());
         jobLogStore.info(jobId, "预估生成行数: " + estimatedRows);
 
+        boolean forceAsync = triggerSource == TriggerSource.SCHEDULED;
         int syncThreshold = resolveSyncThreshold(request.getOptions());
-        if (estimatedRows > syncThreshold) {
-            log.info("Submitting async job {} (estimatedRows={}, threshold={})", jobId, estimatedRows, syncThreshold);
-            jobLogStore.info(jobId, "超过同步阈值 " + syncThreshold + "，转为异步执行");
+        if (forceAsync || estimatedRows > syncThreshold) {
+            log.info("Submitting async job {} (forceAsync={}, estimatedRows={}, threshold={})",
+                    jobId, forceAsync, estimatedRows, syncThreshold);
+            if (forceAsync) {
+                jobLogStore.info(jobId, "定时触发，转为异步执行");
+            } else {
+                jobLogStore.info(jobId, "超过同步阈值 " + syncThreshold + "，转为异步执行");
+            }
             asyncJobExecutor.submit(jobId, () -> executeAndStore(jobId, job, resolveWriter(job, request.getWriter()), options));
             JobResponse pending = jobRepository.findById(jobId).orElseThrow();
             return new JobSubmitResult(pending, true);
@@ -146,8 +212,10 @@ public class JobService {
         if (isTerminalStatus(response.getStatus())) {
             return;
         }
+        String jobConfig = response.getJobConfig();
         cancellationRegistry.markCancelled(jobId);
         if (asyncJobExecutor.cancel(jobId)) {
+            scheduleExecutor.onJobTerminal(jobConfig);
             return;
         }
         if (cancellationRegistry.interruptRunning(jobId)) {
@@ -157,6 +225,7 @@ public class JobService {
                 jobRepository.update(current);
                 jobLogStore.warn(jobId, "任务已被用户取消");
             }
+            scheduleExecutor.onJobTerminal(jobConfig);
             return;
         }
         throw new IllegalArgumentException("Job cannot be cancelled in status: " + response.getStatus());
@@ -205,6 +274,7 @@ public class JobService {
             GenerationOptions options) {
         long start = System.currentTimeMillis();
         JobResponse current = jobRepository.findById(jobId).orElse(null);
+        String jobConfig = current == null ? null : current.getJobConfig();
         cancellationRegistry.registerRunning(jobId);
         try {
             if (current != null) {
@@ -254,6 +324,9 @@ public class JobService {
             throw exception;
         } finally {
             cancellationRegistry.unregisterRunning(jobId);
+            if (jobConfig != null) {
+                scheduleExecutor.onJobTerminal(jobConfig);
+            }
         }
     }
 

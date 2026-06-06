@@ -35,7 +35,8 @@ class JobServiceWriterResolutionTest {
                 context.jobRepository(),
                 context.jobLogStore(),
                 context.asyncJobExecutor(),
-                context.cancellationRegistry());
+                context.cancellationRegistry(),
+                context.scheduleExecutor());
     }
 
     @Test
