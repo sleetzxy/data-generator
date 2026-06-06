@@ -91,6 +91,17 @@ class YamlConfigLoaderTest {
     }
 
     @Test
+    void loadJob_withSchedule_parsesEnabledAndCron() {
+        JobDefinition job = loader.loadJob("fixtures/jobs/scheduled_job.yaml");
+        assertThat(job.getId()).isEqualTo("scheduled_job");
+        assertThat(job.getName()).isEqualTo("定时任务示例");
+
+        ScheduleDefinition schedule = job.getSchedule().orElseThrow();
+        assertThat(schedule.isEnabled()).isTrue();
+        assertThat(schedule.getCron()).isEqualTo("0 0 2 * * ?");
+    }
+
+    @Test
     void loadJob_legacyJobField_fallsBackToName() {
         JobDefinition job = loader.loadJob("fixtures/jobs/legacy_job_field.yaml");
         assertThat(job.getName()).isEqualTo("legacy_name");

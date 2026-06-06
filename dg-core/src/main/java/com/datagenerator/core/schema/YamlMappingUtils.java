@@ -135,6 +135,16 @@ final class YamlMappingUtils {
         return task;
     }
 
+    static ScheduleDefinition toScheduleDefinition(Map<String, Object> source) {
+        ScheduleDefinition schedule = new ScheduleDefinition();
+        Object enabled = source.get("enabled");
+        if (enabled instanceof Boolean bool) {
+            schedule.setEnabled(bool);
+        }
+        schedule.setCron(asString(source.get("cron")));
+        return schedule;
+    }
+
     static ConstraintDefinition toConstraintDefinition(Map<String, Object> source) {
         ConstraintDefinition constraint = new ConstraintDefinition();
         constraint.setLevel(asString(source.get("level")));

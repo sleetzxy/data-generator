@@ -15,6 +15,7 @@ public class JobDefinition {
     private List<ConstraintDefinition> inlineConstraints = new ArrayList<>();
     private Map<String, Object> writer = new HashMap<>();
     private List<TableTask> tables = new ArrayList<>();
+    private ScheduleDefinition schedule;
 
     public String getId() {
         return id;
@@ -69,5 +70,13 @@ public class JobDefinition {
         return tables.stream()
                 .filter(table -> table.getName().equals(name))
                 .findFirst();
+    }
+
+    public Optional<ScheduleDefinition> getSchedule() {
+        return Optional.ofNullable(schedule);
+    }
+
+    public void setSchedule(ScheduleDefinition schedule) {
+        this.schedule = schedule;
     }
 }

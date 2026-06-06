@@ -51,6 +51,11 @@ public class YamlConfigLoader {
             tables.add(YamlMappingUtils.toTableTask(tableSource));
         }
         job.setTables(tables);
+
+        Object scheduleValue = root.get("schedule");
+        if (scheduleValue != null) {
+            job.setSchedule(YamlMappingUtils.toScheduleDefinition(YamlMappingUtils.asMap(scheduleValue)));
+        }
         return job;
     }
 
