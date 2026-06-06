@@ -260,7 +260,7 @@ curl -b cookies.txt http://localhost:8080/api/v1/job-definitions/my_job
 # 创建 / 更新 / 删除（YAML 内容须包含唯一 id 字段）
 curl -b cookies.txt -X POST http://localhost:8080/api/v1/job-definitions \
   -H "Content-Type: application/json" \
-  -d '{"name":"my_job","content":"id: my_job\njob: my_job\n..."}'
+  -d '{"name":"my_job","content":"id: my_job\nname: 我的测试任务\n..."}'
 
 curl -b cookies.txt -X PUT http://localhost:8080/api/v1/job-definitions/my_job \
   -H "Content-Type: application/json" \

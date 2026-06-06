@@ -58,9 +58,9 @@ class ConfigPathResolverTest {
         Path overlay = Files.createTempDirectory("dg-overlay-test");
         Path primaryDir = Files.createTempDirectory("dg-primary-test");
         Files.createDirectories(primaryDir.resolve("jobs"));
-        Files.writeString(primaryDir.resolve("jobs/demo.yaml"), "job: primary\ntables: []");
+        Files.writeString(primaryDir.resolve("jobs/demo.yaml"), "id: primary\nname: primary\ntables: []");
         Files.createDirectories(overlay.resolve("jobs"));
-        Files.writeString(overlay.resolve("jobs/demo.yaml"), "job: overlay\ntables: []");
+        Files.writeString(overlay.resolve("jobs/demo.yaml"), "id: overlay\nname: overlay\ntables: []");
 
         ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlay);
 

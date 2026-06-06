@@ -312,7 +312,7 @@ public class JobService {
         List<String> selectedTables = options.getTables();
 
         JobDefinition previewJob = new JobDefinition();
-        previewJob.setJob(job.getJob());
+        previewJob.setName(job.getName());
         previewJob.setConstraints(job.getConstraints());
         previewJob.setInlineConstraints(new ArrayList<>(job.getInlineConstraints()));
 

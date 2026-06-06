@@ -26,7 +26,7 @@ class JobDefinitionServiceTest {
 
     @Test
     void createAndGet_persistsDefinition() {
-        var created = service.create(request("demo_job", "id: demo_job\njob: demo_job\ntables: []"));
+        var created = service.create(request("demo_job", "id: demo_job\nname: 演示任务\ntables: []"));
 
         assertThat(created.getName()).isEqualTo("demo_job");
         assertThat(created.getId()).isEqualTo("demo_job");
@@ -38,11 +38,11 @@ class JobDefinitionServiceTest {
 
     @Test
     void update_existingDefinition_overwritesContent() {
-        service.create(request("demo_job", "id: demo_job\njob: demo_job\ntables: []"));
+        service.create(request("demo_job", "id: demo_job\nname: 演示任务\ntables: []"));
 
         service.update("demo_job", request("demo_job", """
                 id: demo_job
-                job: demo_job
+                name: 演示任务
                 tables:
                   - name: t1
                     count: 1
@@ -53,7 +53,7 @@ class JobDefinitionServiceTest {
 
     @Test
     void delete_customDefinition_removesFile() {
-        service.create(request("demo_job", "id: demo_job\njob: demo_job\ntables: []"));
+        service.create(request("demo_job", "id: demo_job\nname: 演示任务\ntables: []"));
 
         service.delete("demo_job");
 
@@ -64,7 +64,7 @@ class JobDefinitionServiceTest {
     @Test
     void list_returnsCreatedDefinitionsWithId() throws Exception {
         Files.createDirectories(tempDir.resolve("jobs"));
-        Files.writeString(tempDir.resolve("jobs/alpha.yaml"), "id: alpha\njob: alpha\ntables: []");
+        Files.writeString(tempDir.resolve("jobs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
 
         assertThat(service.list())
                 .extracting("name", "id")
@@ -73,7 +73,7 @@ class JobDefinitionServiceTest {
 
     @Test
     void create_withoutId_rejectsRequest() {
-        assertThatThrownBy(() -> service.create(request("demo_job", "job: demo_job\ntables: []")))
+        assertThatThrownBy(() -> service.create(request("demo_job", "name: 演示任务\ntables: []")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("id field is required");
     }
@@ -81,9 +81,9 @@ class JobDefinitionServiceTest {
     @Test
     void create_duplicateId_rejectsRequest() throws Exception {
         Files.createDirectories(tempDir.resolve("jobs"));
-        Files.writeString(tempDir.resolve("jobs/existing.yaml"), "id: shared_id\njob: existing\ntables: []");
+        Files.writeString(tempDir.resolve("jobs/existing.yaml"), "id: shared_id\nname: 已有任务\ntables: []");
 
-        assertThatThrownBy(() -> service.create(request("new_job", "id: shared_id\njob: new_job\ntables: []")))
+        assertThatThrownBy(() -> service.create(request("new_job", "id: shared_id\nname: 新任务\ntables: []")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Job id already exists");
     }

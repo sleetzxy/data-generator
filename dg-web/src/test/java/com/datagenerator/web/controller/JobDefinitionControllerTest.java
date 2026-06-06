@@ -34,7 +34,7 @@ class JobDefinitionControllerTest {
                         "single_customer",
                         "jobs/single_customer.yaml",
                         "single_customer",
-                        "id: single_customer\njob: single_customer",
+                        "id: single_customer\nname: 单客户造数",
                         true));
 
         mockMvc.perform(get("/api/v1/job-definitions/single_customer"))

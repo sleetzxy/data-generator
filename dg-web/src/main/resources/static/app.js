@@ -2,7 +2,7 @@ const API = '/api/v1';
 const LOG_PAGE_SIZE = 10;
 
 const DEFAULT_JOB_TEMPLATE = `id: my_job
-job: my_job
+name: 我的测试任务
 writer:
   type: csv
   connection: local-csv

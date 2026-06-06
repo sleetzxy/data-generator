@@ -1,5 +1,5 @@
 id: inline_single
-job: inline_single
+name: 内联 Schema 单表造数
 writer:
   type: csv
   connection: local-csv

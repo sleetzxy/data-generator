@@ -1,5 +1,5 @@
 id: multi_table_test
-job: multi_table_test
+name: 多表依赖测试
 tables:
   - name: customers
     schema: fixtures/schemas/customers_simple.yaml

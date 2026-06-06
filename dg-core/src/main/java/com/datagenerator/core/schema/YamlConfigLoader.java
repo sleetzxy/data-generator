@@ -27,12 +27,16 @@ public class YamlConfigLoader {
     public JobDefinition loadJob(String path) {
         Map<String, Object> root = loadYamlMap(path);
         JobDefinition job = new JobDefinition();
-        job.setJob(YamlMappingUtils.asString(root.get("job")));
+        String name = YamlMappingUtils.asString(root.get("name"));
+        if (name == null || name.isBlank()) {
+            name = YamlMappingUtils.asString(root.get("job"));
+        }
+        job.setName(name);
         String id = YamlMappingUtils.asString(root.get("id"));
         if (id != null && !id.isBlank()) {
             job.setId(id);
-        } else if (job.getJob() != null && !job.getJob().isBlank()) {
-            job.setId(job.getJob());
+        } else if (job.getName() != null && !job.getName().isBlank()) {
+            job.setId(job.getName());
         }
         Object constraintsValue = root.get("constraints");
         if (constraintsValue instanceof List<?>) {

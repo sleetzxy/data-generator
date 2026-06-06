@@ -28,13 +28,13 @@ class YamlConfigLoaderTest {
     void loadJob_parsesId() {
         JobDefinition job = loader.loadJob("fixtures/jobs/ecommerce_seed.yaml");
         assertThat(job.getId()).isEqualTo("ecommerce_seed");
-        assertThat(job.getJob()).isEqualTo("ecommerce_seed");
+        assertThat(job.getName()).isEqualTo("电商种子数据造数");
     }
 
     @Test
     void loadJob_parsesDependsOn() {
         JobDefinition job = loader.loadJob("fixtures/jobs/ecommerce_seed.yaml");
-        assertThat(job.getJob()).isEqualTo("ecommerce_seed");
+        assertThat(job.getName()).isEqualTo("电商种子数据造数");
         assertThat(job.getConstraints()).contains("constraints/global_rules.yaml");
 
         TableTask orders = job.findTable("orders").orElseThrow();
@@ -76,7 +76,7 @@ class YamlConfigLoaderTest {
     @Test
     void loadJob_inlineSchemaAndConstraints_parsesTableDefinition() {
         JobDefinition job = loader.loadJob("fixtures/jobs/inline_single.yaml");
-        assertThat(job.getJob()).isEqualTo("inline_single");
+        assertThat(job.getName()).isEqualTo("内联 Schema 单表造数");
         assertThat(job.getWriter()).containsEntry("type", "csv");
         assertThat(job.getWriter()).containsEntry("connection", "local-csv");
         assertThat(job.getWriter()).containsEntry("mode", "insert");
@@ -88,6 +88,13 @@ class YamlConfigLoaderTest {
         assertThat(customers.getSchemaDefinition().getFields()).hasSize(1);
         assertThat(customers.getInlineConstraints()).hasSize(1);
         assertThat(customers.getInlineConstraints().getFirst().getType()).isEqualTo("range");
+    }
+
+    @Test
+    void loadJob_legacyJobField_fallsBackToName() {
+        JobDefinition job = loader.loadJob("fixtures/jobs/legacy_job_field.yaml");
+        assertThat(job.getName()).isEqualTo("legacy_name");
+        assertThat(job.getId()).isEqualTo("legacy_job_field");
     }
 
     @Test

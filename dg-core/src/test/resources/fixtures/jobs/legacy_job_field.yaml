@@ -1,0 +1,7 @@
+id: legacy_job_field
+job: legacy_name
+constraints: constraints/global_rules.yaml
+tables:
+  - name: customers
+    schema: schemas/customer.yaml
+    count: 1

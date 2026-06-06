@@ -10,7 +10,7 @@ import java.util.Optional;
 public class JobDefinition {
 
     private String id;
-    private String job;
+    private String name;
     private String constraints;
     private List<ConstraintDefinition> inlineConstraints = new ArrayList<>();
     private Map<String, Object> writer = new HashMap<>();
@@ -24,12 +24,12 @@ public class JobDefinition {
         this.id = id;
     }
 
-    public String getJob() {
-        return job;
+    public String getName() {
+        return name;
     }
 
-    public void setJob(String job) {
-        this.job = job;
+    public void setName(String name) {
+        this.name = name;
     }
 
     public String getConstraints() {

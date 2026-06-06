@@ -1,5 +1,5 @@
 id: ecommerce_seed
-job: ecommerce_seed
+name: 电商种子数据造数
 constraints: constraints/global_rules.yaml
 tables:
   - name: customers

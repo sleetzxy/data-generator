@@ -16,7 +16,7 @@
 
 ```yaml
 id: my_job                 # 任务唯一标识，必填，全局不可重复
-job: my_job
+name: 我的测试任务          # 任务描述名称，便于识别含义
 writer:
   type: csv
   connection: local-csv
@@ -43,7 +43,7 @@ tables:
 
 | 部分 | 作用 | 配置位置 |
 |------|------|----------|
-| **Job** | 任务唯一 ID、名称、默认写入方式 | YAML 顶层 `id`、`job`、`writer` |
+| **Job** | 任务唯一 ID、描述名称、默认写入方式 | YAML 顶层 `id`、`name`、`writer` |
 | **表任务** | 每张表生成多少行、依赖关系 | `tables[]` |
 | **Schema** | 字段列表及每列如何生成 | `tables[].schema` |
 | **约束** | 生成结果的校验规则 | `schema.constraints` 或 `tables[].constraints` |
@@ -59,7 +59,7 @@ tables:
 
 ```yaml
 id: my_job_name           # 任务唯一标识，必填，全局不可重复
-job: my_job_name          # 任务名称，必填
+name: 我的业务造数任务     # 任务描述名称，说明用途，可中文
 
 writer:                   # 默认写入方式（可被表级覆盖）
   type: csv               # csv | postgresql | clickhouse
@@ -76,6 +76,18 @@ tables:                   # 至少一张表
           type: BIGINT
           generator: { strategy: sequence, start: 1, step: 1 }
 ```
+
+### 顶层字段说明
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `id` | 是 | 任务唯一标识，仅含字母、数字、下划线、连字符，以字母开头；全局不可重复 |
+| `name` | 否 | 任务描述名称，用于说明业务含义，可中文，不参与唯一性校验 |
+| `writer` | 否 | Job 级默认写入配置，可被表级覆盖 |
+| `constraints` | 否 | 引用外部约束文件或内联约束列表 |
+| `tables` | 是 | 表任务列表 |
+
+> **说明：** 旧版配置中的 `job` 字段已废弃，请改用 `id` + `name`。加载旧文件时仍会临时兼容读取 `job`，但保存时必须使用 `id`。
 
 ### 每个字段怎么写
 
@@ -455,7 +467,7 @@ curl -X POST http://localhost:8080/api/v1/preview \
 
 ```yaml
 id: city_acd_wf_jq_preview
-job: city_acd_wf_jq_preview
+name: 城市交通事故预览造数
 tables:
   - name: acd_file
     count: 1000
