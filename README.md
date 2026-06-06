@@ -19,6 +19,98 @@ data-generator/          # 父 POM
 
 依赖关系：`dg-web → dg-core → dg-spi`；各 `dg-plugin-* → dg-spi`（按需引入）。
 
+## 架构图
+
+### 模块依赖
+
+```mermaid
+graph LR
+    subgraph Web层
+        web["dg-web<br/>REST · Web 控制台 · SQLite 持久化"]
+    end
+
+    subgraph 核心引擎
+        core["dg-core<br/>YAML 解析 · 生成策略 · 约束 · DAG"]
+    end
+
+    subgraph 插件契约
+        spi["dg-spi<br/>Reader/Writer · Generator · Constraint SPI"]
+    end
+
+    subgraph 数据源插件
+        pg["dg-plugin-postgresql"]
+        ch["dg-plugin-clickhouse"]
+        csv["dg-plugin-csv"]
+    end
+
+    web --> core
+    web --> pg
+    web --> ch
+    web --> csv
+    core --> spi
+    pg --> spi
+    ch --> spi
+    csv --> spi
+```
+
+### 运行时架构
+
+一次 Job 从提交到落库的完整路径：
+
+```mermaid
+flowchart TB
+    subgraph 客户端
+        browser["浏览器 / Web 控制台"]
+        script["curl / 自动化脚本"]
+    end
+
+    subgraph dg-web
+        auth["Spring Security<br/>表单登录 · Session"]
+        api["REST API<br/>/api/v1/*"]
+        svc["JobService · JobLogStore"]
+        sqlite[("SQLite<br/>dg-jobs.db")]
+        yaml["YAML 配置<br/>classpath:configs · writable-config-dir"]
+    end
+
+    subgraph dg-core
+        engine["生成引擎<br/>策略 · 约束 · DAG 编排"]
+    end
+
+    subgraph 插件层
+        reader["Reader<br/>读取参考数据 / 维表"]
+        writer["Writer<br/>批量写入生成结果"]
+    end
+
+    subgraph 外部数据源
+        pg[("PostgreSQL")]
+        ch[("ClickHouse")]
+        csv["CSV 文件"]
+    end
+
+    browser --> auth
+    script --> auth
+    auth --> api
+    api --> svc
+    svc --> sqlite
+    svc --> engine
+    engine --> yaml
+    engine --> reader
+    engine --> writer
+    reader --> pg
+    reader --> ch
+    reader --> csv
+    writer --> pg
+    writer --> ch
+    writer --> csv
+```
+
+**要点：**
+
+- **dg-web** 负责 HTTP 适配、认证、任务调度与 SQLite 持久化；不直接操作数据源
+- **dg-core** 纯业务引擎，按 YAML 定义驱动生成流水线，通过 SPI 调用插件
+- **插件** 各自独立 AutoConfiguration 注册，按需引入 classpath；Reader 读参考数据，Writer 写生成结果
+- 小任务同步返回，超过 `sync-threshold` 行数转异步，状态与日志写入 SQLite
+
 ## 快速开始
 
 ### 前置条件
