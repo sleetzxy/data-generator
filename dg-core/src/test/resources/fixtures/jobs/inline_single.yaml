@@ -1,3 +1,4 @@
+id: inline_single
 job: inline_single
 writer:
   type: csv

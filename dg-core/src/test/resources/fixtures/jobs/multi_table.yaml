@@ -1,3 +1,4 @@
+id: multi_table_test
 job: multi_table_test
 tables:
   - name: customers

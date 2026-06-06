@@ -15,6 +15,7 @@
 控制台内置模板可作为起点：
 
 ```yaml
+id: my_job                 # 任务唯一标识，必填，全局不可重复
 job: my_job
 writer:
   type: csv
@@ -42,7 +43,7 @@ tables:
 
 | 部分 | 作用 | 配置位置 |
 |------|------|----------|
-| **Job** | 任务名称、默认写入方式 | YAML 顶层 `job`、`writer` |
+| **Job** | 任务唯一 ID、名称、默认写入方式 | YAML 顶层 `id`、`job`、`writer` |
 | **表任务** | 每张表生成多少行、依赖关系 | `tables[]` |
 | **Schema** | 字段列表及每列如何生成 | `tables[].schema` |
 | **约束** | 生成结果的校验规则 | `schema.constraints` 或 `tables[].constraints` |
@@ -57,7 +58,8 @@ tables:
 ### 最小结构
 
 ```yaml
-job: my_job_name          # 任务标识，必填
+id: my_job_name           # 任务唯一标识，必填，全局不可重复
+job: my_job_name          # 任务名称，必填
 
 writer:                   # 默认写入方式（可被表级覆盖）
   type: csv               # csv | postgresql | clickhouse
@@ -452,6 +454,7 @@ curl -X POST http://localhost:8080/api/v1/preview \
 以下为精简版，完整配置见内置任务 `city_acd_wf_jq_preview`：
 
 ```yaml
+id: city_acd_wf_jq_preview
 job: city_acd_wf_jq_preview
 tables:
   - name: acd_file

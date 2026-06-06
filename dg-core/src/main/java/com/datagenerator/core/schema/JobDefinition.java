@@ -9,11 +9,20 @@ import java.util.Optional;
 
 public class JobDefinition {
 
+    private String id;
     private String job;
     private String constraints;
     private List<ConstraintDefinition> inlineConstraints = new ArrayList<>();
     private Map<String, Object> writer = new HashMap<>();
     private List<TableTask> tables = new ArrayList<>();
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
 
     public String getJob() {
         return job;

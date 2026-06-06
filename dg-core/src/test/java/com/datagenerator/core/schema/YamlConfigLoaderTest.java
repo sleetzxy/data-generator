@@ -25,6 +25,13 @@ class YamlConfigLoaderTest {
     }
 
     @Test
+    void loadJob_parsesId() {
+        JobDefinition job = loader.loadJob("fixtures/jobs/ecommerce_seed.yaml");
+        assertThat(job.getId()).isEqualTo("ecommerce_seed");
+        assertThat(job.getJob()).isEqualTo("ecommerce_seed");
+    }
+
+    @Test
     void loadJob_parsesDependsOn() {
         JobDefinition job = loader.loadJob("fixtures/jobs/ecommerce_seed.yaml");
         assertThat(job.getJob()).isEqualTo("ecommerce_seed");

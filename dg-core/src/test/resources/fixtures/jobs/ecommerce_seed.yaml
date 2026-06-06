@@ -1,3 +1,4 @@
+id: ecommerce_seed
 job: ecommerce_seed
 constraints: constraints/global_rules.yaml
 tables:

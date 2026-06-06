@@ -1,7 +1,8 @@
 const API = '/api/v1';
 const LOG_PAGE_SIZE = 10;
 
-const DEFAULT_JOB_TEMPLATE = `job: my_job
+const DEFAULT_JOB_TEMPLATE = `id: my_job
+job: my_job
 writer:
   type: csv
   connection: local-csv
@@ -146,7 +147,7 @@ async function loadDefinitions() {
         allRunsCache = runs;
 
         if (!items.length) {
-            tbody.innerHTML = '<tr class="empty-row"><td colspan="5">暂无任务配置</td></tr>';
+            tbody.innerHTML = '<tr class="empty-row"><td colspan="6">暂无任务配置</td></tr>';
             refreshOpenLogModal();
             return;
         }
@@ -156,6 +157,7 @@ async function loadDefinitions() {
             const activeRun = findActiveRun(item.path);
             return `
             <tr>
+                <td><code>${escapeHtml(item.id || '-')}</code></td>
                 <td><strong>${escapeHtml(item.name)}</strong></td>
                 <td><code>${escapeHtml(item.path)}</code></td>
                 <td>${item.readOnly
@@ -178,7 +180,7 @@ async function loadDefinitions() {
 
         refreshOpenLogModal();
     } catch (err) {
-        tbody.innerHTML = `<tr class="empty-row"><td colspan="5">加载失败: ${escapeHtml(err.message)}</td></tr>`;
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="6">加载失败: ${escapeHtml(err.message)}</td></tr>`;
     }
 }
 

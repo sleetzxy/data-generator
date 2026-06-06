@@ -4,7 +4,10 @@ import com.datagenerator.web.dto.JobDefinitionRequest;
 import com.datagenerator.web.dto.JobDefinitionResponse;
 import com.datagenerator.core.schema.ConfigLoadException;
 import com.datagenerator.core.schema.ConfigPathResolver;
+import com.datagenerator.core.schema.JobDefinition;
+import com.datagenerator.core.schema.YamlConfigLoader;
 import org.springframework.stereotype.Service;
+import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -13,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class JobDefinitionService {
@@ -20,9 +24,12 @@ public class JobDefinitionService {
     private static final String JOBS_DIR = "jobs";
 
     private final ConfigPathResolver pathResolver;
+    private final YamlConfigLoader configLoader;
+    private final Yaml yaml = new Yaml();
 
     public JobDefinitionService(ConfigPathResolver pathResolver) {
         this.pathResolver = pathResolver;
+        this.configLoader = new YamlConfigLoader(pathResolver);
     }
 
     public List<JobDefinitionResponse> list() {
@@ -30,7 +37,11 @@ public class JobDefinitionService {
         for (String relativePath : pathResolver.listYamlRelativePaths(JOBS_DIR)) {
             String name = toDefinitionName(relativePath);
             String configPath = toConfigPath(relativePath);
-            results.add(new JobDefinitionResponse(name, configPath, null, isReadOnly(configPath)));
+            results.add(new JobDefinitionResponse(
+                    name,
+                    configPath,
+                    resolveId(configPath),
+                    isReadOnly(configPath)));
         }
         return results;
     }
@@ -38,28 +49,43 @@ public class JobDefinitionService {
     public JobDefinitionResponse get(String name) {
         String configPath = toConfigPath(name);
         String content = readContent(configPath);
-        return new JobDefinitionResponse(name, configPath, content, isReadOnly(configPath));
+        return new JobDefinitionResponse(
+                name,
+                configPath,
+                resolveId(configPath),
+                content,
+                isReadOnly(configPath));
     }
 
     public JobDefinitionResponse create(JobDefinitionRequest request) {
         validateName(request.getName());
-        validateContent(request.getContent());
+        validateContent(request.getContent(), null);
         String configPath = toConfigPath(request.getName());
         if (exists(configPath)) {
             throw new IllegalArgumentException("Job definition already exists: " + request.getName());
         }
         writeContent(configPath, request.getContent());
-        return new JobDefinitionResponse(request.getName(), configPath, request.getContent(), false);
+        return new JobDefinitionResponse(
+                request.getName(),
+                configPath,
+                extractRequiredId(request.getContent()),
+                request.getContent(),
+                false);
     }
 
     public JobDefinitionResponse update(String name, JobDefinitionRequest request) {
-        validateContent(request.getContent());
         String configPath = toConfigPath(name);
         if (!exists(configPath)) {
             throw new ConfigLoadException("Job definition not found: " + name);
         }
+        validateContent(request.getContent(), configPath);
         writeContent(configPath, request.getContent());
-        return new JobDefinitionResponse(name, configPath, request.getContent(), false);
+        return new JobDefinitionResponse(
+                name,
+                configPath,
+                extractRequiredId(request.getContent()),
+                request.getContent(),
+                false);
     }
 
     public void delete(String name) {
@@ -72,6 +98,55 @@ public class JobDefinitionService {
             Files.delete(overlayFile);
         } catch (IOException exception) {
             throw new ConfigLoadException("Failed to delete job definition: " + name, exception);
+        }
+    }
+
+    private String resolveId(String configPath) {
+        JobDefinition job = configLoader.loadJob(configPath);
+        if (job.getId() == null || job.getId().isBlank()) {
+            throw new ConfigLoadException("Job definition missing id: " + configPath);
+        }
+        return job.getId();
+    }
+
+    private void validateContent(String content, String excludeConfigPath) {
+        if (content == null || content.isBlank()) {
+            throw new IllegalArgumentException("Job content is required");
+        }
+        String id = extractRequiredId(content);
+        validateIdFormat(id);
+        validateIdUnique(id, excludeConfigPath);
+    }
+
+    private String extractRequiredId(String content) {
+        Object loaded = yaml.load(content);
+        if (!(loaded instanceof Map<?, ?> root)) {
+            throw new IllegalArgumentException("Job YAML must be a mapping");
+        }
+        Object idValue = root.get("id");
+        if (idValue == null || String.valueOf(idValue).isBlank()) {
+            throw new IllegalArgumentException("Job YAML id field is required");
+        }
+        return String.valueOf(idValue).trim();
+    }
+
+    private void validateIdFormat(String id) {
+        if (!id.matches("[a-zA-Z][a-zA-Z0-9_-]*")) {
+            throw new IllegalArgumentException(
+                    "Invalid job id: " + id + " (use letters, digits, underscore, hyphen; start with letter)");
+        }
+    }
+
+    private void validateIdUnique(String id, String excludeConfigPath) {
+        for (String relativePath : pathResolver.listYamlRelativePaths(JOBS_DIR)) {
+            String configPath = toConfigPath(relativePath);
+            if (configPath.equals(excludeConfigPath)) {
+                continue;
+            }
+            JobDefinition existing = configLoader.loadJob(configPath);
+            if (id.equals(existing.getId())) {
+                throw new IllegalArgumentException("Job id already exists: " + id);
+            }
         }
     }
 
@@ -124,12 +199,6 @@ public class JobDefinitionService {
         }
         if (name.contains("..") || name.startsWith("/") || name.startsWith("\\")) {
             throw new IllegalArgumentException("Invalid job name: " + name);
-        }
-    }
-
-    private void validateContent(String content) {
-        if (content == null || content.isBlank()) {
-            throw new IllegalArgumentException("Job content is required");
         }
     }
 

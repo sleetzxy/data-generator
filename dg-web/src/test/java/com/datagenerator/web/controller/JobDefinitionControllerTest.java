@@ -33,12 +33,14 @@ class JobDefinitionControllerTest {
                 .thenReturn(new JobDefinitionResponse(
                         "single_customer",
                         "jobs/single_customer.yaml",
-                        "job: single_customer",
+                        "single_customer",
+                        "id: single_customer\njob: single_customer",
                         true));
 
         mockMvc.perform(get("/api/v1/job-definitions/single_customer"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.name").value("single_customer"))
+                .andExpect(jsonPath("$.id").value("single_customer"))
                 .andExpect(jsonPath("$.path").value("jobs/single_customer.yaml"));
     }
 }

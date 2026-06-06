@@ -1,4 +1,5 @@
 # 参考 export_city_acd_wf_join_masked.py 生成规则
+id: city_acd_wf_jq_preview
 job: city_acd_wf_jq_preview
 tables:
 - name: acd_file
