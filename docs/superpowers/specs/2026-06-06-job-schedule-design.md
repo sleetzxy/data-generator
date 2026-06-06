@@ -2,7 +2,7 @@
 
 **日期：** 2026-06-06  
 **状态：** 待审阅  
-**版本：** 1.0
+**版本：** 1.1
 
 ---
 
@@ -61,6 +61,11 @@
 ### 2.2 组件结构
 
 ```
+dg-core/
+  com.datagenerator.core.schema/
+    ScheduleDefinition          # enabled + cron（YAML schedule 块映射）
+    JobDefinition               # 新增可选 schedule 字段
+
 dg-web/
   com.datagenerator.web.config/
     SchedulingConfig              # @EnableScheduling + ThreadPoolTaskScheduler Bean
@@ -98,11 +103,11 @@ dg-web/
                                                      │
 手动 POST /jobs ─────────────────────────────────────┤ enqueue(MANUAL)
                                                      v
-                                            JobService.submit(trigger_source)
+                              createQueuedJob (排队) / submit (立即)
                                                      v
-                                            AsyncJobExecutor / 同步执行
+                                            executeAccepted → AsyncJobExecutor
                                                      │
-                                            onComplete → dequeue 下一项
+                                            onJobTerminal → dequeue 下一项
 ```
 
 ---
@@ -119,6 +124,8 @@ dg-web/
 | **config_path** | 配置相对路径 | `jobs/my_job.yaml` | 排队键、SQLite 主键、`JobResponse.jobConfig` |
 
 **约定：** 调度端点 `/api/v1/job-definitions/{fileName}/schedule` 中的 `{fileName}` 与现有 `GET/PUT/DELETE /api/v1/job-definitions/{fileName}` 一致，指配置文件名，**不是** YAML `id`。`fileName` 与 `id` 可以不同。
+
+**实现说明：** 现有 Controller 路径变量名为 `@PathVariable("name")`，语义等同 `fileName`；新端点沿用该命名，JSON 响应字段仍为 `fileName`。
 
 ---
 
@@ -140,7 +147,7 @@ tables:
 - `enabled: false` → 不注册 Cron，仍可手动运行
 - 内置 Job 的 schedule **只读**（Web/API 不可修改，与 `readOnly` 一致）
 
-**自定义 Job 的 YAML 不含 `schedule` 块**，调度配置仅存 SQLite，避免双写。
+**自定义 Job 的 YAML 不含 `schedule` 块**，调度配置仅存 SQLite，避免双写。`JobDefinitionService.validateContent` 在创建/更新自定义 Job 时若检测到 YAML 根级 `schedule` 键，返回 **400**。
 
 ### 4.2 SQLite 表 `job_schedules`
 
@@ -161,7 +168,14 @@ tables:
 |----|------|------|
 | trigger_source | TEXT | `MANUAL` / `SCHEDULED`，可 NULL（历史数据） |
 
-建表迁移：在 `SqliteSchemaInitializer` 中使用「检查列是否存在 → ALTER TABLE ADD COLUMN」模式（SQLite 无 IF NOT EXISTS for column）。
+建表迁移：在 `SqliteSchemaInitializer` 中新增 `ensureColumn` 辅助方法（`PRAGMA table_info` 检查 → 条件 `ALTER TABLE ADD COLUMN`），保证幂等：
+
+```java
+private static void ensureColumn(
+        JdbcTemplate jdbcTemplate, String table, String column, String ddlFragment) {
+    // 列不存在时执行 ALTER TABLE table ADD COLUMN column ddlFragment
+}
+```
 
 ### 4.4 统一视图 `JobScheduleInfo`
 
@@ -206,12 +220,13 @@ PUT  /api/v1/job-definitions/{fileName}/schedule
 | 场景 | 行为 |
 |------|------|
 | 自定义 Job | PUT 校验后写入 `job_schedules`，调用 `JobScheduleManager.reschedule` |
-| 内置 Job | GET 返回 YAML 中的 schedule；PUT 返回 **403**，提示内置任务只读 |
+| 内置 Job | GET 返回 YAML 中的 schedule；PUT 抛 `ReadOnlyScheduleException` → **403** |
 | `enabled=true` 且 cron 为空或非法 | **400** Bad Request |
+| `enabled=false` | cron **可选**；若提供则校验格式并保留存储；`nextRunAt` 为 null |
 | Job 定义不存在 | **404** |
 | Cron 校验 | `CronExpression.isValid(cron)` |
 
-### 5.3 手动运行
+### 5.3 手动运行与排队响应
 
 保留 `POST /api/v1/jobs`，请求体不变：
 
@@ -219,9 +234,19 @@ PUT  /api/v1/job-definitions/{fileName}/schedule
 { "jobConfig": "jobs/my_job.yaml" }
 ```
 
-内部改为 `JobScheduleExecutor.enqueue(configPath, MANUAL)`，与定时触发共用排队。响应行为与现有一致（同步 200 / 异步 202）。
+内部改为 `JobScheduleExecutor.enqueue(configPath, MANUAL)`，与定时触发共用排队。
 
-**排队提示：** 若当前有实例在跑或队列非空，仍返回 **202/200** 表示已接受；实际执行顺序由队列决定。Web UI toast：`任务已加入队列，等待当前任务完成后执行`（仅在有活跃实例或队列非空时）。
+**排队响应语义（方案 A）：**
+
+| 情况 | HTTP | 行为 |
+|------|------|------|
+| 可立即执行 | 200 或 202 | 与现有一致：创建 `jobId`，立即 `submit` 并执行 |
+| 需排队 | **202 Accepted** | **立即**创建 PENDING 运行记录并返回 `jobId`；写入 INFO 日志「已加入队列」；**不**立即执行 |
+| dequeue 执行 | — | 复用已分配的 `jobId`，调用 `JobService.executeAccepted(jobId)` 开始执行 |
+
+客户端始终能拿到 `jobId`（与现有 `runDefinition` toast 兼容）。排队项在内存队列中持有 `jobId + triggerSource`，dequeue 时用同一 `jobId` 启动。
+
+**排队提示：** 需排队时 Web UI toast：`任务已加入队列 (${jobId})，等待当前任务完成后执行`。
 
 ### 5.4 删除 Job 定义
 
@@ -237,7 +262,8 @@ PUT  /api/v1/job-definitions/{fileName}/schedule
 
 ### 6.1 `JobScheduleManager`
 
-- 监听 `ApplicationReadyEvent`（在 `JobStartupRecovery` 之后），加载全部 Job 定义
+- 监听 `ApplicationReadyEvent`，加载全部 Job 定义
+- 使用 `@Order` 保证在 `JobStartupRecovery` **之后**执行：`JobStartupRecovery` = 1，`JobScheduleManager` = 2
 - 对每个 `enabled=true` 且 cron 合法的 Job：`schedule(Runnable, CronTrigger)`
 - 维护 `Map<configPath, ScheduledFuture<?>>` 便于 cancel/reschedule
 - Job 定义 CRUD 或 schedule PUT 后调用 `reschedule(configPath)`
@@ -249,30 +275,58 @@ PUT  /api/v1/job-definitions/{fileName}/schedule
 
 ```
 enqueue(configPath, trigger):
-  if 队列空 and 无 PENDING/RUNNING 实例（同 config_path）:
-    立即 JobService.submit(jobConfig, trigger)
+  if 队列空 and 无 RUNNING 实例（同 config_path）且无「正在执行的 PENDING」:
+    JobService.submit(jobConfig, trigger) → 立即执行
   else:
-    FIFO 入队
-    SLF4J INFO 记录排队
+    jobId = JobService.createQueuedJob(configPath, trigger)  // INSERT PENDING
+    FIFO 入队 QueuedItem(jobId, trigger)
+    返回 JobResponse(jobId, PENDING)
 
 onJobTerminal(configPath):   # COMPLETED / FAILED / CANCELLED
   if 队列非空:
-    dequeue → submit
+    item = dequeue
+    JobService.executeAccepted(item.jobId, item.trigger)
+
+onCancel(configPath):        # cancel 成功后同样调用
+  onJobTerminal(configPath)
 ```
 
 - **定时与手动共用**同一队列
-- 队列 **不持久化**；进程重启后丢失未执行项
+- 队列 **不持久化**；进程重启后丢失未执行项（对应 PENDING 记录由 `JobStartupRecovery` 标记 CANCELLED）
 - Cron misfire：**丢弃**，不补跑
+
+**完成回调挂钩（避免环依赖）：**
+
+```
+JobScheduleExecutor 注入 JobService；
+JobService 注入 @Lazy JobScheduleExecutor；
+
+JobService.executeAndStore / executeAccepted 的 finally 块：
+  executor.onJobTerminal(jobConfig)
+
+JobService.cancel 成功后：
+  executor.onJobTerminal(jobConfig)
+
+AsyncJobExecutor 任务结束路径同样经由 JobService finally 触发。
+```
+
+拆分 `JobService` 方法：
+
+- `submit(request, triggerSource)` — HTTP 入口，委托 `executor.enqueue`
+- `createQueuedJob(configPath, triggerSource)` — 仅 INSERT PENDING + 日志
+- `executeAccepted(jobId)` — 加载已有记录并开始执行
 
 ### 6.3 活跃实例判定
 
-查询 `jobs` 表：`job_config = ? AND status IN ('PENDING', 'RUNNING')`。
+新增 `JobRepository.findRunningByJobConfig(configPath)`：`job_config = ? AND status = 'RUNNING'`。
 
-### 6.4 `JobService.submit` 扩展
+排队判定 additionally 检查内存队列是否非空。PENDING 且已入队的不阻塞新入队（它们共享 FIFO）。
 
-新增参数或内部字段 `triggerSource`（`MANUAL` / `SCHEDULED`），写入 `jobs.trigger_source`。
+### 6.4 `JobService` 执行扩展
 
-定时触发的 submit 不经过 HTTP，直接 Service 调用。
+- `triggerSource`（`MANUAL` / `SCHEDULED`）写入 `jobs.trigger_source`
+- **`triggerSource=SCHEDULED` 时强制异步执行**（忽略 sync threshold），避免 Cron 回调阻塞 `TaskScheduler` 线程
+- 定时触发不经过 HTTP，直接 Service 调用
 
 ---
 
@@ -309,6 +363,8 @@ onJobTerminal(configPath):   # COMPLETED / FAILED / CANCELLED
 
 | 场景 | 策略 |
 |------|------|
+| 内置 schedule PUT | `ReadOnlyScheduleException` → 403 |
+| 自定义 YAML 含 schedule 块 | 400 |
 | Cron 非法（保存时） | 400，不写入 |
 | Cron 非法（启动加载 YAML） | SLF4J WARN，跳过注册，schedule 视为未启用 |
 | 调度触发时 YAML 加载失败 | submit 失败路径：FAILED 运行记录 + ERROR 日志 |
@@ -325,6 +381,7 @@ onJobTerminal(configPath):   # COMPLETED / FAILED / CANCELLED
 | 单实例 | 本设计目标场景 |
 | 多实例 | **不支持**；多副本会导致重复 Cron 触发，本阶段不处理 |
 | TaskScheduler 线程池 | 独立小池（如 pool-size=2），与 `AsyncJobExecutor` 分离 |
+| Cron 回调 | 仅 enqueue，不同步执行；`SCHEDULED` 强制异步（见 §6.4） |
 | 同 config_path | `JobScheduleQueue` 内 synchronized 或 per-key 锁 |
 
 ---
@@ -333,12 +390,18 @@ onJobTerminal(configPath):   # COMPLETED / FAILED / CANCELLED
 
 | 测试类 | 覆盖 |
 |--------|------|
-| `JobScheduleServiceTest` | cron 校验、YAML/DB 合并、内置只读、nextRunAt |
-| `JobScheduleExecutorTest` | 排队：运行中 enqueue → 第二个在第一个完成后执行 |
-| `JobScheduleManagerTest` | enabled 变更 reschedule；启动注册 |
+| `YamlConfigLoaderTest` | `loadJob_withSchedule_parsesEnabledAndCron` |
+| `JobScheduleServiceTest` | cron 校验、YAML/DB 合并、内置只读、nextRunAt、`enabled=false` 保留 cron |
+| `JobScheduleExecutorTest` | 排队：运行中 enqueue → 202 + jobId；第一个完成后第二个 `executeAccepted` |
+| `JobScheduleExecutorTest` | `cancelRunningJob_dequeuesNext` |
+| `JobScheduleManagerTest` | enabled 变更 reschedule；`@Order` 启动顺序 |
 | `JobScheduleRepositoryTest` | CRUD、orphan 清理 |
+| `JobRepositoryTest` | `findRunningByJobConfig` |
+| `SqliteSchemaInitializerTest` | `trigger_source` 列迁移幂等 |
+| `JobDefinitionServiceTest` | `create_customJobWithScheduleBlock_rejected`；DELETE 清理 schedule |
 | `JobDefinitionControllerTest` | GET/PUT schedule；内置 403 |
-| `JobControllerTest` | 手动 submit 委托 Executor（Mock） |
+| `JobControllerTest` | 排队时 202 + jobId；立即执行路径 |
+| `JobServiceTest` | `triggerSourceScheduled_forcesAsync` |
 
 测试命名遵循 `feature_scenario_expected`。
 
@@ -346,16 +409,19 @@ onJobTerminal(configPath):   # COMPLETED / FAILED / CANCELLED
 
 ## 11. 实现清单
 
-1. `SqliteSchemaInitializer`：新增 `job_schedules` 表、`jobs.trigger_source` 列
-2. `JobScheduleRepository`
-3. `JobScheduleService`（合并配置、校验）
-4. `SchedulingConfig` + `JobScheduleManager`
-5. `JobScheduleExecutor` + 挂钩 `JobService` 完成回调
-6. `JobService`：submit 支持 `triggerSource`；手动路径走 Executor
-7. `JobDefinitionController`：schedule 端点；`JobDefinitionResponse` 扩展
-8. 内置示例 YAML 可选添加 `schedule` 块（默认 disabled 或不添加）
-9. Web UI：`index.html` + `app.js` 调度列与弹窗
-10. 单元测试 + `mvn clean test`
+1. **dg-core**：`ScheduleDefinition` + `JobDefinition.schedule` + `YamlConfigLoader` 解析
+2. `SqliteSchemaInitializer`：`job_schedules` 表、`jobs.trigger_source` 列、`ensureColumn` 迁移
+3. `JobRepository.findRunningByJobConfig` + `trigger_source` 读写
+4. `JobScheduleRepository`
+5. `JobScheduleService`（合并配置、校验）
+6. `ReadOnlyScheduleException` + `GlobalExceptionHandler` → 403
+7. `SchedulingConfig` + `JobScheduleManager`（`@Order(2)`）
+8. `JobScheduleExecutor` + `JobService` 拆分 submit/createQueued/executeAccepted + `@Lazy` 回调
+9. `JobDefinitionService.validateContent` 拒绝自定义 YAML 的 `schedule` 键
+10. `JobDefinitionController`：schedule 端点；`JobDefinitionResponse` 扩展
+11. `JobController` / `JobService`：手动 submit 走 Executor
+12. Web UI：`index.html` + `app.js` 调度列与弹窗
+13. 单元测试 + `mvn clean test`
 
 ---
 
