@@ -15,6 +15,7 @@ public class JobResponse {
     private String errorMessage;
     private List<TableDetail> details = new ArrayList<>();
     private Map<String, List<Map<String, Object>>> rows;
+    private TriggerSource triggerSource;
 
     public JobResponse() {
     }
@@ -125,5 +126,13 @@ public class JobResponse {
 
     public void setRows(Map<String, List<Map<String, Object>>> rows) {
         this.rows = rows;
+    }
+
+    public TriggerSource getTriggerSource() {
+        return triggerSource;
+    }
+
+    public void setTriggerSource(TriggerSource triggerSource) {
+        this.triggerSource = triggerSource;
     }
 }

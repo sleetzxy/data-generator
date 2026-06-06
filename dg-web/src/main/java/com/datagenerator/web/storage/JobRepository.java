@@ -4,6 +4,7 @@ import com.datagenerator.web.dto.JobProgress;
 import com.datagenerator.web.dto.JobResponse;
 import com.datagenerator.web.dto.JobStatus;
 import com.datagenerator.web.dto.TableDetail;
+import com.datagenerator.web.dto.TriggerSource;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,8 +33,9 @@ public class JobRepository {
         jdbcTemplate.update("""
                 INSERT INTO jobs (
                     job_id, status, job_config, submitted_at, duration, error_message,
-                    total_tables, completed_tables, total_rows, written_rows, failed_rows, details_json
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    total_tables, completed_tables, total_rows, written_rows, failed_rows,
+                    details_json, trigger_source
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 job.getJobId(),
                 job.getStatus().name(),
@@ -46,7 +48,8 @@ public class JobRepository {
                 progress.getTotalRows(),
                 progress.getWrittenRows(),
                 progress.getFailedRows(),
-                serializeDetails(job.getDetails()));
+                serializeDetails(job.getDetails()),
+                triggerSourceName(job.getTriggerSource()));
     }
 
     public void update(JobResponse job) {
@@ -63,7 +66,8 @@ public class JobRepository {
                     total_rows = ?,
                     written_rows = ?,
                     failed_rows = ?,
-                    details_json = ?
+                    details_json = ?,
+                    trigger_source = ?
                 WHERE job_id = ?
                 """,
                 job.getStatus().name(),
@@ -77,13 +81,15 @@ public class JobRepository {
                 progress.getWrittenRows(),
                 progress.getFailedRows(),
                 serializeDetails(job.getDetails()),
+                triggerSourceName(job.getTriggerSource()),
                 job.getJobId());
     }
 
     public Optional<JobResponse> findById(String jobId) {
         List<JobResponse> results = jdbcTemplate.query("""
                 SELECT job_id, status, job_config, submitted_at, duration, error_message,
-                       total_tables, completed_tables, total_rows, written_rows, failed_rows, details_json
+                       total_tables, completed_tables, total_rows, written_rows, failed_rows,
+                       details_json, trigger_source
                 FROM jobs WHERE job_id = ?
                 """, this::mapRow, jobId);
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
@@ -92,7 +98,8 @@ public class JobRepository {
     public List<JobResponse> listAll() {
         return jdbcTemplate.query("""
                 SELECT job_id, status, job_config, submitted_at, duration, error_message,
-                       total_tables, completed_tables, total_rows, written_rows, failed_rows, details_json
+                       total_tables, completed_tables, total_rows, written_rows, failed_rows,
+                       details_json, trigger_source
                 FROM jobs ORDER BY submitted_at DESC
                 """, this::mapRow);
     }
@@ -100,7 +107,8 @@ public class JobRepository {
     public List<JobResponse> listPage(int offset, int limit) {
         return jdbcTemplate.query("""
                 SELECT job_id, status, job_config, submitted_at, duration, error_message,
-                       total_tables, completed_tables, total_rows, written_rows, failed_rows, details_json
+                       total_tables, completed_tables, total_rows, written_rows, failed_rows,
+                       details_json, trigger_source
                 FROM jobs ORDER BY submitted_at DESC LIMIT ? OFFSET ?
                 """, this::mapRow, limit, offset);
     }
@@ -118,8 +126,18 @@ public class JobRepository {
         Object[] args = statuses.stream().map(JobStatus::name).toArray();
         return jdbcTemplate.query("""
                 SELECT job_id, status, job_config, submitted_at, duration, error_message,
-                       total_tables, completed_tables, total_rows, written_rows, failed_rows, details_json
+                       total_tables, completed_tables, total_rows, written_rows, failed_rows,
+                       details_json, trigger_source
                 FROM jobs WHERE status IN (""" + placeholders + ")", this::mapRow, args);
+    }
+
+    public List<JobResponse> findRunningByJobConfig(String configPath) {
+        return jdbcTemplate.query("""
+                SELECT job_id, status, job_config, submitted_at, duration, error_message,
+                       total_tables, completed_tables, total_rows, written_rows, failed_rows,
+                       details_json, trigger_source
+                FROM jobs WHERE job_config = ? AND status = 'RUNNING'
+                """, this::mapRow, configPath);
     }
 
     public void delete(String jobId) {
@@ -143,11 +161,19 @@ public class JobRepository {
                 rs.getString("submitted_at"),
                 rs.getString("error_message"),
                 null);
+        String triggerSource = rs.getString("trigger_source");
+        if (triggerSource != null && !triggerSource.isBlank()) {
+            response.setTriggerSource(TriggerSource.valueOf(triggerSource));
+        }
         return response;
     }
 
     private static JobProgress progressOrEmpty(JobResponse job) {
         return job.getProgress() == null ? new JobProgress(0, 0, 0, 0, 0) : job.getProgress();
+    }
+
+    private static String triggerSourceName(TriggerSource triggerSource) {
+        return triggerSource == null ? null : triggerSource.name();
     }
 
     private String serializeDetails(List<TableDetail> details) {

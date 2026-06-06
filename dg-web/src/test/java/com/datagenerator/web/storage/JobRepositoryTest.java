@@ -70,6 +70,16 @@ class JobRepositoryTest {
     }
 
     @Test
+    void findRunningByJobConfig_returnsOnlyRunning() {
+        insertJob("j1", "jobs/a.yaml", JobStatus.RUNNING);
+        insertJob("j2", "jobs/a.yaml", JobStatus.COMPLETED);
+
+        assertThat(repository.findRunningByJobConfig("jobs/a.yaml"))
+                .extracting(JobResponse::getJobId)
+                .containsExactly("j1");
+    }
+
+    @Test
     void findByStatusIn_returnsMatchingJobs() {
         repository.insert(sampleJob("job-run", JobStatus.RUNNING));
         repository.insert(sampleJob("job-done", JobStatus.COMPLETED));
@@ -90,6 +100,12 @@ class JobRepositoryTest {
         assertThat(repository.countAll()).isEqualTo(5);
         assertThat(repository.listPage(0, 2)).hasSize(2);
         assertThat(repository.listPage(0, 2).get(0).getJobId()).isEqualTo("job-4");
+    }
+
+    private void insertJob(String jobId, String configPath, JobStatus status) {
+        JobResponse job = sampleJob(jobId, status);
+        job.setJobConfig(configPath);
+        repository.insert(job);
     }
 
     private static JobResponse sampleJob(String jobId, JobStatus status) {
