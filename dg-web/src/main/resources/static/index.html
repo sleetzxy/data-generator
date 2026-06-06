@@ -79,20 +79,9 @@
             <h2 id="preview-title">数据预览</h2>
             <button id="preview-close" class="icon-btn" aria-label="关闭">&times;</button>
         </div>
-        <div class="modal-body">
-            <div class="preview-toolbar">
-                <label class="preview-limit-field">
-                    <span>每表行数</span>
-                    <input type="number" id="preview-limit" min="1" max="100" value="10">
-                </label>
-                <button id="preview-run" class="btn primary">生成预览</button>
-            </div>
-            <div id="preview-content" class="preview-content">
-                <p class="preview-hint">点击「生成预览」查看样本数据（不写库）</p>
-            </div>
-        </div>
-        <div class="modal-footer">
-            <button id="preview-cancel" class="btn">关闭</button>
+        <div class="modal-body preview-modal-body">
+            <div id="preview-content" class="preview-content"></div>
+            <div id="preview-pagination" class="pagination hidden"></div>
         </div>
     </div>
 </div>

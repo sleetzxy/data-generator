@@ -38,7 +38,7 @@ public class JobDefinitionService {
             String fileName = toDefinitionName(relativePath);
             String configPath = toConfigPath(relativePath);
             JobDefinition job = configLoader.loadJob(configPath);
-            results.add(toResponse(fileName, configPath, job, null, isReadOnly(configPath)));
+            results.add(toResponse(fileName, configPath, job, null, isBuiltin(configPath)));
         }
         return results;
     }
@@ -47,7 +47,7 @@ public class JobDefinitionService {
         String configPath = toConfigPath(name);
         String content = readContent(configPath);
         JobDefinition job = configLoader.loadJob(configPath);
-        return toResponse(name, configPath, job, content, isReadOnly(configPath));
+        return toResponse(name, configPath, job, content, isBuiltin(configPath));
     }
 
     public JobDefinitionResponse create(JobDefinitionRequest request) {
@@ -67,7 +67,7 @@ public class JobDefinitionService {
         if (!exists(configPath)) {
             throw new ConfigLoadException("Job definition not found: " + name);
         }
-        if (isReadOnly(configPath)) {
+        if (isBuiltin(configPath)) {
             throw new IllegalArgumentException("Built-in job definition cannot be modified: " + name);
         }
         validateContent(request.getContent(), configPath);
@@ -78,9 +78,12 @@ public class JobDefinitionService {
 
     public void delete(String name) {
         String configPath = toConfigPath(name);
+        if (isBuiltin(configPath)) {
+            throw new IllegalArgumentException("Built-in job definition cannot be deleted: " + name);
+        }
         Path overlayFile = pathResolver.resolveOverlay(configPath);
         if (overlayFile == null || !Files.isRegularFile(overlayFile)) {
-            throw new IllegalArgumentException("Built-in job definition cannot be deleted: " + name);
+            throw new IllegalArgumentException("Job definition not found: " + name);
         }
         try {
             Files.delete(overlayFile);
@@ -94,7 +97,7 @@ public class JobDefinitionService {
             String configPath,
             JobDefinition job,
             String content,
-            boolean readOnly) {
+            boolean builtin) {
         String id = job.getId();
         if (id == null || id.isBlank()) {
             throw new ConfigLoadException("Job definition missing id: " + configPath);
@@ -103,7 +106,7 @@ public class JobDefinitionService {
         if (displayName == null || displayName.isBlank()) {
             displayName = fileName;
         }
-        return new JobDefinitionResponse(fileName, configPath, id, displayName, content, readOnly);
+        return new JobDefinitionResponse(fileName, configPath, id, displayName, content, builtin, builtin);
     }
 
     private void validateContent(String content, String excludeConfigPath) {
@@ -160,8 +163,8 @@ public class JobDefinitionService {
         }
     }
 
-    private boolean isReadOnly(String configPath) {
-        return !pathResolver.existsOnOverlay(configPath);
+    private boolean isBuiltin(String configPath) {
+        return pathResolver.existsOnClasspath(configPath);
     }
 
     private String readContent(String configPath) {

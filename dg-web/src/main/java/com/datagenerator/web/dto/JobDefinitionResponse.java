@@ -1,5 +1,7 @@
 package com.datagenerator.web.dto;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
+
 public class JobDefinitionResponse {
 
     /** 配置文件名（不含扩展名），用于 API 路径参数 */
@@ -9,6 +11,10 @@ public class JobDefinitionResponse {
     private String path;
     private String id;
     private String content;
+    /** 是否内置（来自 classpath / 主配置目录） */
+    private boolean builtin;
+    /** 是否只读（内置任务不可编辑/删除） */
+    @JsonProperty("readOnly")
     private boolean readOnly;
 
     public JobDefinitionResponse() {
@@ -20,17 +26,19 @@ public class JobDefinitionResponse {
             String id,
             String name,
             String content,
+            boolean builtin,
             boolean readOnly) {
         this.fileName = fileName;
         this.path = path;
         this.id = id;
         this.name = name;
         this.content = content;
+        this.builtin = builtin;
         this.readOnly = readOnly;
     }
 
-    public JobDefinitionResponse(String fileName, String path, String id, String name, boolean readOnly) {
-        this(fileName, path, id, name, null, readOnly);
+    public JobDefinitionResponse(String fileName, String path, String id, String name, boolean builtin) {
+        this(fileName, path, id, name, null, builtin, builtin);
     }
 
     public String getFileName() {
@@ -71,6 +79,14 @@ public class JobDefinitionResponse {
 
     public void setContent(String content) {
         this.content = content;
+    }
+
+    public boolean isBuiltin() {
+        return builtin;
+    }
+
+    public void setBuiltin(boolean builtin) {
+        this.builtin = builtin;
     }
 
     public boolean isReadOnly() {

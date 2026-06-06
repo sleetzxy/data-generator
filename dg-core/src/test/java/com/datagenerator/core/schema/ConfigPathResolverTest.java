@@ -54,6 +54,15 @@ class ConfigPathResolverTest {
     }
 
     @Test
+    void existsOnClasspath_classpathResource_returnsTrue() {
+        ConfigPathResolver resolver = ConfigPathResolver.forClasspath(
+                ConfigPathResolverTest.class.getClassLoader());
+
+        assertThat(resolver.existsOnClasspath("fixtures/schemas/customer.yaml")).isTrue();
+        assertThat(resolver.existsOnClasspath("fixtures/schemas/missing.yaml")).isFalse();
+    }
+
+    @Test
     void writableOverlay_overridesClasspathResource() throws Exception {
         Path overlay = Files.createTempDirectory("dg-overlay-test");
         Path primaryDir = Files.createTempDirectory("dg-primary-test");

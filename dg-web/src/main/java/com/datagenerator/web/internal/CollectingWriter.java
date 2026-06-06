@@ -45,7 +45,11 @@ public class CollectingWriter implements DataWriter {
         Map<String, List<Map<String, Object>>> result = new HashMap<>();
         for (Map.Entry<String, List<DataRow>> entry : rowsByTable.entrySet()) {
             List<Map<String, Object>> rows = entry.getValue().stream()
-                    .map(row -> Map.<String, Object>copyOf(row.getFields()))
+                    .map(row -> {
+                        Map<String, Object> copy = new HashMap<>();
+                        copy.putAll(row.getFields());
+                        return copy;
+                    })
                     .toList();
             result.put(entry.getKey(), rows);
         }

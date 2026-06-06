@@ -36,6 +36,7 @@ class JobDefinitionControllerTest {
                         "single_customer",
                         "单客户造数",
                         "id: single_customer\nname: 单客户造数",
+                        true,
                         true));
 
         mockMvc.perform(get("/api/v1/job-definitions/single_customer"))
@@ -43,6 +44,8 @@ class JobDefinitionControllerTest {
                 .andExpect(jsonPath("$.fileName").value("single_customer"))
                 .andExpect(jsonPath("$.name").value("单客户造数"))
                 .andExpect(jsonPath("$.id").value("single_customer"))
-                .andExpect(jsonPath("$.path").value("jobs/single_customer.yaml"));
+                .andExpect(jsonPath("$.path").value("jobs/single_customer.yaml"))
+                .andExpect(jsonPath("$.builtin").value(true))
+                .andExpect(jsonPath("$.readOnly").value(true));
     }
 }

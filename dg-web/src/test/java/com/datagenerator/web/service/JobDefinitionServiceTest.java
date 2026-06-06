@@ -16,11 +16,17 @@ class JobDefinitionServiceTest {
     @TempDir
     Path tempDir;
 
+    private Path primaryDir;
+    private Path overlayDir;
     private JobDefinitionService service;
 
     @BeforeEach
-    void setUp() {
-        ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(tempDir).withWritableOverlay(tempDir);
+    void setUp() throws Exception {
+        primaryDir = tempDir.resolve("primary");
+        overlayDir = tempDir.resolve("overlay");
+        Files.createDirectories(primaryDir);
+        Files.createDirectories(overlayDir);
+        ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlayDir);
         service = new JobDefinitionService(resolver);
     }
 
@@ -31,6 +37,7 @@ class JobDefinitionServiceTest {
         assertThat(created.getFileName()).isEqualTo("demo_job");
         assertThat(created.getName()).isEqualTo("演示任务");
         assertThat(created.getId()).isEqualTo("demo_job");
+        assertThat(created.isBuiltin()).isFalse();
         assertThat(created.isReadOnly()).isFalse();
 
         var loaded = service.get("demo_job");
@@ -54,13 +61,11 @@ class JobDefinitionServiceTest {
 
     @Test
     void update_builtinDefinition_rejectsModification() throws Exception {
-        Path primaryDir = Files.createTempDirectory("dg-primary-builtin");
-        Path overlay = Files.createTempDirectory("dg-overlay-builtin");
         Files.createDirectories(primaryDir.resolve("jobs"));
         Files.writeString(
                 primaryDir.resolve("jobs/builtin.yaml"),
                 "id: builtin\nname: 内置任务\ntables: []");
-        ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlay);
+        ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlayDir);
         JobDefinitionService builtinService = new JobDefinitionService(resolver);
 
         assertThatThrownBy(() -> builtinService.update("builtin", request("builtin", """
@@ -70,6 +75,24 @@ class JobDefinitionServiceTest {
                 """)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("cannot be modified");
+    }
+
+    @Test
+    void list_builtinWithOverlayCopy_stillBuiltin() throws Exception {
+        Files.createDirectories(primaryDir.resolve("jobs"));
+        Files.createDirectories(overlayDir.resolve("jobs"));
+        Files.writeString(
+                primaryDir.resolve("jobs/builtin.yaml"),
+                "id: builtin\nname: 内置任务\ntables: []");
+        Files.writeString(
+                overlayDir.resolve("jobs/builtin.yaml"),
+                "id: builtin\nname: 覆盖副本\ntables: []");
+        ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlayDir);
+        JobDefinitionService builtinService = new JobDefinitionService(resolver);
+
+        assertThat(builtinService.list())
+                .extracting("fileName", "builtin", "readOnly")
+                .containsExactly(org.assertj.core.api.Assertions.tuple("builtin", true, true));
     }
 
     @Test
@@ -83,13 +106,27 @@ class JobDefinitionServiceTest {
     }
 
     @Test
+    void delete_builtinDefinition_rejectsDeletion() throws Exception {
+        Files.createDirectories(primaryDir.resolve("jobs"));
+        Files.writeString(
+                primaryDir.resolve("jobs/builtin.yaml"),
+                "id: builtin\nname: 内置任务\ntables: []");
+        ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlayDir);
+        JobDefinitionService builtinService = new JobDefinitionService(resolver);
+
+        assertThatThrownBy(() -> builtinService.delete("builtin"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cannot be deleted");
+    }
+
+    @Test
     void list_returnsYamlNameAndFileName() throws Exception {
-        Files.createDirectories(tempDir.resolve("jobs"));
-        Files.writeString(tempDir.resolve("jobs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
+        Files.createDirectories(primaryDir.resolve("jobs"));
+        Files.writeString(primaryDir.resolve("jobs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
 
         assertThat(service.list())
-                .extracting("fileName", "name", "id")
-                .containsExactly(org.assertj.core.api.Assertions.tuple("alpha", "Alpha 任务", "alpha"));
+                .extracting("fileName", "name", "id", "builtin")
+                .containsExactly(org.assertj.core.api.Assertions.tuple("alpha", "Alpha 任务", "alpha", true));
     }
 
     @Test
@@ -101,8 +138,8 @@ class JobDefinitionServiceTest {
 
     @Test
     void create_duplicateId_rejectsRequest() throws Exception {
-        Files.createDirectories(tempDir.resolve("jobs"));
-        Files.writeString(tempDir.resolve("jobs/existing.yaml"), "id: shared_id\nname: 已有任务\ntables: []");
+        Files.createDirectories(primaryDir.resolve("jobs"));
+        Files.writeString(primaryDir.resolve("jobs/existing.yaml"), "id: shared_id\nname: 已有任务\ntables: []");
 
         assertThatThrownBy(() -> service.create(request("new_job", "id: shared_id\nname: 新任务\ntables: []")))
                 .isInstanceOf(IllegalArgumentException.class)

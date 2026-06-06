@@ -159,6 +159,17 @@ public class ConfigPathResolver {
         return overlayFile.startsWith(writableOverlay) && Files.isRegularFile(overlayFile);
     }
 
+    /** 配置是否来自 classpath 或主配置目录（内置） */
+    public boolean existsOnClasspath(String relativePath) {
+        if (classLoader != null) {
+            return classLoader.getResource(toClasspathResource(relativePath)) != null;
+        }
+        if (configDir != null) {
+            return Files.isRegularFile(resolve(relativePath));
+        }
+        return false;
+    }
+
     private List<String> listOverlayYamlRelativePaths(String subdirectory) {
         Path dir = writableOverlay.resolve(subdirectory).normalize();
         if (!Files.isDirectory(dir)) {

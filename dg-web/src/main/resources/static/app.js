@@ -1,5 +1,7 @@
 const API = '/api/v1';
 const LOG_PAGE_SIZE = 10;
+const PREVIEW_PAGE_SIZE = 10;
+const PREVIEW_FETCH_LIMIT = 10;
 
 const DEFAULT_JOB_TEMPLATE = `id: my_job
 name: 我的测试任务
@@ -21,11 +23,15 @@ tables:
           generator: { strategy: random, type: string, length: 10 }
 `;
 
-const PREVIEW_MAX_LIMIT = 100;
-
 let editingDefinition = null;
 let allRunsCache = [];
-let previewContext = { displayName: null, path: null };
+let previewContext = {
+    displayName: null,
+    path: null,
+    rows: [],
+    columns: [],
+    page: 1
+};
 let logModalContext = {
     definitionName: null,
     definitionPath: null,
@@ -46,9 +52,13 @@ document.getElementById('log-close').addEventListener('click', closeLogModal);
 document.querySelector('#log-modal .modal-backdrop').addEventListener('click', closeLogModal);
 
 document.getElementById('preview-close').addEventListener('click', closePreviewModal);
-document.getElementById('preview-cancel').addEventListener('click', closePreviewModal);
-document.getElementById('preview-run').addEventListener('click', runPreview);
 document.querySelector('#preview-modal .modal-backdrop').addEventListener('click', closePreviewModal);
+
+document.addEventListener('click', (event) => {
+    if (!event.target.closest('.action-menu')) {
+        closeActionMenus();
+    }
+});
 
 async function api(path, options = {}) {
     const method = (options.method || 'GET').toUpperCase();
@@ -160,33 +170,22 @@ async function loadDefinitions() {
             return;
         }
 
-        tbody.innerHTML = items.map(item => {
+        tbody.innerHTML = items.map((item, index) => {
             const latestRun = findLatestRun(item.path);
             const activeRun = findActiveRun(item.path);
             const fileName = item.fileName;
             const displayName = item.name || fileName;
+            const isBuiltin = item.builtin === true || item.readOnly === true;
             return `
             <tr>
                 <td><code>${escapeHtml(item.id || '-')}</code></td>
                 <td>${escapeHtml(displayName)}</td>
                 <td><code>${escapeHtml(item.path)}</code></td>
-                <td>${item.readOnly
+                <td>${isBuiltin
                     ? '<span class="badge builtin">内置</span>'
                     : '<span class="badge custom">自定义</span>'}</td>
                 <td>${statusBadge(latestRun?.status)}</td>
-                <td class="actions">
-                    <button class="btn small" onclick="viewDefinition('${escapeAttr(fileName)}')">查看</button>
-                    ${item.readOnly ? '' :
-                        `<button class="btn small" onclick="editDefinition('${escapeAttr(fileName)}')">编辑</button>`}
-                    <button class="btn small" onclick="previewDefinition('${escapeAttr(displayName)}', '${escapeAttr(item.path)}')">预览</button>
-                    <button class="btn small primary" onclick="runDefinition('${escapeAttr(item.path)}')">运行</button>
-                    <button class="btn small danger"
-                        ${activeRun ? `onclick="stopRun('${escapeAttr(activeRun.jobId)}')"` : 'disabled title="当前无运行中的任务"'}
-                    >停止</button>
-                    <button class="btn small log-btn" onclick="viewDefinitionLogs('${escapeAttr(displayName)}', '${escapeAttr(item.path)}')">日志</button>
-                    ${item.readOnly ? '' :
-                        `<button class="btn small danger" onclick="deleteDefinition('${escapeAttr(fileName)}')">删除</button>`}
-                </td>
+                <td class="actions">${renderActionsCell(item, index, displayName, fileName, item.path, activeRun, isBuiltin)}</td>
             </tr>`;
         }).join('');
 
@@ -194,6 +193,43 @@ async function loadDefinitions() {
     } catch (err) {
         tbody.innerHTML = `<tr class="empty-row"><td colspan="6">加载失败: ${escapeHtml(err.message)}</td></tr>`;
     }
+}
+
+function renderActionsCell(item, index, displayName, fileName, path, activeRun, isBuiltin) {
+    const menuId = `action-menu-${index}`;
+    const stopDisabled = !activeRun;
+    const stopJobId = activeRun?.jobId || '';
+    let menuItems = `
+        <button type="button" class="action-menu-item" onclick="viewDefinition('${escapeAttr(fileName)}'); closeActionMenus()">查看</button>
+        <button type="button" class="action-menu-item" onclick="previewDefinition('${escapeAttr(displayName)}', '${escapeAttr(path)}'); closeActionMenus()">预览</button>
+        <button type="button" class="action-menu-item" onclick="viewDefinitionLogs('${escapeAttr(displayName)}', '${escapeAttr(path)}'); closeActionMenus()">日志</button>
+        <button type="button" class="action-menu-item${stopDisabled ? ' disabled' : ''}"
+            ${stopDisabled ? 'disabled title="当前无运行中的任务"' : `onclick="stopRun('${escapeAttr(stopJobId)}'); closeActionMenus()"`}>停止</button>`;
+    if (!isBuiltin) {
+        menuItems += `
+        <button type="button" class="action-menu-item" onclick="editDefinition('${escapeAttr(fileName)}'); closeActionMenus()">编辑</button>
+        <button type="button" class="action-menu-item danger" onclick="deleteDefinition('${escapeAttr(fileName)}'); closeActionMenus()">删除</button>`;
+    }
+    return `
+        <button type="button" class="btn small primary" onclick="runDefinition('${escapeAttr(path)}')">运行</button>
+        <div class="action-menu">
+            <button type="button" class="btn small action-menu-toggle" onclick="toggleActionMenu(event, '${menuId}')">更多</button>
+            <div id="${menuId}" class="action-menu-dropdown hidden">${menuItems}</div>
+        </div>`;
+}
+
+function toggleActionMenu(event, menuId) {
+    event.stopPropagation();
+    const menu = document.getElementById(menuId);
+    const wasOpen = !menu.classList.contains('hidden');
+    closeActionMenus();
+    if (!wasOpen) {
+        menu.classList.remove('hidden');
+    }
+}
+
+function closeActionMenus() {
+    document.querySelectorAll('.action-menu-dropdown').forEach(el => el.classList.add('hidden'));
 }
 
 function openDefinitionModal(fileName, content, readOnly = false) {
@@ -279,18 +315,26 @@ async function deleteDefinition(fileName) {
 }
 
 function openPreviewModal(displayName, path) {
-    previewContext = { displayName, path };
+    previewContext = {
+        displayName,
+        path,
+        rows: [],
+        columns: [],
+        page: 1
+    };
     document.getElementById('preview-title').textContent = `数据预览: ${displayName}`;
-    document.getElementById('preview-limit').value = '10';
-    document.getElementById('preview-content').innerHTML =
-        '<p class="preview-hint">点击「生成预览」查看样本数据（不写库）</p>';
+    document.getElementById('preview-content').innerHTML = '<p class="preview-loading">正在生成预览数据...</p>';
+    document.getElementById('preview-pagination').classList.add('hidden');
+    document.getElementById('preview-pagination').innerHTML = '';
     document.getElementById('preview-modal').classList.remove('hidden');
 }
 
 function closePreviewModal() {
     document.getElementById('preview-modal').classList.add('hidden');
-    previewContext = { displayName: null, path: null };
+    previewContext = { displayName: null, path: null, rows: [], columns: [], page: 1 };
     document.getElementById('preview-content').innerHTML = '';
+    document.getElementById('preview-pagination').classList.add('hidden');
+    document.getElementById('preview-pagination').innerHTML = '';
 }
 
 async function previewDefinition(displayName, path) {
@@ -298,16 +342,20 @@ async function previewDefinition(displayName, path) {
     await runPreview();
 }
 
-function clampPreviewLimit(raw) {
-    const parsed = parseInt(raw, 10);
-    const limit = Number.isFinite(parsed) ? parsed : 10;
-    return Math.min(PREVIEW_MAX_LIMIT, Math.max(1, limit));
+function flattenPreviewRows(rowsByTable) {
+    const flat = [];
+    for (const [tableName, tableRows] of Object.entries(rowsByTable)) {
+        for (const row of tableRows) {
+            flat.push({ _table: tableName, ...row });
+        }
+    }
+    return flat;
 }
 
-function collectPreviewColumns(rows) {
-    const columns = [];
-    const seen = new Set();
-    for (const row of rows) {
+function collectPreviewColumns(flatRows) {
+    const columns = ['_table'];
+    const seen = new Set(['_table']);
+    for (const row of flatRows) {
         for (const key of Object.keys(row)) {
             if (!seen.has(key)) {
                 seen.add(key);
@@ -316,6 +364,80 @@ function collectPreviewColumns(rows) {
         }
     }
     return columns;
+}
+
+function previewColumnLabel(column) {
+    return column === '_table' ? '表名' : column;
+}
+
+function getPreviewTotalPages() {
+    return Math.max(1, Math.ceil(previewContext.rows.length / PREVIEW_PAGE_SIZE));
+}
+
+function getPagedPreviewRows() {
+    const start = (previewContext.page - 1) * PREVIEW_PAGE_SIZE;
+    return previewContext.rows.slice(start, start + PREVIEW_PAGE_SIZE);
+}
+
+function renderPreviewPagination() {
+    const pagination = document.getElementById('preview-pagination');
+    const totalPages = getPreviewTotalPages();
+    const { page, rows } = previewContext;
+
+    if (rows.length <= PREVIEW_PAGE_SIZE) {
+        pagination.classList.add('hidden');
+        pagination.innerHTML = '';
+        return;
+    }
+
+    pagination.classList.remove('hidden');
+    pagination.innerHTML = `
+        <button type="button" class="btn small" ${page <= 1 ? 'disabled' : ''} onclick="changePreviewPage(${page - 1})">上一页</button>
+        <span class="pagination-info">第 ${page} / ${totalPages} 页，共 ${rows.length} 条</span>
+        <button type="button" class="btn small" ${page >= totalPages ? 'disabled' : ''} onclick="changePreviewPage(${page + 1})">下一页</button>
+    `;
+}
+
+function renderPreviewTable() {
+    const panel = document.getElementById('preview-content');
+    const { rows, columns } = previewContext;
+
+    if (!rows.length) {
+        panel.innerHTML = '<p class="preview-empty">无数据</p>';
+        renderPreviewPagination();
+        return;
+    }
+
+    const totalPages = getPreviewTotalPages();
+    if (previewContext.page > totalPages) {
+        previewContext.page = totalPages;
+    }
+
+    const pagedRows = getPagedPreviewRows();
+    let html = '<div class="table-wrap preview-table-wrap"><table><thead><tr>';
+    for (const col of columns) {
+        html += `<th>${escapeHtml(previewColumnLabel(col))}</th>`;
+    }
+    html += '</tr></thead><tbody>';
+    for (const row of pagedRows) {
+        html += '<tr>';
+        for (const col of columns) {
+            html += `<td>${formatPreviewCell(row[col])}</td>`;
+        }
+        html += '</tr>';
+    }
+    html += '</tbody></table></div>';
+    panel.innerHTML = html;
+    renderPreviewPagination();
+}
+
+function changePreviewPage(page) {
+    const totalPages = getPreviewTotalPages();
+    if (page < 1 || page > totalPages) {
+        return;
+    }
+    previewContext.page = page;
+    renderPreviewTable();
 }
 
 function formatPreviewCell(value) {
@@ -328,71 +450,30 @@ function formatPreviewCell(value) {
     return escapeHtml(String(value));
 }
 
-function renderPreviewRows(result) {
-    const rowsByTable = result.rows;
-    if (!rowsByTable || !Object.keys(rowsByTable).length) {
-        return '<p class="preview-empty">无数据，请检查 Job 配置</p>';
-    }
-
-    const progress = result.progress || {};
-    let html = `
-        <div class="preview-summary">
-            <span>${statusBadge(result.status)}</span>
-            <span>耗时 ${escapeHtml(result.duration || '-')}</span>
-            <span>共 ${progress.totalRows ?? 0} 行</span>
-        </div>`;
-
-    for (const [tableName, tableRows] of Object.entries(rowsByTable)) {
-        html += `<h3 class="preview-table-title">${escapeHtml(tableName)} <span class="muted">(${tableRows.length} 行)</span></h3>`;
-        if (!tableRows.length) {
-            html += '<p class="preview-empty">无数据</p>';
-            continue;
-        }
-        const columns = collectPreviewColumns(tableRows);
-        html += '<div class="table-wrap preview-table-wrap"><table><thead><tr>';
-        for (const col of columns) {
-            html += `<th>${escapeHtml(col)}</th>`;
-        }
-        html += '</tr></thead><tbody>';
-        for (const row of tableRows) {
-            html += '<tr>';
-            for (const col of columns) {
-                html += `<td>${formatPreviewCell(row[col])}</td>`;
-            }
-            html += '</tr>';
-        }
-        html += '</tbody></table></div>';
-    }
-    return html;
-}
-
 async function runPreview() {
     if (!previewContext.path) {
         return;
     }
 
-    const limitInput = document.getElementById('preview-limit');
-    const limit = clampPreviewLimit(limitInput.value);
-    limitInput.value = String(limit);
-
     const panel = document.getElementById('preview-content');
-    const runBtn = document.getElementById('preview-run');
     panel.innerHTML = '<p class="preview-loading">正在生成预览数据...</p>';
-    runBtn.disabled = true;
+    document.getElementById('preview-pagination').classList.add('hidden');
 
     try {
         const result = await api('/preview', {
             method: 'POST',
             body: JSON.stringify({
                 jobConfig: previewContext.path,
-                preview: { limit }
+                preview: { limit: PREVIEW_FETCH_LIMIT }
             })
         });
-        panel.innerHTML = renderPreviewRows(result);
+        const rowsByTable = result.rows || {};
+        previewContext.rows = flattenPreviewRows(rowsByTable);
+        previewContext.columns = collectPreviewColumns(previewContext.rows);
+        previewContext.page = 1;
+        renderPreviewTable();
     } catch (err) {
         panel.innerHTML = `<p class="preview-error">预览失败: ${escapeHtml(err.message)}</p>`;
-    } finally {
-        runBtn.disabled = false;
     }
 }
 
