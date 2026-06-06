@@ -1,9 +1,10 @@
 package com.datagenerator.web.controller;
 
 import com.datagenerator.web.controller.JobController;
-import com.datagenerator.web.dto.JobSubmitResult;
 import com.datagenerator.web.dto.JobResponse;
+import com.datagenerator.web.dto.JobStatus;
 import com.datagenerator.web.dto.JobSubmitRequest;
+import com.datagenerator.web.dto.JobSubmitResult;
 import com.datagenerator.web.service.JobService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +51,40 @@ class JobControllerTest {
                                  "writer":{"type":"csv","connection":"local-csv","mode":"insert"}}
                                 """))
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("COMPLETED"));
+    }
+
+    @Test
+    void submitJob_whenQueued_returns202WithJobId() throws Exception {
+        JobResponse pending = new JobResponse();
+        pending.setJobId("job-queued-1");
+        pending.setStatus(JobStatus.PENDING);
+        when(jobService.submit(any(JobSubmitRequest.class)))
+                .thenReturn(new JobSubmitResult(pending, true));
+
+        mockMvc.perform(post("/api/v1/jobs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"jobConfig":"jobs/single_customer.yaml",
+                                 "writer":{"type":"csv","connection":"local-csv","mode":"insert"}}
+                                """))
+                .andExpect(status().isAccepted())
+                .andExpect(jsonPath("$.jobId").value("job-queued-1"))
+                .andExpect(jsonPath("$.status").value("PENDING"));
+    }
+
+    @Test
+    void submitJob_immediateRun_returns200Or202() throws Exception {
+        when(jobService.submit(any(JobSubmitRequest.class)))
+                .thenReturn(new JobSubmitResult(JobResponse.completed("job-sync-1", 50), false));
+
+        mockMvc.perform(post("/api/v1/jobs")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"jobConfig":"jobs/single_customer.yaml"}
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.jobId").value("job-sync-1"))
                 .andExpect(jsonPath("$.status").value("COMPLETED"));
     }
 }
