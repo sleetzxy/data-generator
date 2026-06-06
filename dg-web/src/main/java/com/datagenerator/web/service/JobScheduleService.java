@@ -87,12 +87,16 @@ public class JobScheduleService {
             throw new ReadOnlyScheduleException(configPath);
         }
         JobScheduleRequest normalized = validateAndNormalize(request);
+        persistSchedule(configPath, normalized);
+        return toResponse(normalized.isEnabled(), normalized.getCron(), true);
+    }
+
+    public void persistSchedule(String configPath, JobScheduleRequest normalized) {
         scheduleRepository.upsert(
                 configPath,
                 normalized.isEnabled(),
                 normalized.getCron(),
                 Instant.now().toString());
-        return toResponse(normalized.isEnabled(), normalized.getCron(), true);
     }
 
     private JobScheduleResponse toResponse(boolean enabled, String cron, boolean editable) {

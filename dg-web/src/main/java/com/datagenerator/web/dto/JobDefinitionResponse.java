@@ -17,6 +17,8 @@ public class JobDefinitionResponse {
     @JsonProperty("readOnly")
     private boolean readOnly;
     private JobScheduleResponse schedule;
+    /** 自定义任务创建时间（ISO-8601），内置任务为 null */
+    private String createdAt;
 
     public JobDefinitionResponse() {
     }
@@ -104,5 +106,13 @@ public class JobDefinitionResponse {
 
     public void setSchedule(JobScheduleResponse schedule) {
         this.schedule = schedule;
+    }
+
+    public String getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(String createdAt) {
+        this.createdAt = createdAt;
     }
 }

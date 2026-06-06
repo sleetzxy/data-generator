@@ -1,11 +1,11 @@
 const API = '/api/v1';
 const LOG_PAGE_SIZE = 10;
+const LOG_LINES_PAGE_SIZE = 50;
+const DEFINITION_PAGE_SIZE = 20;
 const PREVIEW_PAGE_SIZE = 10;
 const PREVIEW_FETCH_LIMIT = 10;
 
-const DEFAULT_JOB_TEMPLATE = `id: my_job
-name: 我的测试任务
-writer:
+const DEFAULT_JOB_TEMPLATE = `writer:
   type: csv
   connection: local-csv
   mode: insert
@@ -24,8 +24,10 @@ tables:
 `;
 
 let editingDefinition = null;
-let editingScheduleFileName = null;
+let editingScheduleEditable = false;
 let allRunsCache = [];
+let definitionsCache = [];
+let definitionsPage = 1;
 let previewContext = {
     displayName: null,
     path: null,
@@ -38,7 +40,9 @@ let logModalContext = {
     definitionPath: null,
     runs: [],
     page: 1,
-    selectedJobId: null
+    selectedJobId: null,
+    logDetailPages: {},
+    logDetailLines: {}
 };
 
 document.getElementById('btn-new-definition').addEventListener('click', () => openDefinitionModal(null));
@@ -54,11 +58,6 @@ document.querySelector('#log-modal .modal-backdrop').addEventListener('click', c
 
 document.getElementById('preview-close').addEventListener('click', closePreviewModal);
 document.querySelector('#preview-modal .modal-backdrop').addEventListener('click', closePreviewModal);
-
-document.getElementById('schedule-close').addEventListener('click', closeScheduleModal);
-document.getElementById('schedule-cancel').addEventListener('click', closeScheduleModal);
-document.getElementById('schedule-save').addEventListener('click', saveSchedule);
-document.querySelector('#schedule-modal .modal-backdrop').addEventListener('click', closeScheduleModal);
 
 document.addEventListener('click', (event) => {
     if (!event.target.closest('.action-menu')) {
@@ -112,13 +111,6 @@ function statusBadge(status) {
     return `<span class="badge status-${status}">${status}</span>`;
 }
 
-function renderScheduleBadge(schedule) {
-    if (!schedule || !schedule.enabled) {
-        return '<span class="badge schedule-off">关闭</span>';
-    }
-    return '<span class="badge schedule-on">启用</span>';
-}
-
 function renderScheduleCron(schedule) {
     if (!schedule || !schedule.enabled || !schedule.cron) {
         return '<span class="muted">—</span>';
@@ -139,13 +131,50 @@ function formatTime(iso) {
     }
 }
 
-function renderLogLines(logs) {
+function renderLogLines(logs, page = 1) {
     if (!logs.length) {
         return '暂无日志';
     }
-    return logs.map(entry =>
+    const start = (page - 1) * LOG_LINES_PAGE_SIZE;
+    const pagedLogs = logs.slice(start, start + LOG_LINES_PAGE_SIZE);
+    return pagedLogs.map(entry =>
         `<span class="log-line-${entry.level}">[${entry.timestamp}] ${entry.level} ${escapeHtml(entry.message)}</span>`
     ).join('\n');
+}
+
+function renderLogDetailPagination(jobId, totalLines, page) {
+    const totalPages = Math.max(1, Math.ceil(totalLines / LOG_LINES_PAGE_SIZE));
+    if (totalLines <= LOG_LINES_PAGE_SIZE) {
+        return '';
+    }
+    return `
+        <div class="pagination log-detail-pagination">
+            <button type="button" class="btn small" ${page <= 1 ? 'disabled' : ''} onclick="changeLogDetailPage('${escapeAttr(jobId)}', ${page - 1})">上一页</button>
+            <span class="pagination-info">第 ${page} / ${totalPages} 页，共 ${totalLines} 条</span>
+            <button type="button" class="btn small" ${page >= totalPages ? 'disabled' : ''} onclick="changeLogDetailPage('${escapeAttr(jobId)}', ${page + 1})">下一页</button>
+        </div>
+    `;
+}
+
+function changeLogDetailPage(jobId, page) {
+    const logs = logModalContext.logDetailLines[jobId] || [];
+    const totalPages = Math.max(1, Math.ceil(logs.length / LOG_LINES_PAGE_SIZE));
+    if (page < 1 || page > totalPages) {
+        return;
+    }
+    logModalContext.logDetailPages[jobId] = page;
+    const panel = document.querySelector(`[data-log-panel="${cssEscape(jobId)}"]`);
+    if (!panel) {
+        return;
+    }
+    const pre = panel.querySelector('.log-view');
+    if (pre) {
+        pre.innerHTML = renderLogLines(logs, page);
+    }
+    const pagination = panel.querySelector('.log-detail-pagination');
+    if (pagination) {
+        pagination.outerHTML = renderLogDetailPagination(jobId, logs.length, page);
+    }
 }
 
 function findLatestRun(path) {
@@ -183,41 +212,97 @@ async function loadDefinitions() {
             fetchAllJobs()
         ]);
         allRunsCache = runs;
-
-        if (!items.length) {
-            tbody.innerHTML = '<tr class="empty-row"><td colspan="8">暂无任务配置</td></tr>';
-            refreshOpenLogModal();
-            return;
-        }
-
-        tbody.innerHTML = items.map((item, index) => {
-            const latestRun = findLatestRun(item.path);
-            const activeRun = findActiveRun(item.path);
-            const fileName = item.fileName;
-            const displayName = item.name || fileName;
-            const isBuiltin = item.builtin === true || item.readOnly === true;
-            return `
-            <tr>
-                <td><code>${escapeHtml(item.id || '-')}</code></td>
-                <td>${escapeHtml(displayName)}</td>
-                <td><code>${escapeHtml(item.path)}</code></td>
-                <td>${isBuiltin
-                    ? '<span class="badge builtin">内置</span>'
-                    : '<span class="badge custom">自定义</span>'}</td>
-                <td>${renderScheduleBadge(item.schedule)}</td>
-                <td>${renderScheduleCron(item.schedule)}</td>
-                <td>${statusBadge(latestRun?.status)}</td>
-                <td class="actions">${renderActionsCell(item, index, displayName, fileName, item.path, activeRun, isBuiltin)}</td>
-            </tr>`;
-        }).join('');
-
-        refreshOpenLogModal();
+        definitionsCache = items;
+        renderDefinitionsTable();
     } catch (err) {
-        tbody.innerHTML = `<tr class="empty-row"><td colspan="8">加载失败: ${escapeHtml(err.message)}</td></tr>`;
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="6">加载失败: ${escapeHtml(err.message)}</td></tr>`;
+        renderDefinitionsPagination();
     }
 }
 
-function renderActionsCell(item, index, displayName, fileName, path, activeRun, isBuiltin) {
+function getDefinitionTotalPages() {
+    return Math.max(1, Math.ceil(definitionsCache.length / DEFINITION_PAGE_SIZE));
+}
+
+function getPagedDefinitions() {
+    const start = (definitionsPage - 1) * DEFINITION_PAGE_SIZE;
+    return definitionsCache.slice(start, start + DEFINITION_PAGE_SIZE);
+}
+
+function renderDefinitionsPagination() {
+    const pagination = document.getElementById('definitions-pagination');
+    const totalPages = getDefinitionTotalPages();
+    const total = definitionsCache.length;
+
+    if (total <= DEFINITION_PAGE_SIZE) {
+        pagination.classList.add('hidden');
+        pagination.innerHTML = '';
+        return;
+    }
+
+    pagination.classList.remove('hidden');
+    pagination.innerHTML = `
+        <button type="button" class="btn small" ${definitionsPage <= 1 ? 'disabled' : ''} onclick="changeDefinitionsPage(${definitionsPage - 1})">上一页</button>
+        <span class="pagination-info">第 ${definitionsPage} / ${totalPages} 页，共 ${total} 条</span>
+        <button type="button" class="btn small" ${definitionsPage >= totalPages ? 'disabled' : ''} onclick="changeDefinitionsPage(${definitionsPage + 1})">下一页</button>
+    `;
+}
+
+function changeDefinitionsPage(page) {
+    const totalPages = getDefinitionTotalPages();
+    if (page < 1 || page > totalPages) {
+        return;
+    }
+    definitionsPage = page;
+    renderDefinitionsTable();
+}
+
+function renderDefinitionsTable() {
+    const tbody = document.getElementById('definitions-body');
+    const totalPages = getDefinitionTotalPages();
+
+    if (definitionsPage > totalPages) {
+        definitionsPage = totalPages;
+    }
+    if (definitionsPage < 1) {
+        definitionsPage = 1;
+    }
+
+    if (!definitionsCache.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">暂无任务配置</td></tr>';
+        renderDefinitionsPagination();
+        refreshOpenLogModal();
+        return;
+    }
+
+    const pagedItems = getPagedDefinitions();
+    const startIndex = (definitionsPage - 1) * DEFINITION_PAGE_SIZE;
+    tbody.innerHTML = pagedItems.map((item, index) => {
+        const latestRun = findLatestRun(item.path);
+        const activeRun = findActiveRun(item.path);
+        const fileName = item.fileName;
+        const displayName = item.name || fileName;
+        const isBuiltin = item.builtin === true || item.readOnly === true;
+        const scheduleEnabled = item.schedule?.enabled === true;
+        const rowIndex = startIndex + index;
+        return `
+            <tr>
+                <td><code>${escapeHtml(item.id || '-')}</code></td>
+                <td>${escapeHtml(displayName)}</td>
+                <td>${isBuiltin
+                    ? '<span class="badge builtin">内置</span>'
+                    : '<span class="badge custom">自定义</span>'}</td>
+                <td>${renderScheduleCron(item.schedule)}</td>
+                <td>${statusBadge(latestRun?.status)}</td>
+                <td class="actions">${renderActionsCell(item, rowIndex, displayName, fileName, item.path, activeRun, isBuiltin, scheduleEnabled)}</td>
+            </tr>`;
+    }).join('');
+
+    renderDefinitionsPagination();
+    refreshOpenLogModal();
+}
+
+function renderActionsCell(item, index, displayName, fileName, path, activeRun, isBuiltin, scheduleEnabled) {
     const menuId = `action-menu-${index}`;
     const stopDisabled = !activeRun;
     const stopJobId = activeRun?.jobId || '';
@@ -229,12 +314,11 @@ function renderActionsCell(item, index, displayName, fileName, path, activeRun, 
             ${stopDisabled ? 'disabled title="当前无运行中的任务"' : `onclick="stopRun('${escapeAttr(stopJobId)}'); closeActionMenus()"`}>停止</button>`;
     if (!isBuiltin) {
         menuItems += `
-        <button type="button" class="action-menu-item" onclick="openScheduleModal('${escapeAttr(fileName)}'); closeActionMenus()">调度设置</button>
         <button type="button" class="action-menu-item" onclick="editDefinition('${escapeAttr(fileName)}'); closeActionMenus()">编辑</button>
         <button type="button" class="action-menu-item danger" onclick="deleteDefinition('${escapeAttr(fileName)}'); closeActionMenus()">删除</button>`;
     }
     return `
-        <button type="button" class="btn small primary" onclick="runDefinition('${escapeAttr(path)}')">运行</button>
+        <button type="button" class="btn small primary" onclick="runDefinition('${escapeAttr(path)}', ${scheduleEnabled})">运行</button>
         <div class="action-menu">
             <button type="button" class="btn small action-menu-toggle" onclick="toggleActionMenu(event, '${menuId}')">更多</button>
             <div id="${menuId}" class="action-menu-dropdown hidden">${menuItems}</div>
@@ -255,31 +339,64 @@ function closeActionMenus() {
     document.querySelectorAll('.action-menu-dropdown').forEach(el => el.classList.add('hidden'));
 }
 
-function openDefinitionModal(fileName, content, readOnly = false) {
+function openDefinitionModal(fileName, content, readOnly = false, schedule = null, displayName = null) {
     editingDefinition = fileName || null;
     const title = fileName
-        ? (readOnly ? `查看任务: ${fileName}` : `编辑任务: ${fileName}`)
+        ? (readOnly ? `查看任务: ${displayName || fileName}` : `编辑任务: ${displayName || fileName}`)
         : '新建任务';
     document.getElementById('modal-title').textContent = title;
-    document.getElementById('definition-name').value = fileName || '';
-    document.getElementById('definition-name').disabled = !!fileName;
-    document.getElementById('name-field').style.display = fileName ? 'none' : 'flex';
+    document.getElementById('definition-name').value = displayName || fileName || '';
+    document.getElementById('definition-name').disabled = !!readOnly;
+    document.getElementById('name-field').style.display = 'flex';
     document.getElementById('definition-content').value = content || DEFAULT_JOB_TEMPLATE;
     document.getElementById('definition-content').readOnly = !!readOnly;
     document.getElementById('modal-save').style.display = readOnly ? 'none' : '';
+    applyScheduleFields(schedule, readOnly, !fileName);
     document.getElementById('modal').classList.remove('hidden');
+}
+
+function applyScheduleFields(schedule, readOnly, isNew) {
+    const sched = schedule || { enabled: false, cron: '', editable: true };
+    editingScheduleEditable = !readOnly && sched.editable !== false;
+    document.getElementById('schedule-fields').classList.remove('hidden');
+    document.getElementById('definition-schedule-enabled').checked = !!sched.enabled;
+    document.getElementById('definition-schedule-cron').value = sched.cron || '';
+    document.getElementById('definition-schedule-enabled').disabled = !editingScheduleEditable;
+    document.getElementById('definition-schedule-cron').disabled = !editingScheduleEditable;
+    const nextRunEl = document.getElementById('definition-schedule-next-run');
+    const nextRunField = document.getElementById('definition-next-run-field');
+    if (sched.nextRunAt) {
+        nextRunEl.textContent = formatTime(sched.nextRunAt);
+        nextRunField.classList.remove('hidden');
+    } else if (isNew) {
+        nextRunEl.textContent = '保存后根据 Cron 计算';
+        nextRunField.classList.remove('hidden');
+    } else if (!sched.enabled) {
+        nextRunField.classList.add('hidden');
+    } else {
+        nextRunEl.textContent = '—';
+        nextRunField.classList.remove('hidden');
+    }
+}
+
+function readScheduleFromModal() {
+    return {
+        enabled: document.getElementById('definition-schedule-enabled').checked,
+        cron: document.getElementById('definition-schedule-cron').value.trim()
+    };
 }
 
 function closeModal() {
     document.getElementById('modal').classList.add('hidden');
     document.getElementById('definition-content').readOnly = false;
     editingDefinition = null;
+    editingScheduleEditable = false;
 }
 
 async function viewDefinition(fileName) {
     try {
         const item = await api(`/job-definitions/${encodeURIComponent(fileName)}`);
-        openDefinitionModal(fileName, item.content, item.readOnly);
+        openDefinitionModal(fileName, item.content, true, item.schedule, item.name);
     } catch (err) {
         showToast('加载失败: ' + err.message);
     }
@@ -292,30 +409,45 @@ async function editDefinition(fileName) {
             showToast('内置任务不可编辑');
             return;
         }
-        openDefinitionModal(fileName, item.content, false);
+        openDefinitionModal(fileName, item.content, false, item.schedule, item.name);
     } catch (err) {
         showToast('加载失败: ' + err.message);
     }
 }
 
 async function saveDefinition() {
-    const name = editingDefinition || document.getElementById('definition-name').value.trim();
+    const displayName = document.getElementById('definition-name').value.trim();
     const content = document.getElementById('definition-content').value;
-    if (!name) {
+    if (!displayName) {
         showToast('请输入任务名称');
         return;
+    }
+    const payload = {
+        displayName,
+        content
+    };
+    if (editingDefinition) {
+        payload.name = editingDefinition;
+    }
+    if (editingScheduleEditable) {
+        const schedule = readScheduleFromModal();
+        if (schedule.enabled && !schedule.cron) {
+            showToast('启用定时调度时请填写 Cron 表达式');
+            return;
+        }
+        payload.schedule = schedule;
     }
     try {
         if (editingDefinition) {
             await api(`/job-definitions/${encodeURIComponent(editingDefinition)}`, {
                 method: 'PUT',
-                body: JSON.stringify({ name: editingDefinition, content })
+                body: JSON.stringify(payload)
             });
             showToast('任务已更新');
         } else {
             await api('/job-definitions', {
                 method: 'POST',
-                body: JSON.stringify({ name, content })
+                body: JSON.stringify(payload)
             });
             showToast('任务已创建');
         }
@@ -500,7 +632,15 @@ async function runPreview() {
     }
 }
 
-async function runDefinition(path) {
+async function runDefinition(path, scheduleEnabled = false) {
+    if (scheduleEnabled) {
+        const confirmed = confirm(
+            '该任务已启用定时调度。确定要立即执行一次吗？\n\n立即执行不影响 Cron 定时计划，仅额外触发一轮。'
+        );
+        if (!confirmed) {
+            return;
+        }
+    }
     try {
         const result = await api('/jobs', {
             method: 'POST',
@@ -514,55 +654,6 @@ async function runDefinition(path) {
         await loadDefinitions();
     } catch (err) {
         showToast('提交失败: ' + err.message);
-    }
-}
-
-async function openScheduleModal(fileName) {
-    try {
-        const [definition, schedule] = await Promise.all([
-            api(`/job-definitions/${encodeURIComponent(fileName)}`),
-            api(`/job-definitions/${encodeURIComponent(fileName)}/schedule`)
-        ]);
-        editingScheduleFileName = fileName;
-        const displayName = definition.name || fileName;
-        document.getElementById('schedule-modal-title').textContent = `调度设置: ${displayName}`;
-        document.getElementById('schedule-enabled').checked = schedule.enabled;
-        document.getElementById('schedule-cron').value = schedule.cron || '';
-        const editable = schedule.editable !== false;
-        document.getElementById('schedule-enabled').disabled = !editable;
-        document.getElementById('schedule-cron').disabled = !editable;
-        document.getElementById('schedule-save').style.display = editable ? '' : 'none';
-        document.getElementById('schedule-next-run').textContent =
-            schedule.nextRunAt ? formatTime(schedule.nextRunAt) : '—';
-        document.getElementById('schedule-modal').classList.remove('hidden');
-    } catch (err) {
-        showToast('加载调度配置失败: ' + err.message);
-    }
-}
-
-function closeScheduleModal() {
-    document.getElementById('schedule-modal').classList.add('hidden');
-    editingScheduleFileName = null;
-}
-
-async function saveSchedule() {
-    if (!editingScheduleFileName) {
-        return;
-    }
-    const enabled = document.getElementById('schedule-enabled').checked;
-    const cron = document.getElementById('schedule-cron').value.trim();
-    try {
-        const saved = await api(`/job-definitions/${encodeURIComponent(editingScheduleFileName)}/schedule`, {
-            method: 'PUT',
-            body: JSON.stringify({ enabled, cron })
-        });
-        document.getElementById('schedule-next-run').textContent =
-            saved.nextRunAt ? formatTime(saved.nextRunAt) : '—';
-        showToast('调度已保存');
-        closeScheduleModal();
-        loadDefinitions();
-    } catch (err) {
-        showToast('保存失败: ' + err.message);
     }
 }
 
@@ -678,7 +769,9 @@ function openLogListModal(name, path, runs) {
         definitionPath: path,
         runs,
         page: 1,
-        selectedJobId: null
+        selectedJobId: null,
+        logDetailPages: {},
+        logDetailLines: {}
     };
 
     document.getElementById('log-title').textContent = `运行记录: ${name}`;
@@ -697,7 +790,14 @@ function changeLogPage(page) {
 }
 
 function toggleRunLogDetail(jobId) {
-    logModalContext.selectedJobId = logModalContext.selectedJobId === jobId ? null : jobId;
+    if (logModalContext.selectedJobId === jobId) {
+        logModalContext.selectedJobId = null;
+    } else {
+        logModalContext.selectedJobId = jobId;
+        if (!logModalContext.logDetailPages[jobId]) {
+            logModalContext.logDetailPages[jobId] = 1;
+        }
+    }
     renderLogRunsTable();
 }
 
@@ -714,6 +814,8 @@ async function loadRunLogDetailContent(jobId) {
         const progress = job.progress || {};
 
         const logs = await api(`/jobs/${encodeURIComponent(jobId)}/logs`);
+        logModalContext.logDetailLines[jobId] = logs;
+        const logPage = logModalContext.logDetailPages[jobId] || 1;
         panel.innerHTML = `
             <div class="detail-summary log-detail-summary">
                 <div class="detail-item"><label>状态</label>${statusBadge(job.status)}</div>
@@ -722,7 +824,8 @@ async function loadRunLogDetailContent(jobId) {
                 <div class="detail-item"><label>写入行数</label>${progress.writtenRows ?? 0} / ${progress.totalRows ?? 0}</div>
                 ${job.errorMessage ? `<div class="detail-item detail-item-wide"><label>错误</label>${escapeHtml(job.errorMessage)}</div>` : ''}
             </div>
-            <pre class="log-view">${renderLogLines(logs)}</pre>
+            <pre class="log-view">${renderLogLines(logs, logPage)}</pre>
+            ${renderLogDetailPagination(jobId, logs.length, logPage)}
         `;
 
         if (run && run.status !== job.status) {
@@ -763,7 +866,9 @@ function closeLogModal() {
         definitionPath: null,
         runs: [],
         page: 1,
-        selectedJobId: null
+        selectedJobId: null,
+        logDetailPages: {},
+        logDetailLines: {}
     };
     document.getElementById('log-runs-body').innerHTML = '';
     document.getElementById('log-pagination').classList.add('hidden');

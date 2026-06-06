@@ -138,7 +138,7 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 
 控制台提供：
 
-- **任务管理** — Job 定义 CRUD、提交运行、查看运行记录与日志
+- **任务管理** — Job 定义 CRUD、Cron 定时调度、提交运行、运行记录与日志（分页）
 - **配置指南** — 内置 YAML 配置说明文档
 
 ### 运行测试
@@ -251,24 +251,34 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/preview \
 ### Job 定义管理
 
 ```bash
-# 列出所有 Job 定义（响应含 fileName、name、id、path 等字段）
+# 列出所有 Job 定义（响应含 fileName、name、id、schedule、createdAt 等）
 curl -b cookies.txt http://localhost:8080/api/v1/job-definitions
-# fileName 为配置文件名（API 路径参数），name 为 YAML 中的描述名称
+# fileName 为配置文件名（API 路径参数）；name 为任务显示名称
 
-# 查看单个定义
-curl -b cookies.txt http://localhost:8080/api/v1/job-definitions/my_job
+# 查看单个定义（自定义任务返回的 content 不含顶层 name，由 displayName 维护）
+curl -b cookies.txt http://localhost:8080/api/v1/job-definitions/joba1b2c3d4
 
-# 创建 / 更新 / 删除（YAML 内容须包含唯一 id 字段）
+# 创建自定义任务（displayName 必填；id/name 写入 YAML；文件名默认用生成的 id）
 curl -b cookies.txt -X POST http://localhost:8080/api/v1/job-definitions \
   -H "Content-Type: application/json" \
-  -d '{"name":"my_job","content":"id: my_job\nname: 我的测试任务\n..."}'
+  -d '{
+    "displayName": "我的测试任务",
+    "content": "writer:\n  type: csv\n  connection: local-csv\n  mode: insert\ntables: []",
+    "schedule": { "enabled": true, "cron": "0 0 2 * * ?" }
+  }'
 
-curl -b cookies.txt -X PUT http://localhost:8080/api/v1/job-definitions/my_job \
+# 更新（fileName 为路径参数；displayName 更新 YAML name）
+curl -b cookies.txt -X PUT http://localhost:8080/api/v1/job-definitions/joba1b2c3d4 \
   -H "Content-Type: application/json" \
-  -d '{"content":"..."}'
+  -d '{"displayName":"更新后的名称","content":"..."}'
 
-curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/job-definitions/my_job
+curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/job-definitions/joba1b2c3d4
+
+# 调度（自定义任务也可单独 PUT；内置任务只读）
+curl -b cookies.txt http://localhost:8080/api/v1/job-definitions/my_builtin/schedule
 ```
+
+自定义任务 YAML **禁止**包含 `schedule` 块；`id` 新建时自动生成；可选 `name` 指定 ASCII 配置文件名，否则与 `id` 相同。
 
 ### 提交生成任务
 
@@ -341,10 +351,11 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}/record
 
 | 能力 | 说明 |
 |------|------|
-| Web 控制台 | 任务管理、Job 定义编辑、运行记录与日志查看、配置指南 |
+| Web 控制台 | 任务管理、Job 定义编辑、Cron 调度、运行记录与日志（分页）、配置指南 |
 | 表单登录 | Spring Security Session 认证，`data-generator.auth.*` 可配置 |
 | 任务持久化 | SQLite 存储任务记录与全量运行日志，重启后可查历史 |
-| Job 定义 CRUD | REST + Web UI，可写配置存于 `writable-config-dir` |
+| Job 定义 CRUD | REST + Web UI；自定义 YAML 存 `writable-config-dir`，调度存 SQLite |
+| Job 定时调度 | Cron 触发、同配置 FIFO 排队、手动运行与调度并存 |
 
 ## 许可证
 

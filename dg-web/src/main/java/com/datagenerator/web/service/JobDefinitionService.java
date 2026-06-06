@@ -2,6 +2,7 @@ package com.datagenerator.web.service;
 
 import com.datagenerator.web.dto.JobDefinitionRequest;
 import com.datagenerator.web.dto.JobDefinitionResponse;
+import com.datagenerator.web.dto.JobScheduleRequest;
 import com.datagenerator.web.storage.JobScheduleRepository;
 import com.datagenerator.core.schema.ConfigLoadException;
 import com.datagenerator.core.schema.ConfigPathResolver;
@@ -16,9 +17,13 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 @Service
 public class JobDefinitionService {
@@ -55,26 +60,61 @@ public class JobDefinitionService {
             JobDefinition job = configLoader.loadJob(configPath);
             results.add(toResponse(fileName, configPath, job, null, isBuiltin(configPath)));
         }
+        results.sort(this::compareForList);
         return results;
+    }
+
+    private int compareForList(JobDefinitionResponse left, JobDefinitionResponse right) {
+        if (left.isBuiltin() != right.isBuiltin()) {
+            return left.isBuiltin() ? -1 : 1;
+        }
+        if (left.isBuiltin()) {
+            return left.getFileName().compareToIgnoreCase(right.getFileName());
+        }
+        Instant leftCreated = parseCreatedAt(left.getCreatedAt());
+        Instant rightCreated = parseCreatedAt(right.getCreatedAt());
+        int byTime = rightCreated.compareTo(leftCreated);
+        if (byTime != 0) {
+            return byTime;
+        }
+        return right.getFileName().compareToIgnoreCase(left.getFileName());
+    }
+
+    private Instant parseCreatedAt(String createdAt) {
+        if (createdAt == null || createdAt.isBlank()) {
+            return Instant.EPOCH;
+        }
+        return Instant.parse(createdAt);
     }
 
     public JobDefinitionResponse get(String name) {
         String configPath = toConfigPath(name);
-        String content = readContent(configPath);
+        String content = stripNameFromContent(readContent(configPath));
         JobDefinition job = configLoader.loadJob(configPath);
         return toResponse(name, configPath, job, content, isBuiltin(configPath));
     }
 
     public JobDefinitionResponse create(JobDefinitionRequest request) {
-        validateName(request.getName());
-        validateContent(request.getContent(), null);
-        String configPath = toConfigPath(request.getName());
+        String displayName = requireDisplayName(request.getDisplayName());
+        JobScheduleRequest normalizedSchedule = normalizeScheduleIfPresent(request.getSchedule());
+        String contentWithId = assignGeneratedId(request.getContent());
+        String generatedId = requireId(parseRootMapping(contentWithId));
+        String fileName = resolveCreateFileName(request, generatedId);
+        String configPath = toConfigPath(fileName);
         if (exists(configPath)) {
-            throw new IllegalArgumentException("Job definition already exists: " + request.getName());
+            throw new IllegalArgumentException("Job definition already exists: " + fileName);
         }
-        writeContent(configPath, request.getContent());
-        JobDefinition job = configLoader.loadJob(configPath);
-        return toResponse(request.getName(), configPath, job, request.getContent(), false);
+        String content = injectDisplayName(contentWithId, displayName);
+        validateContent(content, null);
+        writeContent(configPath, content);
+        try {
+            applySchedule(configPath, normalizedSchedule);
+            JobDefinition job = configLoader.loadJob(configPath);
+            return toResponse(fileName, configPath, job, stripNameFromContent(content), false);
+        } catch (RuntimeException exception) {
+            rollbackOverlayDefinition(configPath);
+            throw exception;
+        }
     }
 
     public JobDefinitionResponse update(String name, JobDefinitionRequest request) {
@@ -85,10 +125,14 @@ public class JobDefinitionService {
         if (isBuiltin(configPath)) {
             throw new IllegalArgumentException("Built-in job definition cannot be modified: " + name);
         }
-        validateContent(request.getContent(), configPath);
-        writeContent(configPath, request.getContent());
+        String displayName = requireDisplayName(request.getDisplayName());
+        JobScheduleRequest normalizedSchedule = normalizeScheduleIfPresent(request.getSchedule());
+        String content = injectDisplayName(request.getContent(), displayName);
+        validateContent(content, configPath);
+        writeContent(configPath, content);
+        applySchedule(configPath, normalizedSchedule);
         JobDefinition job = configLoader.loadJob(configPath);
-        return toResponse(name, configPath, job, request.getContent(), false);
+        return toResponse(name, configPath, job, stripNameFromContent(content), false);
     }
 
     public void delete(String name) {
@@ -127,7 +171,28 @@ public class JobDefinitionService {
         JobDefinitionResponse response =
                 new JobDefinitionResponse(fileName, configPath, id, displayName, content, builtin, builtin);
         response.setSchedule(scheduleService.resolveSchedule(configPath, builtin));
+        response.setCreatedAt(resolveCreatedAt(configPath, builtin));
         return response;
+    }
+
+    private String resolveCreatedAt(String configPath, boolean builtin) {
+        if (builtin) {
+            return null;
+        }
+        Path overlayFile = pathResolver.resolveOverlay(configPath);
+        if (overlayFile == null || !Files.isRegularFile(overlayFile)) {
+            return null;
+        }
+        try {
+            BasicFileAttributes attributes = Files.readAttributes(overlayFile, BasicFileAttributes.class);
+            Instant created = attributes.creationTime().toInstant();
+            if (created.equals(Instant.EPOCH)) {
+                created = attributes.lastModifiedTime().toInstant();
+            }
+            return created.toString();
+        } catch (IOException exception) {
+            return null;
+        }
     }
 
     private void validateContent(String content, String excludeConfigPath) {
@@ -150,6 +215,111 @@ public class JobDefinitionService {
             throw new IllegalArgumentException("Job YAML must be a mapping");
         }
         return root;
+    }
+
+    private JobScheduleRequest normalizeScheduleIfPresent(JobScheduleRequest schedule) {
+        if (schedule == null) {
+            return null;
+        }
+        return scheduleService.validateAndNormalize(schedule);
+    }
+
+    private void applySchedule(String configPath, JobScheduleRequest normalizedSchedule) {
+        if (normalizedSchedule == null) {
+            return;
+        }
+        scheduleService.persistSchedule(configPath, normalizedSchedule);
+        scheduleManager.reschedule(configPath);
+    }
+
+    private void rollbackOverlayDefinition(String configPath) {
+        Path overlayFile = pathResolver.resolveOverlay(configPath);
+        if (overlayFile == null || !Files.isRegularFile(overlayFile)) {
+            return;
+        }
+        try {
+            Files.delete(overlayFile);
+        } catch (IOException exception) {
+            throw new ConfigLoadException("Failed to rollback job definition: " + configPath, exception);
+        }
+        scheduleRepository.deleteByConfigPath(configPath);
+        scheduleManager.cancel(configPath);
+    }
+
+    private String assignGeneratedId(String content) {
+        Map<String, Object> root = toMutableRoot(parseRootMapping(content));
+        root.remove("name");
+        root.put("id", generateUniqueJobId());
+        return yaml.dump(root);
+    }
+
+    private String injectDisplayName(String content, String displayName) {
+        Map<String, Object> root = toMutableRoot(parseRootMapping(content));
+        root.put("name", displayName.trim());
+        return yaml.dump(root);
+    }
+
+    private String stripNameFromContent(String content) {
+        Map<String, Object> root = toMutableRoot(parseRootMapping(content));
+        root.remove("name");
+        return yaml.dump(root);
+    }
+
+    private String requireDisplayName(String displayName) {
+        if (displayName == null || displayName.isBlank()) {
+            throw new IllegalArgumentException("Job display name is required");
+        }
+        return displayName.trim();
+    }
+
+    private String resolveCreateFileName(JobDefinitionRequest request, String generatedId) {
+        if (request.getName() != null && !request.getName().isBlank()) {
+            String explicitName = request.getName().trim();
+            validateName(explicitName);
+            validateAsciiFileName(explicitName);
+            return explicitName;
+        }
+        return generatedId;
+    }
+
+    private void validateAsciiFileName(String name) {
+        if (!name.matches("[a-zA-Z][a-zA-Z0-9_-]*")) {
+            throw new IllegalArgumentException(
+                    "Job file name must use ASCII letters, digits, underscore, hyphen: " + name);
+        }
+    }
+
+    private Map<String, Object> toMutableRoot(Map<?, ?> root) {
+        Map<String, Object> mutable = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : root.entrySet()) {
+            mutable.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return mutable;
+    }
+
+    private String generateUniqueJobId() {
+        for (int attempt = 0; attempt < 100; attempt++) {
+            String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+            String id = "job" + suffix;
+            if (validateIdFormatQuiet(id) && !idExists(id)) {
+                return id;
+            }
+        }
+        throw new IllegalStateException("Failed to generate unique job id");
+    }
+
+    private boolean validateIdFormatQuiet(String id) {
+        return id.matches("[a-zA-Z][a-zA-Z0-9_-]*");
+    }
+
+    private boolean idExists(String id) {
+        for (String relativePath : pathResolver.listYamlRelativePaths(JOBS_DIR)) {
+            JobDefinition existing = configLoader.loadJob(toConfigPath(relativePath));
+            if (id.equals(existing.getId())) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private String requireId(Map<?, ?> root) {
