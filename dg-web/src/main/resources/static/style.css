@@ -245,6 +245,92 @@ th {
     width: min(860px, 95vw);
 }
 
+.modal-xwide {
+    width: min(1200px, 98vw);
+}
+
+.preview-toolbar {
+    display: flex;
+    align-items: flex-end;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+}
+
+.preview-limit-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.preview-limit-field span {
+    font-size: 0.85rem;
+    color: var(--muted);
+    font-weight: 500;
+}
+
+.preview-limit-field input {
+    width: 6rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.55rem 0.75rem;
+    font-size: 0.9rem;
+}
+
+.preview-content {
+    min-height: 120px;
+}
+
+.preview-hint,
+.preview-loading,
+.preview-empty {
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+.preview-error {
+    color: var(--danger);
+    font-size: 0.9rem;
+}
+
+.preview-summary {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem 1.25rem;
+    margin-bottom: 1rem;
+    font-size: 0.875rem;
+    color: var(--muted);
+}
+
+.preview-table-title {
+    margin: 1.25rem 0 0.5rem;
+    font-size: 0.95rem;
+}
+
+.preview-table-wrap {
+    max-height: 360px;
+    overflow: auto;
+}
+
+.preview-table-wrap table {
+    font-size: 0.8rem;
+}
+
+.preview-table-wrap th,
+.preview-table-wrap td {
+    white-space: nowrap;
+    max-width: 280px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.preview-cell-json {
+    font-size: 0.75rem;
+    white-space: normal;
+    word-break: break-all;
+}
+
 .modal-header {
     display: flex;
     align-items: center;
