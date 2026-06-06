@@ -1,5 +1,8 @@
 package com.datagenerator.web.storage;
 
+import java.util.List;
+import java.util.Map;
+
 import org.springframework.jdbc.core.JdbcTemplate;
 
 public final class SqliteSchemaInitializer {
@@ -42,5 +45,23 @@ public final class SqliteSchemaInitializer {
                 CREATE INDEX IF NOT EXISTS idx_job_logs_job_id
                 ON job_logs(job_id, id)
                 """);
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS job_schedules (
+                    config_path TEXT PRIMARY KEY,
+                    enabled INTEGER NOT NULL DEFAULT 0,
+                    cron TEXT,
+                    updated_at TEXT NOT NULL
+                )
+                """);
+        ensureColumn(jdbcTemplate, "jobs", "trigger_source", "TEXT");
+    }
+
+    private static void ensureColumn(
+            JdbcTemplate jdbcTemplate, String table, String column, String type) {
+        List<Map<String, Object>> columns = jdbcTemplate.queryForList("PRAGMA table_info(" + table + ")");
+        boolean exists = columns.stream().anyMatch(row -> column.equals(row.get("name")));
+        if (!exists) {
+            jdbcTemplate.execute("ALTER TABLE " + table + " ADD COLUMN " + column + " " + type);
+        }
     }
 }

@@ -19,18 +19,22 @@ public final class SqliteTestSupport {
         return OBJECT_MAPPER;
     }
 
-    public static JdbcTemplate createInMemoryJdbcTemplate() {
+    public static JdbcTemplate createJdbcTemplate() {
         try {
             Path dbFile = Files.createTempFile("dg-test-", ".db");
             dbFile.toFile().deleteOnExit();
             DriverManagerDataSource dataSource = new DriverManagerDataSource();
             dataSource.setDriverClassName("org.sqlite.JDBC");
             dataSource.setUrl("jdbc:sqlite:" + dbFile.toAbsolutePath());
-            JdbcTemplate jdbcTemplate = new JdbcTemplate(dataSource);
-            SqliteSchemaInitializer.initialize(jdbcTemplate);
-            return jdbcTemplate;
+            return new JdbcTemplate(dataSource);
         } catch (IOException exception) {
             throw new IllegalStateException("Failed to create test SQLite database", exception);
         }
+    }
+
+    public static JdbcTemplate createInMemoryJdbcTemplate() {
+        JdbcTemplate jdbcTemplate = createJdbcTemplate();
+        SqliteSchemaInitializer.initialize(jdbcTemplate);
+        return jdbcTemplate;
     }
 }
