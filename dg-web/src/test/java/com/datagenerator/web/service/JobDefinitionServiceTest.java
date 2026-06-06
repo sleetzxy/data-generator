@@ -28,7 +28,8 @@ class JobDefinitionServiceTest {
     void createAndGet_persistsDefinition() {
         var created = service.create(request("demo_job", "id: demo_job\nname: 演示任务\ntables: []"));
 
-        assertThat(created.getName()).isEqualTo("demo_job");
+        assertThat(created.getFileName()).isEqualTo("demo_job");
+        assertThat(created.getName()).isEqualTo("演示任务");
         assertThat(created.getId()).isEqualTo("demo_job");
         assertThat(created.isReadOnly()).isFalse();
 
@@ -52,6 +53,26 @@ class JobDefinitionServiceTest {
     }
 
     @Test
+    void update_builtinDefinition_rejectsModification() throws Exception {
+        Path primaryDir = Files.createTempDirectory("dg-primary-builtin");
+        Path overlay = Files.createTempDirectory("dg-overlay-builtin");
+        Files.createDirectories(primaryDir.resolve("jobs"));
+        Files.writeString(
+                primaryDir.resolve("jobs/builtin.yaml"),
+                "id: builtin\nname: 内置任务\ntables: []");
+        ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlay);
+        JobDefinitionService builtinService = new JobDefinitionService(resolver);
+
+        assertThatThrownBy(() -> builtinService.update("builtin", request("builtin", """
+                id: builtin
+                name: 修改后
+                tables: []
+                """)))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("cannot be modified");
+    }
+
+    @Test
     void delete_customDefinition_removesFile() {
         service.create(request("demo_job", "id: demo_job\nname: 演示任务\ntables: []"));
 
@@ -62,13 +83,13 @@ class JobDefinitionServiceTest {
     }
 
     @Test
-    void list_returnsCreatedDefinitionsWithId() throws Exception {
+    void list_returnsYamlNameAndFileName() throws Exception {
         Files.createDirectories(tempDir.resolve("jobs"));
         Files.writeString(tempDir.resolve("jobs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
 
         assertThat(service.list())
-                .extracting("name", "id")
-                .containsExactly(org.assertj.core.api.Assertions.tuple("alpha", "alpha"));
+                .extracting("fileName", "name", "id")
+                .containsExactly(org.assertj.core.api.Assertions.tuple("alpha", "Alpha 任务", "alpha"));
     }
 
     @Test

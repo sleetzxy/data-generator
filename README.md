@@ -251,8 +251,9 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/preview \
 ### Job 定义管理
 
 ```bash
-# 列出所有 Job 定义（响应含 id、name、path 等字段）
+# 列出所有 Job 定义（响应含 fileName、name、id、path 等字段）
 curl -b cookies.txt http://localhost:8080/api/v1/job-definitions
+# fileName 为配置文件名（API 路径参数），name 为 YAML 中的描述名称
 
 # 查看单个定义
 curl -b cookies.txt http://localhost:8080/api/v1/job-definitions/my_job

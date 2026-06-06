@@ -155,25 +155,28 @@ async function loadDefinitions() {
         tbody.innerHTML = items.map(item => {
             const latestRun = findLatestRun(item.path);
             const activeRun = findActiveRun(item.path);
+            const fileName = item.fileName;
+            const displayName = item.name || fileName;
             return `
             <tr>
                 <td><code>${escapeHtml(item.id || '-')}</code></td>
-                <td><strong>${escapeHtml(item.name)}</strong></td>
+                <td>${escapeHtml(displayName)}</td>
                 <td><code>${escapeHtml(item.path)}</code></td>
                 <td>${item.readOnly
                     ? '<span class="badge builtin">内置</span>'
                     : '<span class="badge custom">自定义</span>'}</td>
                 <td>${statusBadge(latestRun?.status)}</td>
                 <td class="actions">
-                    <button class="btn small" onclick="viewDefinition('${escapeAttr(item.name)}')">查看</button>
-                    <button class="btn small" onclick="editDefinition('${escapeAttr(item.name)}')">编辑</button>
+                    <button class="btn small" onclick="viewDefinition('${escapeAttr(fileName)}')">查看</button>
+                    ${item.readOnly ? '' :
+                        `<button class="btn small" onclick="editDefinition('${escapeAttr(fileName)}')">编辑</button>`}
                     <button class="btn small primary" onclick="runDefinition('${escapeAttr(item.path)}')">运行</button>
                     <button class="btn small danger"
                         ${activeRun ? `onclick="stopRun('${escapeAttr(activeRun.jobId)}')"` : 'disabled title="当前无运行中的任务"'}
                     >停止</button>
-                    <button class="btn small log-btn" onclick="viewDefinitionLogs('${escapeAttr(item.name)}', '${escapeAttr(item.path)}')">日志</button>
+                    <button class="btn small log-btn" onclick="viewDefinitionLogs('${escapeAttr(displayName)}', '${escapeAttr(item.path)}')">日志</button>
                     ${item.readOnly ? '' :
-                        `<button class="btn small danger" onclick="deleteDefinition('${escapeAttr(item.name)}')">删除</button>`}
+                        `<button class="btn small danger" onclick="deleteDefinition('${escapeAttr(fileName)}')">删除</button>`}
                 </td>
             </tr>`;
         }).join('');
@@ -184,39 +187,44 @@ async function loadDefinitions() {
     }
 }
 
-function openDefinitionModal(name, content) {
-    editingDefinition = name;
-    document.getElementById('modal-title').textContent = name ? `编辑任务: ${name}` : '新建任务';
-    document.getElementById('definition-name').value = name || '';
-    document.getElementById('definition-name').disabled = !!name;
-    document.getElementById('name-field').style.display = name ? 'none' : 'flex';
+function openDefinitionModal(fileName, content, readOnly = false) {
+    editingDefinition = fileName || null;
+    const title = fileName
+        ? (readOnly ? `查看任务: ${fileName}` : `编辑任务: ${fileName}`)
+        : '新建任务';
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('definition-name').value = fileName || '';
+    document.getElementById('definition-name').disabled = !!fileName;
+    document.getElementById('name-field').style.display = fileName ? 'none' : 'flex';
     document.getElementById('definition-content').value = content || DEFAULT_JOB_TEMPLATE;
+    document.getElementById('definition-content').readOnly = !!readOnly;
+    document.getElementById('modal-save').style.display = readOnly ? 'none' : '';
     document.getElementById('modal').classList.remove('hidden');
 }
 
 function closeModal() {
     document.getElementById('modal').classList.add('hidden');
+    document.getElementById('definition-content').readOnly = false;
     editingDefinition = null;
 }
 
-async function viewDefinition(name) {
+async function viewDefinition(fileName) {
     try {
-        const item = await api(`/job-definitions/${encodeURIComponent(name)}`);
-        openDefinitionModal(name, item.content);
-        document.getElementById('modal-save').style.display = item.readOnly ? 'none' : '';
+        const item = await api(`/job-definitions/${encodeURIComponent(fileName)}`);
+        openDefinitionModal(fileName, item.content, item.readOnly);
     } catch (err) {
         showToast('加载失败: ' + err.message);
     }
 }
 
-async function editDefinition(name) {
+async function editDefinition(fileName) {
     try {
-        const item = await api(`/job-definitions/${encodeURIComponent(name)}`);
-        openDefinitionModal(name, item.content);
-        document.getElementById('modal-save').style.display = '';
+        const item = await api(`/job-definitions/${encodeURIComponent(fileName)}`);
         if (item.readOnly) {
-            showToast('内置任务编辑后将保存为自定义覆盖版本');
+            showToast('内置任务不可编辑');
+            return;
         }
+        openDefinitionModal(fileName, item.content, false);
     } catch (err) {
         showToast('加载失败: ' + err.message);
     }
@@ -250,10 +258,10 @@ async function saveDefinition() {
     }
 }
 
-async function deleteDefinition(name) {
-    if (!confirm(`确定删除任务配置 "${name}"？`)) return;
+async function deleteDefinition(fileName) {
+    if (!confirm(`确定删除任务配置 "${fileName}"？`)) return;
     try {
-        await api(`/job-definitions/${encodeURIComponent(name)}`, { method: 'DELETE' });
+        await api(`/job-definitions/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
         showToast('已删除');
         loadDefinitions();
     } catch (err) {

@@ -35,13 +35,10 @@ public class JobDefinitionService {
     public List<JobDefinitionResponse> list() {
         List<JobDefinitionResponse> results = new ArrayList<>();
         for (String relativePath : pathResolver.listYamlRelativePaths(JOBS_DIR)) {
-            String name = toDefinitionName(relativePath);
+            String fileName = toDefinitionName(relativePath);
             String configPath = toConfigPath(relativePath);
-            results.add(new JobDefinitionResponse(
-                    name,
-                    configPath,
-                    resolveId(configPath),
-                    isReadOnly(configPath)));
+            JobDefinition job = configLoader.loadJob(configPath);
+            results.add(toResponse(fileName, configPath, job, null, isReadOnly(configPath)));
         }
         return results;
     }
@@ -49,12 +46,8 @@ public class JobDefinitionService {
     public JobDefinitionResponse get(String name) {
         String configPath = toConfigPath(name);
         String content = readContent(configPath);
-        return new JobDefinitionResponse(
-                name,
-                configPath,
-                resolveId(configPath),
-                content,
-                isReadOnly(configPath));
+        JobDefinition job = configLoader.loadJob(configPath);
+        return toResponse(name, configPath, job, content, isReadOnly(configPath));
     }
 
     public JobDefinitionResponse create(JobDefinitionRequest request) {
@@ -65,12 +58,8 @@ public class JobDefinitionService {
             throw new IllegalArgumentException("Job definition already exists: " + request.getName());
         }
         writeContent(configPath, request.getContent());
-        return new JobDefinitionResponse(
-                request.getName(),
-                configPath,
-                extractRequiredId(request.getContent()),
-                request.getContent(),
-                false);
+        JobDefinition job = configLoader.loadJob(configPath);
+        return toResponse(request.getName(), configPath, job, request.getContent(), false);
     }
 
     public JobDefinitionResponse update(String name, JobDefinitionRequest request) {
@@ -78,14 +67,13 @@ public class JobDefinitionService {
         if (!exists(configPath)) {
             throw new ConfigLoadException("Job definition not found: " + name);
         }
+        if (isReadOnly(configPath)) {
+            throw new IllegalArgumentException("Built-in job definition cannot be modified: " + name);
+        }
         validateContent(request.getContent(), configPath);
         writeContent(configPath, request.getContent());
-        return new JobDefinitionResponse(
-                name,
-                configPath,
-                extractRequiredId(request.getContent()),
-                request.getContent(),
-                false);
+        JobDefinition job = configLoader.loadJob(configPath);
+        return toResponse(name, configPath, job, request.getContent(), false);
     }
 
     public void delete(String name) {
@@ -101,12 +89,21 @@ public class JobDefinitionService {
         }
     }
 
-    private String resolveId(String configPath) {
-        JobDefinition job = configLoader.loadJob(configPath);
-        if (job.getId() == null || job.getId().isBlank()) {
+    private JobDefinitionResponse toResponse(
+            String fileName,
+            String configPath,
+            JobDefinition job,
+            String content,
+            boolean readOnly) {
+        String id = job.getId();
+        if (id == null || id.isBlank()) {
             throw new ConfigLoadException("Job definition missing id: " + configPath);
         }
-        return job.getId();
+        String displayName = job.getName();
+        if (displayName == null || displayName.isBlank()) {
+            displayName = fileName;
+        }
+        return new JobDefinitionResponse(fileName, configPath, id, displayName, content, readOnly);
     }
 
     private void validateContent(String content, String excludeConfigPath) {
