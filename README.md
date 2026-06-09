@@ -69,6 +69,7 @@ flowchart TB
         api["REST API<br/>/api/v1/*"]
         svc["JobService · JobLogStore"]
         sqlite[("SQLite<br/>dg-jobs.db")]
+        logfiles["运行日志<br/>./data/job-logs"]
         yaml["YAML 配置<br/>classpath:configs · writable-config-dir"]
     end
 
@@ -92,6 +93,7 @@ flowchart TB
     auth --> api
     api --> svc
     svc --> sqlite
+    svc --> logfiles
     svc --> engine
     engine --> yaml
     engine --> reader
@@ -106,10 +108,10 @@ flowchart TB
 
 **要点：**
 
-- **dg-web** 负责 HTTP 适配、认证、任务调度与 SQLite 持久化；不直接操作数据源
+- **dg-web** 负责 HTTP 适配、认证、任务调度与持久化；不直接操作数据源
 - **dg-core** 纯业务引擎，按 YAML 定义驱动生成流水线，通过 SPI 调用插件
 - **插件** 各自独立 AutoConfiguration 注册，按需引入 classpath；Reader 读参考数据，Writer 写生成结果
-- 小任务同步返回，超过 `sync-threshold` 行数转异步，状态与日志写入 SQLite
+- 小任务同步返回，超过 `sync-threshold` 行数转异步；任务元数据存 SQLite，运行日志按任务写入 `log-dir` 文件，批次 flush 后实时更新进度
 
 ## 快速开始
 
@@ -151,17 +153,17 @@ mvn clean test
 
 ## 配置目录
 
-YAML 业务配置位于 `dg-web/src/main/resources/configs/`（打包后随 jar 内置，默认 `data-generator.config-dir: classpath:configs`）。如需外部目录覆盖，可设为绝对路径，例如 `/data/configs`：
+YAML 业务配置默认从 `data-generator.config-dir` 加载（默认 `classpath:configs`）。可将 `config-dir` 设为外部绝对路径（如 `/data/configs`），或在 `writable-config-dir` 中通过控制台维护自定义 Job：
 
 ```
-dg-web/src/main/resources/
-├── application.yml    # 应用级配置（端口、连接、认证、任务参数）
-└── configs/
-    ├── schemas/           # 表/数据集 Schema 定义
-    ├── references/        # 参考数据（维表）读取配置
-    ├── constraints/       # 可复用约束规则集
-    └── jobs/              # 多表编排任务（DAG）
+configs/                    # 或你指定的 config-dir 根目录
+├── schemas/                # 可复用的表/数据集 Schema
+├── references/             # 参考数据（维表）读取配置
+├── constraints/            # 可复用约束规则集
+└── jobs/                   # 自行编写的多表编排 Job（YAML）
 ```
+
+控制台新建的自定义 Job 写入 `writable-config-dir`（默认 `./data/configs/jobs/`），与 `config-dir` 下的定义合并展示。
 
 ### application.yml 主要配置项
 
@@ -174,7 +176,8 @@ data-generator:
     username: admin
     password: admin123                  # 生产环境务必修改；可覆盖于 application-local.yml
   storage:
-    sqlite-path: ./data/dg-jobs.db      # 任务记录与运行日志 SQLite 库
+    sqlite-path: ./data/dg-jobs.db      # 任务记录 SQLite 库
+    log-dir: ./data/job-logs          # 运行日志文件目录（每任务一个文件）
   connections:                          # 数据源连接（Schema/Job YAML 引用 connection 名）
     dev-pg:
       type: postgresql
@@ -193,7 +196,8 @@ Schema/Job YAML 通过 `connection: dev-pg` 等形式引用连接，避免在业
 
 | 路径 | 说明 |
 |------|------|
-| `./data/dg-jobs.db` | 任务记录与运行日志（SQLite，重启后保留） |
+| `./data/dg-jobs.db` | 任务记录（SQLite，重启后保留） |
+| `./data/job-logs/` | 运行日志文件（每任务 `{jobId}.log`） |
 | `./data/configs/` | Web 控制台写入的可编辑 Job 定义 |
 
 ## 认证说明
@@ -240,13 +244,13 @@ curl -b cookies.txt http://localhost:8080/api/v1/schemas
 curl -b cookies.txt -X POST http://localhost:8080/api/v1/preview \
   -H "Content-Type: application/json" \
   -d '{
-    "jobConfig": "jobs/single_customer.yaml",
+    "jobConfig": "jobs/my_job.yaml",
     "overrides": { "tables.customers.count": 5 },
     "preview": { "limit": 5 }
   }'
 ```
 
-响应包含 `status`、`progress` 及 `rows`（各表样本数据），不会写入任何数据源。
+响应包含 `status`、`duration` 及 `tables`（各表 `tableName`、`columns`、`rows` 样本数据），不会写入任何数据源。
 
 ### Job 定义管理
 
@@ -286,7 +290,7 @@ curl -b cookies.txt http://localhost:8080/api/v1/job-definitions/my_builtin/sche
 curl -b cookies.txt -X POST http://localhost:8080/api/v1/jobs \
   -H "Content-Type: application/json" \
   -d '{
-    "jobConfig": "jobs/single_customer.yaml",
+    "jobConfig": "jobs/my_job.yaml",
     "overrides": { "tables.customers.count": 100 },
     "writer": {
       "type": "csv",
@@ -324,7 +328,7 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}/record
 |------|------|
 | 四模块骨架 | `dg-spi` / `dg-core` / `dg-plugins` / `dg-web` |
 | 数据源插件 | PostgreSQL、ClickHouse、CSV 读写 |
-| 生成策略 | sequence、random、enum、regex、reference（维表引用） |
+| 生成策略 | sequence、random、enum、regex、reference（维表引用）、seed（Job 级 seeds）、expression（SpEL/Aviator/Groovy） |
 | 约束引擎 | 字段级（range、nullable、foreign_key）；组合级 SpEL（conditional、mutex） |
 | 多表编排 | 单表快捷 Job + 多表 DAG（`depends_on` 拓扑排序） |
 | REST API | health、schemas、preview、jobs |
@@ -342,7 +346,7 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}/record
 
 | 能力 | 说明 |
 |------|------|
-| 种子模板 | Schema `seed.template` 内联模板 + `mutate` 字段变异 |
+| Job 级 seeds | 顶层 `seeds[]` 多命名数据源；字段 `strategy: seed` + `source`；支持 `link` 关联采样 |
 | Groovy 表达式 | `language: groovy` 约束与自定义表达式 |
 | 约束 repair/warn | `on_fail: repair` 自动修正；`warn` 记录告警并继续 |
 | 任务取消 | `DELETE /api/v1/jobs/{id}` 取消 PENDING/RUNNING 任务（同步/异步） |
@@ -353,7 +357,7 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}/record
 |------|------|
 | Web 控制台 | 任务管理、Job 定义编辑、Cron 调度、运行记录与日志（分页）、配置指南 |
 | 表单登录 | Spring Security Session 认证，`data-generator.auth.*` 可配置 |
-| 任务持久化 | SQLite 存储任务记录与全量运行日志，重启后可查历史 |
+| 任务持久化 | SQLite 存储任务记录；运行日志写入 `log-dir` 文件，重启后可查历史 |
 | Job 定义 CRUD | REST + Web UI；自定义 YAML 存 `writable-config-dir`，调度存 SQLite |
 | Job 定时调度 | Cron 触发、同配置 FIFO 排队、手动运行与调度并存 |
 

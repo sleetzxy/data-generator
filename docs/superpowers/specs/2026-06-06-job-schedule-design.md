@@ -134,7 +134,7 @@ dg-web/
 ### 4.1 内置 Job — YAML `schedule` 块
 
 ```yaml
-id: city_acd_wf_jq_preview
+id: my_scheduled_job
 name: 城市交通事故预览造数
 schedule:
   enabled: true
