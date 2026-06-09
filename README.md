@@ -111,7 +111,8 @@ flowchart TB
 - **dg-web** 负责 HTTP 适配、认证、任务调度与持久化；不直接操作数据源
 - **dg-core** 纯业务引擎，按 YAML 定义驱动生成流水线，通过 SPI 调用插件
 - **插件** 各自独立 AutoConfiguration 注册，按需引入 classpath；Reader 读参考数据，Writer 写生成结果
-- 小任务同步返回，超过 `sync-threshold` 行数转异步；任务元数据存 SQLite，运行日志按任务写入 `log-dir` 文件，批次 flush 后实时更新进度
+- 小任务同步返回，超过 `sync-threshold` 行数转异步；任务元数据存 SQLite，运行日志按任务写入 `log-dir` 文件，批次 flush 后更新进度（节流持久化，表完成时强制落盘）
+- 单表行数 ≥ 5000 时，引擎按 `thread-pool-size` **并行生成**行数据；多表 DAG 上游表在内存中仅保留下游 `reference` / `foreign_key` 所需列
 
 ## 快速开始
 
@@ -140,7 +141,7 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 
 控制台提供：
 
-- **任务管理** — Job 定义 CRUD、Cron 定时调度、提交运行、运行记录与日志（分页）
+- **任务管理** — Job 定义 CRUD、Cron 定时调度、提交运行、运行记录与日志（分页）；**自动刷新**（默认开启，运行中/日志弹窗 2 秒、空闲 5 秒，增量更新状态避免整表闪烁）
 - **配置指南** — 内置 YAML 配置说明文档
 
 ### 运行测试
@@ -186,8 +187,8 @@ data-generator:
       password: changeme                # 真实密码写入 application-local.yml
   job:
     sync-threshold: 5000                # 超过此行数转异步
-    batch-size: 1000
-    thread-pool-size: 4
+    batch-size: 1000                    # 写入批次；进度/日志按批更新（持久化有节流）
+    thread-pool-size: 4                 # 异步任务线程池；单表 ≥5000 行时并行生成行数据
 ```
 
 Schema/Job YAML 通过 `connection: dev-pg` 等形式引用连接，避免在业务配置中硬编码凭证。
@@ -346,16 +347,17 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}/record
 
 | 能力 | 说明 |
 |------|------|
-| Job 级 seeds | 顶层 `seeds[]` 多命名数据源；字段 `strategy: seed` + `source`；支持 `link` 关联采样 |
+| Job 级 seeds | 顶层 `seeds[]` 多命名数据源；字段 `strategy: seed` + `source`；支持 `link` 关联采样；**单个 seed 查询无结果时不阻断任务**，对应字段为 null |
 | Groovy 表达式 | `language: groovy` 约束与自定义表达式 |
 | 约束 repair/warn | `on_fail: repair` 自动修正；`warn` 记录告警并继续 |
 | 任务取消 | `DELETE /api/v1/jobs/{id}` 取消 PENDING/RUNNING 任务（同步/异步） |
+| 大任务性能 | 单表 ≥5000 行并行生成；FK 校验 Hash 索引；upstream 行瘦身；seed 预加载与 L2 行级快照跨表复用 |
 
 ### Web 与运维（当前）
 
 | 能力 | 说明 |
 |------|------|
-| Web 控制台 | 任务管理、Job 定义编辑、Cron 调度、运行记录与日志（分页）、配置指南 |
+| Web 控制台 | 任务管理、Job 定义编辑、Cron 调度、运行记录与日志（分页）、配置指南；自动刷新与增量 DOM 更新 |
 | 表单登录 | Spring Security Session 认证，`data-generator.auth.*` 可配置 |
 | 任务持久化 | SQLite 存储任务记录；运行日志写入 `log-dir` 文件，重启后可查历史 |
 | Job 定义 CRUD | REST + Web UI；自定义 YAML 存 `writable-config-dir`，调度存 SQLite |
