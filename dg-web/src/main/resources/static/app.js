@@ -3,6 +3,7 @@ const LOG_PAGE_SIZE = 10;
 const DEFINITION_PAGE_SIZE = 20;
 const PREVIEW_FETCH_LIMIT = 10;
 const AUTO_REFRESH_INTERVAL_MS = 5000;
+const AUTO_REFRESH_ACTIVE_INTERVAL_MS = 2000;
 
 const DEFAULT_JOB_TEMPLATE = `writer:
   type: csv
@@ -42,9 +43,14 @@ let logModalContext = {
     logDetailLines: {}
 };
 let autoRefreshTimer = null;
+let openActionMenuId = null;
+let lastRenderedPageKey = null;
+let latestRunByPath = new Map();
+let activeRunByPath = new Map();
+let definitionsUiFrame = null;
 
 document.getElementById('btn-new-definition').addEventListener('click', () => openDefinitionModal(null));
-document.getElementById('btn-refresh-definitions').addEventListener('click', loadDefinitions);
+document.getElementById('btn-refresh-definitions').addEventListener('click', () => loadDefinitions({ fullRender: true }));
 document.getElementById('auto-refresh-toggle').addEventListener('change', (event) => {
     if (event.target.checked) {
         startAutoRefresh();
@@ -222,30 +228,69 @@ function syncPagedRunRowsInPlace() {
     }
 }
 
+function hasActiveRuns() {
+    return allRunsCache.some(run => isActiveRun(run.status));
+}
+
+function isLogModalOpen() {
+    return !document.getElementById('log-modal').classList.contains('hidden');
+}
+
+function resolveAutoRefreshIntervalMs() {
+    if (hasActiveRuns() || isLogModalOpen()) {
+        return AUTO_REFRESH_ACTIVE_INTERVAL_MS;
+    }
+    return AUTO_REFRESH_INTERVAL_MS;
+}
+
 function startAutoRefresh() {
     stopAutoRefresh();
-    autoRefreshTimer = setInterval(() => {
-        loadDefinitions();
-    }, AUTO_REFRESH_INTERVAL_MS);
+    const tick = async () => {
+        try {
+            if (!document.hidden) {
+                await loadDefinitions({ fullRender: false });
+            }
+        } catch (_) {
+            // 自动刷新失败时不打断后续轮询
+        }
+        if (document.getElementById('auto-refresh-toggle').checked) {
+            autoRefreshTimer = setTimeout(tick, resolveAutoRefreshIntervalMs());
+        }
+    };
+    autoRefreshTimer = setTimeout(tick, resolveAutoRefreshIntervalMs());
 }
 
 function stopAutoRefresh() {
     if (autoRefreshTimer) {
-        clearInterval(autoRefreshTimer);
+        clearTimeout(autoRefreshTimer);
         autoRefreshTimer = null;
     }
 }
 
+function rebuildRunIndexes() {
+    latestRunByPath = new Map();
+    activeRunByPath = new Map();
+    for (const run of allRunsCache) {
+        const path = run.jobConfig;
+        const latest = latestRunByPath.get(path);
+        if (!latest || new Date(run.submittedAt) > new Date(latest.submittedAt)) {
+            latestRunByPath.set(path, run);
+        }
+        if (isActiveRun(run.status)) {
+            const active = activeRunByPath.get(path);
+            if (!active || new Date(run.submittedAt) > new Date(active.submittedAt)) {
+                activeRunByPath.set(path, run);
+            }
+        }
+    }
+}
+
 function findLatestRun(path) {
-    return allRunsCache
-        .filter(run => run.jobConfig === path)
-        .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))[0] || null;
+    return latestRunByPath.get(path) || null;
 }
 
 function findActiveRun(path) {
-    return allRunsCache
-        .filter(run => run.jobConfig === path && isActiveRun(run.status))
-        .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))[0] || null;
+    return activeRunByPath.get(path) || null;
 }
 
 async function fetchAllJobs() {
@@ -263,7 +308,8 @@ async function fetchAllJobs() {
     return all;
 }
 
-async function loadDefinitions() {
+async function loadDefinitions(options = {}) {
+    const fullRender = options.fullRender === true;
     const tbody = document.getElementById('definitions-body');
     try {
         const [items, runs] = await Promise.all([
@@ -272,10 +318,85 @@ async function loadDefinitions() {
         ]);
         allRunsCache = runs;
         definitionsCache = items;
+        rebuildRunIndexes();
+
+        if (!fullRender && canSyncDefinitionsInPlace()) {
+            scheduleDefinitionsUiSync();
+            return;
+        }
         renderDefinitionsTable();
     } catch (err) {
         tbody.innerHTML = `<tr class="empty-row"><td colspan="6">加载失败: ${escapeHtml(err.message)}</td></tr>`;
         renderDefinitionsPagination();
+        lastRenderedPageKey = null;
+    }
+}
+
+function currentPageDefinitionKey() {
+    return getPagedDefinitions().map(item => item.path).join('|');
+}
+
+function canSyncDefinitionsInPlace() {
+    if (!definitionsCache.length) {
+        return false;
+    }
+    const tbody = document.getElementById('definitions-body');
+    if (tbody.querySelector('.empty-row')) {
+        return false;
+    }
+    const rows = tbody.querySelectorAll('tr[data-definition-path]');
+    if (rows.length !== getPagedDefinitions().length) {
+        return false;
+    }
+    return currentPageDefinitionKey() === lastRenderedPageKey;
+}
+
+function scheduleDefinitionsUiSync() {
+    if (definitionsUiFrame !== null) {
+        return;
+    }
+    definitionsUiFrame = requestAnimationFrame(async () => {
+        definitionsUiFrame = null;
+        syncDefinitionsTableInPlace();
+        await refreshOpenLogModal();
+    });
+}
+
+function syncDefinitionsTableInPlace() {
+    const rows = document.querySelectorAll('#definitions-body tr[data-definition-path]');
+    for (const row of rows) {
+        const path = row.dataset.definitionPath;
+        const latestRun = findLatestRun(path);
+        const activeRun = findActiveRun(path);
+        const statusCell = row.cells[4];
+        if (statusCell) {
+            const nextStatusHtml = statusBadge(latestRun?.status);
+            if (statusCell.innerHTML !== nextStatusHtml) {
+                statusCell.innerHTML = nextStatusHtml;
+            }
+        }
+        const actionsCell = row.cells[5];
+        if (actionsCell) {
+            updateStopButtonInPlace(actionsCell, activeRun);
+        }
+    }
+}
+
+function updateStopButtonInPlace(actionsCell, activeRun) {
+    const stopBtn = actionsCell.querySelector('.action-stop-btn');
+    if (!stopBtn) {
+        return;
+    }
+    const stopDisabled = !activeRun;
+    const stopJobId = activeRun?.jobId || '';
+    stopBtn.disabled = stopDisabled;
+    stopBtn.classList.toggle('disabled', stopDisabled);
+    if (stopDisabled) {
+        stopBtn.removeAttribute('onclick');
+        stopBtn.title = '当前无运行中的任务';
+    } else {
+        stopBtn.setAttribute('onclick', `stopRun('${escapeAttr(stopJobId)}'); closeActionMenus()`);
+        stopBtn.removeAttribute('title');
     }
 }
 
@@ -316,7 +437,26 @@ function changeDefinitionsPage(page) {
     renderDefinitionsTable();
 }
 
+function captureOpenActionMenuId() {
+    const openMenu = document.querySelector('.action-menu-dropdown:not(.hidden)');
+    return openMenu ? openMenu.id : openActionMenuId;
+}
+
+function restoreOpenActionMenu(menuId) {
+    if (!menuId) {
+        return;
+    }
+    const menu = document.getElementById(menuId);
+    if (menu) {
+        menu.classList.remove('hidden');
+        openActionMenuId = menuId;
+    } else {
+        openActionMenuId = null;
+    }
+}
+
 function renderDefinitionsTable() {
+    const preservedMenuId = captureOpenActionMenuId();
     const tbody = document.getElementById('definitions-body');
     const totalPages = getDefinitionTotalPages();
 
@@ -331,6 +471,7 @@ function renderDefinitionsTable() {
         tbody.innerHTML = '<tr class="empty-row"><td colspan="6">暂无任务配置</td></tr>';
         renderDefinitionsPagination();
         refreshOpenLogModal();
+        lastRenderedPageKey = null;
         return;
     }
 
@@ -345,20 +486,23 @@ function renderDefinitionsTable() {
         const scheduleEnabled = item.schedule?.enabled === true;
         const rowIndex = startIndex + index;
         return `
-            <tr>
+            <tr data-definition-path="${escapeAttr(item.path)}">
                 <td><code>${escapeHtml(item.id || '-')}</code></td>
                 <td>${escapeHtml(displayName)}</td>
                 <td>${isBuiltin
                     ? '<span class="badge builtin">内置</span>'
                     : '<span class="badge custom">自定义</span>'}</td>
                 <td>${renderScheduleCron(item.schedule)}</td>
-                <td>${statusBadge(latestRun?.status)}</td>
+                <td class="definition-status">${statusBadge(latestRun?.status)}</td>
                 <td class="actions">${renderActionsCell(item, rowIndex, displayName, fileName, item.path, activeRun, isBuiltin, scheduleEnabled)}</td>
             </tr>`;
     }).join('');
 
+    lastRenderedPageKey = currentPageDefinitionKey();
+
     renderDefinitionsPagination();
     refreshOpenLogModal();
+    restoreOpenActionMenu(preservedMenuId);
 }
 
 function renderActionsCell(item, index, displayName, fileName, path, activeRun, isBuiltin, scheduleEnabled) {
@@ -369,7 +513,7 @@ function renderActionsCell(item, index, displayName, fileName, path, activeRun, 
         <button type="button" class="action-menu-item" onclick="viewDefinition('${escapeAttr(fileName)}'); closeActionMenus()">查看</button>
         <button type="button" class="action-menu-item" onclick="previewDefinition('${escapeAttr(displayName)}', '${escapeAttr(path)}'); closeActionMenus()">预览</button>
         <button type="button" class="action-menu-item" onclick="viewDefinitionLogs('${escapeAttr(displayName)}', '${escapeAttr(path)}'); closeActionMenus()">日志</button>
-        <button type="button" class="action-menu-item${stopDisabled ? ' disabled' : ''}"
+        <button type="button" class="action-menu-item action-stop-btn${stopDisabled ? ' disabled' : ''}"
             ${stopDisabled ? 'disabled title="当前无运行中的任务"' : `onclick="stopRun('${escapeAttr(stopJobId)}'); closeActionMenus()"`}>停止</button>`;
     if (!isBuiltin) {
         menuItems += `
@@ -391,11 +535,13 @@ function toggleActionMenu(event, menuId) {
     closeActionMenus();
     if (!wasOpen) {
         menu.classList.remove('hidden');
+        openActionMenuId = menuId;
     }
 }
 
 function closeActionMenus() {
     document.querySelectorAll('.action-menu-dropdown').forEach(el => el.classList.add('hidden'));
+    openActionMenuId = null;
 }
 
 function openDefinitionModal(fileName, content, readOnly = false, schedule = null, displayName = null) {
@@ -511,7 +657,7 @@ async function saveDefinition() {
             showToast('任务已创建');
         }
         closeModal();
-        loadDefinitions();
+        loadDefinitions({ fullRender: true });
     } catch (err) {
         showToast('保存失败: ' + err.message);
     }
@@ -522,7 +668,7 @@ async function deleteDefinition(fileName) {
     try {
         await api(`/job-definitions/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
         showToast('已删除');
-        loadDefinitions();
+        loadDefinitions({ fullRender: true });
     } catch (err) {
         showToast('删除失败: ' + err.message);
     }
@@ -680,7 +826,7 @@ async function runDefinition(path, scheduleEnabled = false) {
         } else {
             showToast(`任务已提交: ${result.jobId} (${result.status})`);
         }
-        await loadDefinitions();
+        await loadDefinitions({ fullRender: true });
     } catch (err) {
         showToast('提交失败: ' + err.message);
     }
@@ -916,7 +1062,7 @@ async function refreshLogDetailContent(jobId, previousLogScrollState) {
 }
 
 async function refreshOpenLogModal() {
-    if (document.getElementById('log-modal').classList.contains('hidden') || !logModalContext.definitionPath) {
+    if (!isLogModalOpen() || !logModalContext.definitionPath) {
         return;
     }
 
@@ -929,22 +1075,23 @@ async function refreshOpenLogModal() {
         return;
     }
 
+    const previousRunIds = new Set(logModalContext.runs.map(run => run.jobId));
     const selectedJobId = logModalContext.selectedJobId;
     logModalContext.runs = runs;
 
-    const detailPanel = selectedJobId
-        ? document.querySelector(`#log-modal [data-log-panel="${cssEscape(selectedJobId)}"]`)
-        : null;
+    const runsChanged = runs.length !== previousRunIds.size
+        || runs.some(run => !previousRunIds.has(run.jobId));
+
     const selectedStillOnPage = selectedJobId
         && getPagedRuns(runs, logModalContext.page).some(run => run.jobId === selectedJobId);
 
-    if (selectedJobId && detailPanel && selectedStillOnPage) {
-        syncPagedRunRowsInPlace();
-        await refreshLogDetailContent(selectedJobId);
+    if (runsChanged || !selectedJobId || !selectedStillOnPage) {
+        renderLogRunsTable();
         return;
     }
 
-    renderLogRunsTable();
+    syncPagedRunRowsInPlace();
+    await refreshLogDetailContent(selectedJobId);
 }
 
 function closeLogModal() {
@@ -974,12 +1121,12 @@ async function stopRun(jobId) {
         const current = runs.find(run => run.jobId === jobId);
         if (!current || !isActiveRun(current.status)) {
             showToast('任务已结束');
-            await loadDefinitions();
+            await loadDefinitions({ fullRender: true });
             return;
         }
         await api(`/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
         showToast('任务已停止');
-        await loadDefinitions();
+        await loadDefinitions({ fullRender: false });
     } catch (err) {
         showToast('停止失败: ' + err.message);
     }
@@ -1005,4 +1152,18 @@ function escapeAttr(text) {
     return escapeHtml(text).replace(/'/g, '&#39;');
 }
 
-loadDefinitions();
+loadDefinitions({ fullRender: true });
+if (document.getElementById('auto-refresh-toggle').checked) {
+    startAutoRefresh();
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+        stopAutoRefresh();
+        return;
+    }
+    if (document.getElementById('auto-refresh-toggle').checked) {
+        loadDefinitions({ fullRender: false });
+        startAutoRefresh();
+    }
+});

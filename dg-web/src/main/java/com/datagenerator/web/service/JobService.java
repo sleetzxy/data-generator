@@ -501,6 +501,10 @@ public class JobService {
         return new JobExecutionListener() {
             private final long[] jobWrittenRows = {0};
             private final long[] jobFailedRows = {0};
+            private long lastProgressPersistMs = 0;
+            private int batchesSincePersist = 0;
+            private static final long PROGRESS_THROTTLE_MS = 3_000;
+            private static final int PROGRESS_BATCH_INTERVAL = 10;
 
             @Override
             public void onTableStarted(String tableName, int tableIndex, int totalTables, long plannedRows) {
@@ -535,20 +539,33 @@ public class JobService {
                 this.jobFailedRows[0] = jobFailedRows;
                 runningDetails.put(
                         tableName, new TableDetail(tableName, tableWrittenRows, tableFailedRows, "running"));
-                jobLogStore.info(
-                        jobId,
-                        "表 [" + tableName + "] 本批写入 " + batchWritten + " 行，任务累计 "
-                                + jobWrittenRows + " / " + totalRows + " 行");
-                persistRunningProgress(
-                        jobId,
-                        jobConfig,
-                        submittedAt,
-                        totalTables,
-                        countFinishedTables(runningDetails),
-                        totalRows,
-                        jobWrittenRows,
-                        jobFailedRows,
-                        runningDetails);
+                batchesSincePersist++;
+                if (shouldPersistProgress()) {
+                    jobLogStore.info(
+                            jobId,
+                            "表 [" + tableName + "] 本批写入 " + batchWritten + " 行，任务累计 "
+                                    + jobWrittenRows + " / " + totalRows + " 行");
+                    persistRunningProgress(
+                            jobId,
+                            jobConfig,
+                            submittedAt,
+                            totalTables,
+                            countFinishedTables(runningDetails),
+                            totalRows,
+                            jobWrittenRows,
+                            jobFailedRows,
+                            runningDetails);
+                    lastProgressPersistMs = System.currentTimeMillis();
+                    batchesSincePersist = 0;
+                }
+            }
+
+            private boolean shouldPersistProgress() {
+                if (batchesSincePersist >= PROGRESS_BATCH_INTERVAL) {
+                    return true;
+                }
+                long now = System.currentTimeMillis();
+                return now - lastProgressPersistMs >= PROGRESS_THROTTLE_MS;
             }
 
             @Override
@@ -564,6 +581,10 @@ public class JobService {
                 this.jobFailedRows[0] = jobFailedRows;
                 String status = tableFailedRows > 0 ? "partial" : "ok";
                 runningDetails.put(tableName, new TableDetail(tableName, tableWrittenRows, tableFailedRows, status));
+                jobLogStore.info(
+                        jobId,
+                        "表 [" + tableName + "] 完成: 写入 " + tableWrittenRows + " 行, 失败 "
+                                + tableFailedRows + " 行");
                 persistRunningProgress(
                         jobId,
                         jobConfig,
@@ -574,6 +595,8 @@ public class JobService {
                         jobWrittenRows,
                         jobFailedRows,
                         runningDetails);
+                lastProgressPersistMs = System.currentTimeMillis();
+                batchesSincePersist = 0;
             }
         };
     }
@@ -730,7 +753,7 @@ public class JobService {
                 onConstraintFail = options.getOnConstraintFail();
             }
         }
-        return new GenerationOptions(batchSize, maxRetries, onConstraintFail);
+        return new GenerationOptions(batchSize, maxRetries, onConstraintFail, runtimeSettings.threadPoolSize());
     }
 
     private int resolveSyncThreshold(JobOptions options) {
