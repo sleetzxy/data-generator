@@ -86,7 +86,6 @@ final class YamlMappingUtils {
         SchemaDefinition schema = new SchemaDefinition();
         schema.setTable(asString(source.get("table")));
         schema.setConstraints(asString(source.get("constraints")));
-        schema.setSeed(asMap(source.get("seed")));
 
         List<FieldDefinition> fields = new ArrayList<>();
         for (Map<String, Object> fieldSource : asMapList(source.get("fields"))) {
@@ -143,6 +142,33 @@ final class YamlMappingUtils {
         }
         schedule.setCron(asString(source.get("cron")));
         return schedule;
+    }
+
+    static SeedDefinition toSeedDefinition(Map<String, Object> source) {
+        SeedDefinition seed = new SeedDefinition();
+        seed.setName(asString(source.get("name")));
+        Object linkValue = source.get("link");
+        if (linkValue != null) {
+            seed.setLink(toSeedLinkDefinition(asMap(linkValue)));
+        }
+        seed.setReader(asMap(source.get("reader")));
+        seed.setReference(asString(source.get("reference")));
+        seed.setTemplate(asMap(source.get("template")));
+        return seed;
+    }
+
+    static SeedLinkDefinition toSeedLinkDefinition(Map<String, Object> source) {
+        SeedLinkDefinition link = new SeedLinkDefinition();
+        link.setSeed(asString(source.get("seed")));
+        Object onValue = source.get("on");
+        if (onValue != null && !(onValue instanceof Boolean)) {
+            link.setOn(asString(onValue));
+        }
+        Object parentField = source.containsKey("parent_field") ? source.get("parent_field") : source.get("parentField");
+        link.setParentField(asString(parentField));
+        Object localField = source.containsKey("local_field") ? source.get("local_field") : source.get("localField");
+        link.setLocalField(asString(localField));
+        return link;
     }
 
     static ConstraintDefinition toConstraintDefinition(Map<String, Object> source) {

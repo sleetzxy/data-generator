@@ -46,6 +46,12 @@ public class YamlConfigLoader {
         }
         job.setWriter(YamlMappingUtils.asMap(root.get("writer")));
 
+        List<SeedDefinition> seeds = new ArrayList<>();
+        for (Map<String, Object> seedSource : YamlMappingUtils.asMapList(root.get("seeds"))) {
+            seeds.add(YamlMappingUtils.toSeedDefinition(seedSource));
+        }
+        job.setSeeds(seeds);
+
         List<TableTask> tables = new ArrayList<>();
         for (Map<String, Object> tableSource : YamlMappingUtils.asMapList(root.get("tables"))) {
             tables.add(YamlMappingUtils.toTableTask(tableSource));
@@ -56,6 +62,7 @@ public class YamlConfigLoader {
         if (scheduleValue != null) {
             job.setSchedule(YamlMappingUtils.toScheduleDefinition(YamlMappingUtils.asMap(scheduleValue)));
         }
+        JobSeedValidator.validate(job, this);
         return job;
     }
 

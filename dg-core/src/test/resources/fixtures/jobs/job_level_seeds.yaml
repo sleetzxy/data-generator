@@ -1,0 +1,39 @@
+id: job_level_seeds
+name: Job 级 seeds 示例
+
+writer:
+  type: csv
+  connection: local-csv
+  mode: insert
+
+seeds:
+  - name: header
+    template:
+      id: 100
+      customer_name: Alice
+
+  - name: detail
+    link:
+      seed: header
+      parent_field: id
+    template:
+      id: 100
+      line_no: 1
+      sku: SKU-001
+
+tables:
+  - name: export
+    count: 2
+    schema:
+      table: export
+      fields:
+        - name: id
+          generator: { strategy: seed, source: header, field: id }
+        - name: customer_name
+          generator: { strategy: seed, source: header }
+        - name: line_no
+          generator: { strategy: seed, source: detail, field: line_no }
+        - name: sku
+          generator: { strategy: seed, source: detail }
+        - name: batch_no
+          generator: { strategy: sequence, start: 1, step: 1 }

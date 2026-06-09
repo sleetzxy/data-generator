@@ -3,6 +3,8 @@ package com.datagenerator.core.engine;
 import com.datagenerator.core.schema.ConstraintDefinition;
 import com.datagenerator.core.schema.FieldDefinition;
 import com.datagenerator.core.schema.SchemaDefinition;
+import com.datagenerator.core.schema.SeedDefinition;
+import com.datagenerator.core.schema.SeedLinkDefinition;
 import com.datagenerator.spi.model.Batch;
 import com.datagenerator.spi.model.DataRow;
 import com.datagenerator.spi.model.WriteResult;
@@ -53,6 +55,7 @@ class TableGeneratorTest {
                 pluginRegistry.getConstraintRegistry(),
                 Map.of(),
                 writer,
+                List.of(),
                 GenerationOptions.defaults());
 
         assertThat(result.generatedRows()).hasSize(5);
@@ -84,6 +87,7 @@ class TableGeneratorTest {
                 pluginRegistry.getConstraintRegistry(),
                 Map.of(),
                 writer,
+                List.of(),
                 new GenerationOptions(1000, 1));
 
         assertThat(result.generatedRows()).isEmpty();
@@ -120,12 +124,54 @@ class TableGeneratorTest {
                 pluginRegistry.getConstraintRegistry(),
                 Map.of("customers", customers),
                 writer,
+                List.of(),
                 GenerationOptions.defaults());
 
         assertThat(result.generatedRows()).hasSize(4);
         assertThat(result.failedRows()).isZero();
         assertThat(result.generatedRows())
                 .allMatch(row -> row.get("customer_id").equals(1L) || row.get("customer_id").equals(2L));
+    }
+
+    @Test
+    void tableGenerator_jobLevelSeeds_mixesSeedAndSequenceGenerators() {
+        SeedDefinition header = new SeedDefinition();
+        header.setName("header");
+        header.setTemplate(Map.of("id", 100L, "customer_name", "Alice"));
+
+        SeedLinkDefinition link = new SeedLinkDefinition();
+        link.setSeed("header");
+        link.setOn("id");
+        SeedDefinition detail = new SeedDefinition();
+        detail.setName("detail");
+        detail.setLink(link);
+        detail.setTemplate(Map.of("id", 100L, "line_no", 1, "sku", "SKU-001"));
+
+        SchemaDefinition schema = new SchemaDefinition();
+        schema.setTable("export");
+        schema.setFields(List.of(
+                new FieldDefinition("id", "BIGINT", Map.of("strategy", "seed", "source", "header", "field", "id")),
+                new FieldDefinition("customer_name", "VARCHAR", Map.of("strategy", "seed", "source", "header")),
+                new FieldDefinition("line_no", "INT", Map.of("strategy", "seed", "source", "detail", "field", "line_no")),
+                new FieldDefinition("sku", "VARCHAR", Map.of("strategy", "seed", "source", "detail")),
+                new FieldDefinition("batch_no", "INT", Map.of("strategy", "sequence", "start", 1, "step", 1))));
+
+        TableGenerationResult result = tableGenerator.generate(
+                schema,
+                2,
+                List.of(),
+                pluginRegistry.getConstraintRegistry(),
+                Map.of(),
+                writer,
+                List.of(header, detail),
+                GenerationOptions.defaults());
+
+        assertThat(result.generatedRows()).hasSize(2);
+        assertThat(result.failedRows()).isZero();
+        assertThat(writer.rows().get(0).get("customer_name")).isEqualTo("Alice");
+        assertThat(writer.rows().get(0).get("sku")).isEqualTo("SKU-001");
+        assertThat(writer.rows().get(0).get("batch_no")).isEqualTo(1L);
+        assertThat(writer.rows().get(1).get("batch_no")).isEqualTo(2L);
     }
 
     static final class CollectingWriter implements DataWriter {

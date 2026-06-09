@@ -66,6 +66,21 @@ class JobOrchestratorTest {
         assertThat(orders).allMatch(row -> customerIds.contains(row.get("customer_id")));
     }
 
+    @Test
+    void jobOrchestrator_runtimeWriterOverridesJobWriter() {
+        var job = new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()))
+                .loadJob("fixtures/jobs/multi_table.yaml");
+        job.setWriter(Map.of("type", "postgresql", "mode", "insert"));
+
+        JobResult result = orchestrator.run(
+                job,
+                Map.of("type", "mock", "mode", "insert"),
+                GenerationOptions.defaults());
+
+        assertThat(result.writtenRows()).isEqualTo(15);
+        assertThat(result.failedRows()).isZero();
+    }
+
     static final class CollectingWriter implements DataWriter {
 
         private final List<Map.Entry<String, DataRow>> rows = new ArrayList<>();

@@ -21,6 +21,7 @@ public class GeneratorRegistry {
         register(new RegexGenerator());
         register(new SeedGenerator());
         register(new ReferenceGenerator(referenceDataLoader));
+        register(new ExpressionGenerator());
     }
 
     public void register(ValueGenerator generator) {

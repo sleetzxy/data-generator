@@ -118,4 +118,49 @@ class GeneratorsTest {
         Object val = gen.generate(emptyContext(), Map.of("source", "regions", "field", "code"));
         assertThat(val).isIn("BJ", "SH");
     }
+
+    @Test
+    void reference_alignIndex_picksSameRowFromUpstream() {
+        var gen = new ReferenceGenerator(null);
+        DataRow upstreamRow0 = new DataRow();
+        upstreamRow0.set("xh", "1");
+        DataRow upstreamRow1 = new DataRow();
+        upstreamRow1.set("xh", "2");
+        Map<String, List<DataRow>> upstream = Map.of(
+                "parent", List.of(upstreamRow0, upstreamRow1));
+        var ctx0 = new GenerationContext("child", 0, upstream, new DataRow());
+        var ctx1 = new GenerationContext("child", 1, upstream, new DataRow());
+        Map<String, Object> config = Map.of("source", "parent", "field", "xh", "align", "index");
+
+        assertThat(gen.generate(ctx0, config)).isEqualTo("1");
+        assertThat(gen.generate(ctx1, config)).isEqualTo("2");
+    }
+
+    @Test
+    void reference_upstreamEmpty_doesNotFallbackToExternalLoader() {
+        var loader = new ReferenceDataLoader(Map.of());
+        var gen = new ReferenceGenerator(loader);
+        Map<String, List<DataRow>> upstream = Map.of("parent", List.of());
+        var ctx = new GenerationContext("child", 0, upstream, new DataRow());
+
+        assertThatThrownBy(() -> gen.generate(ctx, Map.of("source", "parent", "field", "xh")))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("parent");
+    }
+
+    @Test
+    void expression_evaluatesFromCurrentRowFields() {
+        var gen = new ExpressionGenerator();
+        DataRow row = new DataRow();
+        row.set("xh", "1");
+        row.set("wfbh", "4401132023000001");
+        row.set("wfxw", "10391");
+        var ctx = new GenerationContext("child", 0, Map.of(), row);
+        Object value = gen.generate(
+                ctx,
+                Map.of(
+                        "language", "spel",
+                        "expression", "xh + '_' + wfbh + '_' + wfxw"));
+        assertThat(value).isEqualTo("1_4401132023000001_10391");
+    }
 }

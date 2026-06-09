@@ -14,17 +14,23 @@ public class GenerationPipeline {
 
     private final DataWriter writer;
     private final int batchSize;
+    private final BatchWrittenCallback batchWrittenCallback;
     private final List<DataRow> buffer = new ArrayList<>();
     private int writtenRows;
     private int failedRows;
 
     public GenerationPipeline(DataWriter writer) {
-        this(writer, DEFAULT_BATCH_SIZE);
+        this(writer, DEFAULT_BATCH_SIZE, BatchWrittenCallback.NOOP);
     }
 
     public GenerationPipeline(DataWriter writer, int batchSize) {
+        this(writer, batchSize, BatchWrittenCallback.NOOP);
+    }
+
+    public GenerationPipeline(DataWriter writer, int batchSize, BatchWrittenCallback batchWrittenCallback) {
         this.writer = writer;
         this.batchSize = batchSize <= 0 ? DEFAULT_BATCH_SIZE : batchSize;
+        this.batchWrittenCallback = batchWrittenCallback == null ? BatchWrittenCallback.NOOP : batchWrittenCallback;
     }
 
     public void accept(String tableName, DataRow row) {
@@ -54,5 +60,7 @@ public class GenerationPipeline {
         writtenRows += result.writtenCount();
         failedRows += result.failedCount();
         buffer.clear();
+        batchWrittenCallback.onBatchWritten(
+                tableName, result.writtenCount(), result.failedCount(), writtenRows, failedRows);
     }
 }

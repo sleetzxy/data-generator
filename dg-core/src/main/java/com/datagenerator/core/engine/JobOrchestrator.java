@@ -38,19 +38,32 @@ public class JobOrchestrator {
     }
 
     public JobResult run(JobDefinition job, Map<String, Object> writerConfigMap, GenerationOptions options) {
+        return run(job, writerConfigMap, options, JobExecutionListener.NOOP);
+    }
+
+    public JobResult run(
+            JobDefinition job,
+            Map<String, Object> writerConfigMap,
+            GenerationOptions options,
+            JobExecutionListener listener) {
         List<TableTask> sortedTables = DagSorter.sort(new ArrayList<>(job.getTables()));
         Map<String, List<DataRow>> upstreamTables = new HashMap<>();
         List<TableResult> details = new ArrayList<>();
         long totalRows = 0;
         long writtenRows = 0;
         long failedRows = 0;
+        int totalTables = sortedTables.size();
 
         Map<String, Object> defaultWriterConfig = resolveDefaultWriter(job, writerConfigMap);
         DataWriter writer = null;
         String activeWriterKey = null;
+        SeedRowSnapshotStore seedRowSnapshots = new SeedRowSnapshotStore();
 
         try {
-            for (TableTask tableTask : sortedTables) {
+            for (int tableIndex = 0; tableIndex < sortedTables.size(); tableIndex++) {
+                TableTask tableTask = sortedTables.get(tableIndex);
+                listener.onTableStarted(tableTask.getName(), tableIndex, totalTables, tableTask.getCount());
+
                 Map<String, Object> tableWriterConfig = resolveTableWriter(tableTask, defaultWriterConfig);
                 WriterConfig resolvedWriter = connectionRegistry.resolveWriter(tableWriterConfig);
                 String writerKey = writerKey(resolvedWriter);
@@ -68,6 +81,19 @@ public class JobOrchestrator {
                 List<com.datagenerator.core.schema.ConstraintDefinition> constraints =
                         constraintLoader.load(schema, job, tableTask);
 
+                long jobWrittenBeforeTable = writtenRows;
+                long jobFailedBeforeTable = failedRows;
+                JobExecutionListener jobListener = listener;
+                BatchWrittenCallback batchCallback = (tableName, batchWritten, batchFailed, tableWrittenRows, tableFailedRows) ->
+                        jobListener.onBatchWritten(
+                                tableName,
+                                batchWritten,
+                                batchFailed,
+                                tableWrittenRows,
+                                tableFailedRows,
+                                jobWrittenBeforeTable + tableWrittenRows,
+                                jobFailedBeforeTable + tableFailedRows);
+
                 TableGenerationResult result = tableGenerator.generate(
                         schema,
                         tableTask.getCount(),
@@ -75,7 +101,10 @@ public class JobOrchestrator {
                         pluginRegistry.getConstraintRegistry(),
                         upstreamTables,
                         writer,
-                        options);
+                        job.getSeeds(),
+                        options,
+                        batchCallback,
+                        seedRowSnapshots);
 
                 upstreamTables.put(tableTask.getName(), result.generatedRows());
 
@@ -85,6 +114,14 @@ public class JobOrchestrator {
 
                 String status = result.failedRows() > 0 ? "partial" : "ok";
                 details.add(new TableResult(tableTask.getName(), result.writtenRows(), result.failedRows(), status));
+                listener.onTableCompleted(
+                        tableTask.getName(),
+                        result.writtenRows(),
+                        result.failedRows(),
+                        tableIndex + 1,
+                        totalTables,
+                        writtenRows,
+                        failedRows);
             }
         } finally {
             if (writer != null) {
@@ -97,11 +134,11 @@ public class JobOrchestrator {
 
     private static Map<String, Object> resolveDefaultWriter(JobDefinition job, Map<String, Object> writerConfigMap) {
         Map<String, Object> merged = new HashMap<>();
-        if (writerConfigMap != null) {
-            merged.putAll(writerConfigMap);
-        }
         if (!job.getWriter().isEmpty()) {
             merged.putAll(job.getWriter());
+        }
+        if (writerConfigMap != null) {
+            merged.putAll(writerConfigMap);
         }
         return merged;
     }

@@ -109,6 +109,15 @@ class YamlConfigLoaderTest {
     }
 
     @Test
+    void loadJob_withJobLevelSeeds_parsesAndValidates() {
+        JobDefinition job = loader.loadJob("fixtures/jobs/job_level_seeds.yaml");
+        assertThat(job.getId()).isEqualTo("job_level_seeds");
+        assertThat(job.getSeeds()).hasSize(2);
+        assertThat(job.getSeeds().get(0).getName()).isEqualTo("header");
+        assertThat(job.getSeeds().get(1).getLink().getSeed()).isEqualTo("header");
+    }
+
+    @Test
     void overridePath_resolvesTableByName() {
         JobDefinition job = loader.loadJob("fixtures/jobs/ecommerce_seed.yaml");
 

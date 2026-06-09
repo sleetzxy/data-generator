@@ -14,6 +14,7 @@ public class JobDefinition {
     private String constraints;
     private List<ConstraintDefinition> inlineConstraints = new ArrayList<>();
     private Map<String, Object> writer = new HashMap<>();
+    private List<SeedDefinition> seeds = new ArrayList<>();
     private List<TableTask> tables = new ArrayList<>();
     private ScheduleDefinition schedule;
 
@@ -56,6 +57,14 @@ public class JobDefinition {
 
     public void setWriter(Map<String, Object> writer) {
         this.writer = writer == null ? new HashMap<>() : new HashMap<>(writer);
+    }
+
+    public List<SeedDefinition> getSeeds() {
+        return Collections.unmodifiableList(seeds);
+    }
+
+    public void setSeeds(List<SeedDefinition> seeds) {
+        this.seeds = seeds == null ? new ArrayList<>() : new ArrayList<>(seeds);
     }
 
     public List<TableTask> getTables() {

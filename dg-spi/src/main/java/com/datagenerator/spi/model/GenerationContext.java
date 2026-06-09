@@ -10,5 +10,14 @@ public record GenerationContext(
         String tableName,
         int rowIndex,
         Map<String, List<DataRow>> upstreamTables,
-        DataRow rowBeingBuilt) {
+        DataRow rowBeingBuilt,
+        Map<String, DataRow> seedSamples) {
+
+    public GenerationContext(
+            String tableName,
+            int rowIndex,
+            Map<String, List<DataRow>> upstreamTables,
+            DataRow rowBeingBuilt) {
+        this(tableName, rowIndex, upstreamTables, rowBeingBuilt, Map.of());
+    }
 }

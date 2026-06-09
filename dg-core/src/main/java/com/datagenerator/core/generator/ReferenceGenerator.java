@@ -1,6 +1,7 @@
 package com.datagenerator.core.generator;
 
 import com.datagenerator.core.reference.ReferenceDataLoader;
+import com.datagenerator.spi.model.DataRow;
 import com.datagenerator.spi.model.GenerationContext;
 
 import java.util.List;
@@ -27,9 +28,8 @@ public class ReferenceGenerator extends AbstractValueGenerator {
             throw new IllegalStateException("ReferenceDataLoader is not configured");
         }
 
-        Object upstreamValue = pickFromUpstream(ctx, config, source);
-        if (upstreamValue != null) {
-            return upstreamValue;
+        if (ctx.upstreamTables().containsKey(source)) {
+            return pickFromUpstream(ctx, config, source);
         }
 
         if (loader == null) {
@@ -39,20 +39,36 @@ public class ReferenceGenerator extends AbstractValueGenerator {
     }
 
     private Object pickFromUpstream(GenerationContext ctx, Map<String, Object> config, String source) {
-        List<com.datagenerator.spi.model.DataRow> upstreamRows = ctx.upstreamTables().get(source);
+        List<DataRow> upstreamRows = ctx.upstreamTables().get(source);
         if (upstreamRows == null || upstreamRows.isEmpty()) {
-            return null;
+            throw new IllegalStateException("Upstream table '" + source + "' produced no rows");
         }
         Object field = config.get("field");
         if (field == null || String.valueOf(field).isBlank()) {
             throw new IllegalArgumentException("reference generator requires 'field' when using upstream source");
         }
+        String fieldName = String.valueOf(field);
+        String align = String.valueOf(config.getOrDefault("align", "random"));
+        if ("index".equalsIgnoreCase(align)) {
+            int rowIndex = ctx.rowIndex();
+            if (rowIndex >= upstreamRows.size()) {
+                throw new IllegalStateException(
+                        "Row index " + rowIndex + " out of range for upstream table '"
+                                + source + "' (size=" + upstreamRows.size() + ")");
+            }
+            Object value = upstreamRows.get(rowIndex).get(fieldName);
+            if (!upstreamRows.get(rowIndex).getFields().containsKey(fieldName)) {
+                return null;
+            }
+            return value;
+        }
+
         List<Object> values = upstreamRows.stream()
-                .map(row -> row.get(String.valueOf(field)))
+                .map(row -> row.get(fieldName))
                 .filter(java.util.Objects::nonNull)
                 .toList();
         if (values.isEmpty()) {
-            throw new IllegalStateException("No values in upstream table " + source + " for field " + field);
+            return null;
         }
         return values.get(ThreadLocalRandom.current().nextInt(values.size()));
     }
