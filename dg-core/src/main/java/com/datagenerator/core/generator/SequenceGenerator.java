@@ -18,6 +18,9 @@ public class SequenceGenerator extends AbstractValueGenerator {
     public Object generate(GenerationContext ctx, Map<String, Object> config) {
         long start = toLong(config.getOrDefault("start", 0L));
         long step = toLong(config.getOrDefault("step", 1L));
+        if (ctx.rowIndex() >= 0) {
+            return start + (long) ctx.rowIndex() * step;
+        }
         StateKey key = new StateKey(ctx.tableName() == null ? "" : ctx.tableName(), start, step);
         AtomicLong counter = counters.computeIfAbsent(key, ignored -> new AtomicLong(start));
         return counter.getAndAdd(step);

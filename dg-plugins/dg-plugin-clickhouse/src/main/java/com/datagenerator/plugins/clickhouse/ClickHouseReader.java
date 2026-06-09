@@ -22,7 +22,7 @@ import java.util.stream.StreamSupport;
  */
 public class ClickHouseReader implements DataReader {
 
-    private ReaderConfig config;
+    private final ThreadLocal<ReaderConfig> configHolder = new ThreadLocal<>();
 
     @Override
     public String type() {
@@ -31,12 +31,16 @@ public class ClickHouseReader implements DataReader {
 
     @Override
     public void init(ReaderConfig config) {
-        this.config = config;
+        configHolder.set(config);
     }
 
     @Override
     public Stream<DataRow> read(ReadRequest request) {
-        String query = resolveQuery(request);
+        ReaderConfig config = configHolder.get();
+        if (config == null) {
+            throw new IllegalStateException("ClickHouseReader is not initialized");
+        }
+        String query = resolveQuery(request, config);
         if (query == null || query.isBlank()) {
             throw new IllegalArgumentException("Query must not be blank");
         }
@@ -74,7 +78,7 @@ public class ClickHouseReader implements DataReader {
         // Connections are opened per read() and closed when the stream is closed.
     }
 
-    private String resolveQuery(ReadRequest request) {
+    private String resolveQuery(ReadRequest request, ReaderConfig config) {
         if (request != null && request.query() != null && !request.query().isBlank()) {
             return request.query();
         }

@@ -13,8 +13,10 @@ import com.datagenerator.spi.writer.DataWriter;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class JobOrchestrator {
 
@@ -106,7 +108,13 @@ public class JobOrchestrator {
                         batchCallback,
                         seedRowSnapshots);
 
-                upstreamTables.put(tableTask.getName(), result.generatedRows());
+                List<DataRow> upstreamRows = result.generatedRows();
+                Set<String> requiredFields = collectUpstreamFields(
+                        tableTask.getName(), sortedTables, tableIndex, job);
+                if (!requiredFields.isEmpty()) {
+                    upstreamRows = UpstreamFieldCollector.slimRows(upstreamRows, requiredFields);
+                }
+                upstreamTables.put(tableTask.getName(), upstreamRows);
 
                 totalRows += tableTask.getCount();
                 writtenRows += result.writtenRows();
@@ -172,5 +180,25 @@ public class JobOrchestrator {
             throw new ConfigLoadException("Table '" + tableTask.getName() + "' has no schema defined");
         }
         return configLoader.loadSchema(tableTask.getSchema());
+    }
+
+    private Set<String> collectUpstreamFields(
+            String upstreamTableName,
+            List<TableTask> sortedTables,
+            int currentTableIndex,
+            JobDefinition job) {
+        Set<String> fields = new HashSet<>();
+        for (int i = currentTableIndex + 1; i < sortedTables.size(); i++) {
+            TableTask downstream = sortedTables.get(i);
+            if (!downstream.getDependsOn().contains(upstreamTableName)) {
+                continue;
+            }
+            SchemaDefinition downstreamSchema = resolveSchema(downstream);
+            List<com.datagenerator.core.schema.ConstraintDefinition> downstreamConstraints =
+                    constraintLoader.load(downstreamSchema, job, downstream);
+            fields.addAll(UpstreamFieldCollector.collectRequiredFields(
+                    upstreamTableName, downstreamSchema, downstreamConstraints));
+        }
+        return fields;
     }
 }

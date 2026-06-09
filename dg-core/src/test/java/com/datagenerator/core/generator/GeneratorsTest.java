@@ -24,9 +24,10 @@ class GeneratorsTest {
     @Test
     void sequence_increments() {
         var gen = new SequenceGenerator();
-        var ctx = emptyContext();
-        assertThat(gen.generate(ctx, Map.of("start", 100, "step", 1))).isEqualTo(100L);
-        assertThat(gen.generate(ctx, Map.of("start", 100, "step", 1))).isEqualTo(101L);
+        assertThat(gen.generate(new GenerationContext("test", 0, Map.of(), new DataRow()), Map.of("start", 100, "step", 1)))
+                .isEqualTo(100L);
+        assertThat(gen.generate(new GenerationContext("test", 1, Map.of(), new DataRow()), Map.of("start", 100, "step", 1)))
+                .isEqualTo(101L);
     }
 
     @Test

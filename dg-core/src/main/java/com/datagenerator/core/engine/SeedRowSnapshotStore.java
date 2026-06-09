@@ -5,13 +5,14 @@ import com.datagenerator.spi.model.DataRow;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Job 级 L2 行级 seed 快照：按输出行号缓存各 seed 采样结果，供下游表按 index 复用，避免重复随机抽样。
  */
 public class SeedRowSnapshotStore {
 
-    private final Map<Integer, Map<String, DataRow>> rows = new HashMap<>();
+    private final ConcurrentHashMap<Integer, Map<String, DataRow>> rows = new ConcurrentHashMap<>();
 
     /**
      * 读取指定行的 seed 快照（只读视图，可能为 null）。

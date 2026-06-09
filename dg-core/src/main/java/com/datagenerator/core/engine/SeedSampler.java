@@ -85,6 +85,32 @@ public class SeedSampler {
         return samples;
     }
 
+    /**
+     * 预加载 schema 所需 root seed 的数据源，避免首行或并发分片重复触发读库。
+     */
+    public void preloadCaches(SchemaDefinition schema) {
+        Set<String> fieldSources = collectFieldSources(schema);
+        if (fieldSources.isEmpty()) {
+            return;
+        }
+        Set<String> requiredNames = SeedDependencySorter.collectRequiredSeedNames(sortedSeeds, fieldSources);
+        for (SeedDefinition seed : sortedSeeds) {
+            if (!requiredNames.contains(seed.getName()) || !seed.isRoot()) {
+                continue;
+            }
+            if (!seed.getTemplate().isEmpty()) {
+                continue;
+            }
+            if (seed.getReader().isEmpty()
+                    && (seed.getReference() == null || seed.getReference().isBlank())) {
+                continue;
+            }
+            Map<String, Object> loadConfig = buildLoadConfig(seed, null, null);
+            String readerType = resolveReaderType(seed, loadConfig);
+            referenceDataLoader.loadRows(readerType, loadConfig);
+        }
+    }
+
     private DataRow sampleSeed(SeedDefinition seed, Map<String, DataRow> existingSamples) {
         try {
             if (seed.isRoot()) {

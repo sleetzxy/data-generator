@@ -3,6 +3,7 @@ package com.datagenerator.core.engine;
 import com.datagenerator.core.constraint.ConstraintPipeline;
 import com.datagenerator.core.constraint.ConstraintValidationOutcome;
 import com.datagenerator.core.constraint.ConstraintValidatorRegistry;
+import com.datagenerator.core.constraint.field.ForeignKeyIndex;
 import com.datagenerator.core.generator.GeneratorRegistry;
 import com.datagenerator.core.reference.ReferenceDataLoader;
 import com.datagenerator.core.schema.ConstraintDefinition;
@@ -19,6 +20,10 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 public class TableGenerator {
 
@@ -100,6 +105,10 @@ public class TableGenerator {
         ConstraintPipeline pipeline = new ConstraintPipeline(constraints, constraintRegistry, options.onConstraintFail());
         GenerationPipeline writePipeline =
                 new GenerationPipeline(writer, options.batchSize(), batchWrittenCallback);
+        ForeignKeyIndex foreignKeyIndex = ForeignKeyIndex.build(upstreamTables, constraints);
+        Map<String, Object> constraintBindings = foreignKeyIndex.isEmpty()
+                ? Map.of()
+                : Map.of(ForeignKeyIndex.BINDING_KEY, foreignKeyIndex);
 
         String tableName = schema.getTable() == null ? "unknown" : schema.getTable();
         List<DataRow> generatedRows = new ArrayList<>();
@@ -111,22 +120,43 @@ public class TableGenerator {
         SeedSampler seedSampler = sortedSeeds.isEmpty() || referenceDataLoader == null
                 ? null
                 : new SeedSampler(referenceDataLoader, configLoader, sortedSeeds);
+        if (seedSampler != null) {
+            seedSampler.preloadCaches(schema);
+        }
 
-        for (int rowIndex = 0; rowIndex < count; rowIndex++) {
-            DataRow row = generateValidRow(
+        if (shouldGenerateInParallel(count, options.generationParallelism())) {
+            constraintFailedRows = generateRowsInParallel(
                     schema,
+                    count,
                     tableName,
-                    rowIndex,
                     upstreamTables,
                     pipeline,
                     seedSampler,
                     seedRowSnapshots,
-                    options.maxRetries());
-            if (row == null) {
-                constraintFailedRows++;
-                continue;
+                    constraintBindings,
+                    options,
+                    generatedRows);
+        } else {
+            for (int rowIndex = 0; rowIndex < count; rowIndex++) {
+                DataRow row = generateValidRow(
+                        schema,
+                        tableName,
+                        rowIndex,
+                        upstreamTables,
+                        pipeline,
+                        seedSampler,
+                        seedRowSnapshots,
+                        constraintBindings,
+                        options.maxRetries());
+                if (row == null) {
+                    constraintFailedRows++;
+                    continue;
+                }
+                generatedRows.add(row);
             }
-            generatedRows.add(row);
+        }
+
+        for (DataRow row : generatedRows) {
             writePipeline.accept(tableName, row);
         }
 
@@ -137,6 +167,76 @@ public class TableGenerator {
                 constraintFailedRows + writePipeline.getFailedRows());
     }
 
+    private long generateRowsInParallel(
+            SchemaDefinition schema,
+            long count,
+            String tableName,
+            Map<String, List<DataRow>> upstreamTables,
+            ConstraintPipeline pipeline,
+            SeedSampler seedSampler,
+            SeedRowSnapshotStore seedRowSnapshots,
+            Map<String, Object> constraintBindings,
+            GenerationOptions options,
+            List<DataRow> generatedRows) {
+        int parallelism = options.generationParallelism();
+        DataRow[] rows = new DataRow[(int) count];
+        long[] failedRows = {0};
+        int chunkSize = (int) ((count + parallelism - 1) / parallelism);
+        ExecutorService executor = Executors.newFixedThreadPool(parallelism);
+        try {
+            List<Future<?>> futures = new ArrayList<>();
+            for (int chunk = 0; chunk < parallelism; chunk++) {
+                int start = chunk * chunkSize;
+                int end = (int) Math.min(count, (long) (chunk + 1) * chunkSize);
+                if (start >= end) {
+                    break;
+                }
+                futures.add(executor.submit(() -> {
+                    for (int rowIndex = start; rowIndex < end; rowIndex++) {
+                        DataRow row = generateValidRow(
+                                schema,
+                                tableName,
+                                rowIndex,
+                                upstreamTables,
+                                pipeline,
+                                seedSampler,
+                                seedRowSnapshots,
+                                constraintBindings,
+                                options.maxRetries());
+                        if (row == null) {
+                            synchronized (failedRows) {
+                                failedRows[0]++;
+                            }
+                        } else {
+                            rows[rowIndex] = row;
+                        }
+                    }
+                }));
+            }
+            for (Future<?> future : futures) {
+                future.get();
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Parallel row generation interrupted", exception);
+        } catch (ExecutionException exception) {
+            throw new IllegalStateException("Parallel row generation failed", exception.getCause());
+        } finally {
+            executor.shutdown();
+        }
+
+        for (DataRow row : rows) {
+            if (row != null) {
+                generatedRows.add(row);
+            }
+        }
+        return failedRows[0];
+    }
+
+    private static boolean shouldGenerateInParallel(long count, int generationParallelism) {
+        return count >= GenerationOptions.PARALLEL_ROW_THRESHOLD && generationParallelism > 1;
+    }
+
     private DataRow generateValidRow(
             SchemaDefinition schema,
             String tableName,
@@ -145,6 +245,7 @@ public class TableGenerator {
             ConstraintPipeline pipeline,
             SeedSampler seedSampler,
             SeedRowSnapshotStore seedRowSnapshots,
+            Map<String, Object> constraintBindings,
             int maxRetries) {
         for (int attempt = 0; attempt <= maxRetries; attempt++) {
             Map<String, DataRow> seedSamples = seedSampler == null
@@ -152,7 +253,7 @@ public class TableGenerator {
                     : seedSampler.sample(schema, rowIndex, seedRowSnapshots);
             DataRow row = generateRow(schema, tableName, rowIndex, upstreamTables, seedSamples);
             ConstraintValidationOutcome outcome = pipeline.validateRow(
-                    new ConstraintContext(row, upstreamTables, Map.of()));
+                    new ConstraintContext(row, upstreamTables, constraintBindings));
             if (outcome.isAccepted()) {
                 return outcome.row();
             }

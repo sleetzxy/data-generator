@@ -26,6 +26,15 @@ public class ForeignKeyValidator implements ConstraintValidator {
             return ConstraintResult.valid();
         }
 
+        Object binding = ctx.bindings().get(ForeignKeyIndex.BINDING_KEY);
+        if (binding instanceof ForeignKeyIndex index) {
+            if (index.contains(refTable, refField, value)) {
+                return ConstraintResult.valid();
+            }
+            return ConstraintResult.invalid(
+                    "Field '" + field + "' value " + value + " not found in " + refTable + "." + refField);
+        }
+
         List<DataRow> upstreamRows = ctx.upstreamTables().get(refTable);
         if (upstreamRows == null || upstreamRows.isEmpty()) {
             return ConstraintResult.invalid(

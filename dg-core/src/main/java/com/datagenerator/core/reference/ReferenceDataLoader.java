@@ -8,6 +8,7 @@ import com.datagenerator.spi.model.DataRow;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
@@ -17,8 +18,8 @@ public class ReferenceDataLoader {
 
     private final PluginRegistry registry;
     private final ConnectionRegistry connectionRegistry;
-    private final Map<String, LookupReferenceSource> sources = new HashMap<>();
-    private final Map<String, List<Object>> cache = new HashMap<>();
+    private final Map<String, LookupReferenceSource> sources = new ConcurrentHashMap<>();
+    private final Map<String, List<Object>> cache = new ConcurrentHashMap<>();
     private final DistributionSamplerFactory distributionSamplerFactory = new DistributionSamplerFactory();
 
     public ReferenceDataLoader(PluginRegistry registry) {
@@ -62,6 +63,9 @@ public class ReferenceDataLoader {
 
     public DataRow sampleRow(String source, Map<String, Object> config) {
         List<DataRow> rows = loadRows(source, config);
+        if (rows.isEmpty()) {
+            return null;
+        }
         return rows.get(ThreadLocalRandom.current().nextInt(rows.size()));
     }
 

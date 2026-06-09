@@ -24,7 +24,7 @@ import java.util.stream.StreamSupport;
  */
 public class CsvReader implements DataReader {
 
-    private ReaderConfig config;
+    private final ThreadLocal<ReaderConfig> configHolder = new ThreadLocal<>();
 
     @Override
     public String type() {
@@ -33,11 +33,15 @@ public class CsvReader implements DataReader {
 
     @Override
     public void init(ReaderConfig config) {
-        this.config = config;
+        configHolder.set(config);
     }
 
     @Override
     public Stream<DataRow> read(ReadRequest request) {
+        ReaderConfig config = configHolder.get();
+        if (config == null) {
+            throw new IllegalStateException("CsvReader is not initialized");
+        }
         String path = config.path();
         if (path == null || path.isBlank()) {
             throw new IllegalArgumentException("Path must not be blank");

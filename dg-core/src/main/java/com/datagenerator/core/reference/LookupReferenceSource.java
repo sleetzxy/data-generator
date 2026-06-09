@@ -10,6 +10,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Loads column values from a {@link DataReader} lookup source, with per-field caching.
@@ -18,8 +19,8 @@ public class LookupReferenceSource {
 
     private final DataReader reader;
     private final ConnectionRegistry connectionRegistry;
-    private final Map<String, List<Object>> cache = new HashMap<>();
-    private final Map<String, List<DataRow>> rowCache = new HashMap<>();
+    private final Map<String, List<Object>> cache = new ConcurrentHashMap<>();
+    private final Map<String, List<DataRow>> rowCache = new ConcurrentHashMap<>();
 
     public LookupReferenceSource(DataReader reader) {
         this(reader, null);
@@ -52,9 +53,6 @@ public class LookupReferenceSource {
         ReadRequest request = buildRequest(config);
         try (var stream = reader.read(request)) {
             List<DataRow> rows = stream.toList();
-            if (rows.isEmpty()) {
-                throw new IllegalStateException("Reference query returned no rows");
-            }
             return rows;
         }
     }
