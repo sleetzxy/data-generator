@@ -4,16 +4,22 @@ import com.datagenerator.web.dto.JobProgress;
 import com.datagenerator.web.dto.JobResponse;
 import com.datagenerator.web.dto.JobStatus;
 import com.datagenerator.web.dto.TableDetail;
+import com.datagenerator.web.config.DataGeneratorProperties;
 import com.datagenerator.web.service.JobLogStore;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
 
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class JobStartupRecoveryTest {
+
+    @TempDir
+    Path tempDir;
 
     private JobRepository jobRepository;
     private JobLogStore jobLogStore;
@@ -23,7 +29,9 @@ class JobStartupRecoveryTest {
     void setUp() {
         JdbcTemplate jdbc = SqliteTestSupport.createInMemoryJdbcTemplate();
         jobRepository = new JobRepository(jdbc, SqliteTestSupport.objectMapper());
-        jobLogStore = new JobLogStore(new JobLogRepository(jdbc));
+        DataGeneratorProperties properties = new DataGeneratorProperties();
+        properties.getStorage().setLogDir(tempDir.toString());
+        jobLogStore = new JobLogStore(new JobLogFileRepository(properties));
         recovery = new JobStartupRecovery(jobRepository, jobLogStore);
     }
 

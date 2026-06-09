@@ -12,6 +12,8 @@ import com.datagenerator.web.dto.JobSubmitResult;
 import com.datagenerator.web.dto.JobSummaryResponse;
 import com.datagenerator.web.dto.PreviewOptions;
 import com.datagenerator.web.dto.PreviewRequest;
+import com.datagenerator.web.dto.PreviewResponse;
+import com.datagenerator.web.dto.PreviewTableResponse;
 import com.datagenerator.web.dto.TableDetail;
 import com.datagenerator.web.dto.TriggerSource;
 import com.datagenerator.web.exception.JobNotFoundException;
@@ -19,12 +21,15 @@ import com.datagenerator.web.internal.CollectingWriter;
 import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintLoader;
 import com.datagenerator.core.engine.GenerationOptions;
+import com.datagenerator.core.engine.JobExecutionListener;
 import com.datagenerator.core.engine.JobOrchestrator;
 import com.datagenerator.core.engine.JobResult;
 import com.datagenerator.core.engine.TableResult;
 import com.datagenerator.core.schema.ConfigLoadException;
+import com.datagenerator.core.schema.FieldDefinition;
 import com.datagenerator.core.schema.JobDefinition;
 import com.datagenerator.core.schema.OverridePathResolver;
+import com.datagenerator.core.schema.SchemaDefinition;
 import com.datagenerator.core.schema.TableTask;
 import com.datagenerator.core.schema.YamlConfigLoader;
 import com.datagenerator.web.storage.JobRepository;
@@ -37,6 +42,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -248,7 +254,7 @@ public class JobService {
         jobRepository.delete(jobId);
     }
 
-    public JobResponse preview(PreviewRequest request) {
+    public PreviewResponse preview(PreviewRequest request) {
         validateJobConfig(request.getJobConfig());
         long start = System.currentTimeMillis();
 
@@ -259,12 +265,27 @@ public class JobService {
         JobOrchestrator previewOrchestrator = previewOrchestratorFactory.create(collectingWriter);
 
         GenerationOptions options = toGenerationOptions(request.getOptions());
-        JobResult result = previewOrchestrator.run(
+        JobResult jobResult = previewOrchestrator.run(
                 previewJob,
                 Map.of("type", CollectingWriter.TYPE),
                 options);
+        validatePreviewResults(previewJob, jobResult);
 
-        return toJobResponse(null, JobStatus.COMPLETED, result, start, null, null, null, collectingWriter.toRowMaps());
+        PreviewResponse response = new PreviewResponse();
+        response.setStatus(JobStatus.COMPLETED);
+        response.setDuration(formatDuration(System.currentTimeMillis() - start));
+        response.setTables(buildPreviewTables(previewJob, collectingWriter.toRowMaps()));
+        return response;
+    }
+
+    private void validatePreviewResults(JobDefinition previewJob, JobResult jobResult) {
+        for (TableResult detail : jobResult.details()) {
+            if (detail.rows() > 0) {
+                continue;
+            }
+            throw new IllegalStateException(
+                    "表 '" + detail.table() + "' 预览未生成任何行，请检查 seed 数据源连接与查询是否返回数据");
+        }
     }
 
     private JobResponse executeAndStore(
@@ -275,19 +296,28 @@ public class JobService {
         long start = System.currentTimeMillis();
         JobResponse current = jobRepository.findById(jobId).orElse(null);
         String jobConfig = current == null ? null : current.getJobConfig();
+        String submittedAt = current == null ? null : current.getSubmittedAt();
         cancellationRegistry.registerRunning(jobId);
+        int totalTables = job.getTables().size();
+        long totalRows = estimateTotalRows(job);
+        Map<String, TableDetail> runningDetails = new LinkedHashMap<>();
         try {
             if (current != null) {
                 current.setStatus(JobStatus.RUNNING);
+                current.setProgress(new JobProgress(totalTables, 0, totalRows, 0, 0));
                 jobRepository.update(current);
             }
-            jobLogStore.info(jobId, "开始生成数据，共 " + job.getTables().size() + " 张表");
-            JobResult result = jobOrchestrator.run(job, writer, options);
+            jobLogStore.info(jobId, "开始生成数据，共 " + totalTables + " 张表，目标 " + totalRows + " 行");
+            logJobContext(jobId, job, writer, options);
+            JobExecutionListener progressListener = createProgressListener(
+                    jobId, jobConfig, submittedAt, totalTables, totalRows, runningDetails);
+            JobResult result = jobOrchestrator.run(job, writer, options, progressListener);
             for (TableResult tableResult : result.details()) {
                 jobLogStore.info(
                         jobId,
-                        "表 " + tableResult.table() + " 完成: 写入 "
-                                + tableResult.rows() + " 行, 失败 " + tableResult.failedRows() + " 行");
+                        "表 [" + tableResult.table() + "] 完成: 写入 "
+                                + tableResult.rows() + " 行, 失败 " + tableResult.failedRows() + " 行, 状态 "
+                                + tableResult.status());
             }
             if (isJobCancelled(jobId)) {
                 jobLogStore.warn(jobId, "任务执行完毕但已被取消，保持 CANCELLED 状态");
@@ -313,7 +343,10 @@ public class JobService {
             if (isJobCancelled(jobId)) {
                 throw exception;
             }
-            jobLogStore.error(jobId, "任务执行失败: " + exception.getMessage());
+            jobLogStore.error(jobId, "任务执行失败: " + exception.getClass().getSimpleName() + " - " + exception.getMessage());
+            if (exception.getCause() != null && exception.getCause().getMessage() != null) {
+                jobLogStore.error(jobId, "根本原因: " + exception.getCause().getMessage());
+            }
             JobResponse failed = current == null
                     ? new JobResponse(jobId, JobStatus.FAILED, emptyProgress(), List.of(), null, null, null, exception.getMessage(), null)
                     : current;
@@ -388,6 +421,8 @@ public class JobService {
         previewJob.setName(job.getName());
         previewJob.setConstraints(job.getConstraints());
         previewJob.setInlineConstraints(new ArrayList<>(job.getInlineConstraints()));
+        previewJob.setSeeds(new ArrayList<>(job.getSeeds()));
+        previewJob.setWriter(Map.of());
 
         List<TableTask> tables = new ArrayList<>();
         for (TableTask tableTask : job.getTables()) {
@@ -396,6 +431,7 @@ public class JobService {
             }
             TableTask copy = copyTableTask(tableTask);
             copy.setCount(Math.min(copy.getCount(), limit));
+            copy.setWriter(Map.of());
             tables.add(copy);
         }
         previewJob.setTables(tables);
@@ -411,7 +447,219 @@ public class JobService {
         copy.setDependsOn(new ArrayList<>(source.getDependsOn()));
         copy.setConstraints(source.getConstraints());
         copy.setInlineConstraints(new ArrayList<>(source.getInlineConstraints()));
+        copy.setWriter(new HashMap<>(source.getWriter()));
         return copy;
+    }
+
+    private List<PreviewTableResponse> buildPreviewTables(
+            JobDefinition previewJob,
+            Map<String, List<Map<String, Object>>> rowMaps) {
+        List<PreviewTableResponse> tables = new ArrayList<>();
+        for (TableTask tableTask : previewJob.getTables()) {
+            SchemaDefinition schema = resolveSchema(tableTask);
+            List<String> columns = schema.getFields().stream()
+                    .map(FieldDefinition::getName)
+                    .toList();
+            PreviewTableResponse table = new PreviewTableResponse();
+            table.setTableName(tableTask.getName());
+            table.setSchemaTable(schema.getTable());
+            table.setColumns(columns);
+            table.setRows(resolvePreviewRows(tableTask, schema, rowMaps));
+            tables.add(table);
+        }
+        return tables;
+    }
+
+    private List<Map<String, Object>> resolvePreviewRows(
+            TableTask tableTask,
+            SchemaDefinition schema,
+            Map<String, List<Map<String, Object>>> rowMaps) {
+        String schemaTable = schema.getTable();
+        if (schemaTable != null && !schemaTable.isBlank() && rowMaps.containsKey(schemaTable)) {
+            return rowMaps.get(schemaTable);
+        }
+        return rowMaps.getOrDefault(tableTask.getName(), List.of());
+    }
+
+    private SchemaDefinition resolveSchema(TableTask tableTask) {
+        if (tableTask.getSchemaDefinition() != null) {
+            return tableTask.getSchemaDefinition();
+        }
+        if (tableTask.getSchema() == null || tableTask.getSchema().isBlank()) {
+            throw new ConfigLoadException("Table '" + tableTask.getName() + "' has no schema defined");
+        }
+        return configLoader.loadSchema(tableTask.getSchema());
+    }
+
+    private JobExecutionListener createProgressListener(
+            String jobId,
+            String jobConfig,
+            String submittedAt,
+            int totalTables,
+            long totalRows,
+            Map<String, TableDetail> runningDetails) {
+        return new JobExecutionListener() {
+            private final long[] jobWrittenRows = {0};
+            private final long[] jobFailedRows = {0};
+
+            @Override
+            public void onTableStarted(String tableName, int tableIndex, int totalTables, long plannedRows) {
+                int completedTables = countFinishedTables(runningDetails);
+                runningDetails.put(tableName, new TableDetail(tableName, 0, 0, "running"));
+                jobLogStore.info(
+                        jobId,
+                        "开始生成表 [" + tableName + "]（" + (tableIndex + 1) + "/" + totalTables + "），目标 "
+                                + plannedRows + " 行");
+                persistRunningProgress(
+                        jobId,
+                        jobConfig,
+                        submittedAt,
+                        totalTables,
+                        completedTables,
+                        totalRows,
+                        jobWrittenRows[0],
+                        jobFailedRows[0],
+                        runningDetails);
+            }
+
+            @Override
+            public void onBatchWritten(
+                    String tableName,
+                    int batchWritten,
+                    int batchFailed,
+                    long tableWrittenRows,
+                    long tableFailedRows,
+                    long jobWrittenRows,
+                    long jobFailedRows) {
+                this.jobWrittenRows[0] = jobWrittenRows;
+                this.jobFailedRows[0] = jobFailedRows;
+                runningDetails.put(
+                        tableName, new TableDetail(tableName, tableWrittenRows, tableFailedRows, "running"));
+                jobLogStore.info(
+                        jobId,
+                        "表 [" + tableName + "] 本批写入 " + batchWritten + " 行，任务累计 "
+                                + jobWrittenRows + " / " + totalRows + " 行");
+                persistRunningProgress(
+                        jobId,
+                        jobConfig,
+                        submittedAt,
+                        totalTables,
+                        countFinishedTables(runningDetails),
+                        totalRows,
+                        jobWrittenRows,
+                        jobFailedRows,
+                        runningDetails);
+            }
+
+            @Override
+            public void onTableCompleted(
+                    String tableName,
+                    long tableWrittenRows,
+                    long tableFailedRows,
+                    int completedTables,
+                    int totalTables,
+                    long jobWrittenRows,
+                    long jobFailedRows) {
+                this.jobWrittenRows[0] = jobWrittenRows;
+                this.jobFailedRows[0] = jobFailedRows;
+                String status = tableFailedRows > 0 ? "partial" : "ok";
+                runningDetails.put(tableName, new TableDetail(tableName, tableWrittenRows, tableFailedRows, status));
+                persistRunningProgress(
+                        jobId,
+                        jobConfig,
+                        submittedAt,
+                        totalTables,
+                        completedTables,
+                        totalRows,
+                        jobWrittenRows,
+                        jobFailedRows,
+                        runningDetails);
+            }
+        };
+    }
+
+    private static int countFinishedTables(Map<String, TableDetail> runningDetails) {
+        int completed = 0;
+        for (TableDetail detail : runningDetails.values()) {
+            if (!"running".equals(detail.getStatus())) {
+                completed++;
+            }
+        }
+        return completed;
+    }
+
+    private void persistRunningProgress(
+            String jobId,
+            String jobConfig,
+            String submittedAt,
+            int totalTables,
+            int completedTables,
+            long totalRows,
+            long writtenRows,
+            long failedRows,
+            Map<String, TableDetail> runningDetails) {
+        if (jobConfig == null) {
+            return;
+        }
+        JobResponse response = new JobResponse(
+                jobId,
+                JobStatus.RUNNING,
+                new JobProgress(totalTables, completedTables, totalRows, writtenRows, failedRows),
+                new ArrayList<>(runningDetails.values()),
+                null,
+                jobConfig,
+                submittedAt,
+                null,
+                null);
+        jobRepository.update(response);
+    }
+
+    private void logJobContext(
+            String jobId,
+            JobDefinition job,
+            Map<String, Object> writer,
+            GenerationOptions options) {
+        jobLogStore.info(jobId, "Writer 配置: " + summarizeMap(writer));
+        jobLogStore.info(
+                jobId,
+                "生成选项: batchSize=" + options.batchSize()
+                        + ", maxRetries=" + options.maxRetries()
+                        + ", onConstraintFail=" + options.onConstraintFail());
+        jobLogStore.info(jobId, "Job seeds 数量: " + job.getSeeds().size());
+        for (TableTask table : job.getTables()) {
+            String schemaRef = table.getSchemaDefinition() != null
+                    ? "inline"
+                    : table.getSchema();
+            jobLogStore.info(
+                    jobId,
+                    "表 [" + table.getName() + "] count=" + table.getCount()
+                            + ", schema=" + schemaRef
+                            + ", depends_on=" + table.getDependsOn()
+                            + ", writer=" + summarizeMap(mergeTableWriter(writer, table)));
+        }
+    }
+
+    private static Map<String, Object> mergeTableWriter(Map<String, Object> defaultWriter, TableTask table) {
+        Map<String, Object> merged = new HashMap<>(defaultWriter);
+        merged.putAll(table.getWriter());
+        return merged;
+    }
+
+    private static String summarizeMap(Map<String, Object> values) {
+        if (values == null || values.isEmpty()) {
+            return "{}";
+        }
+        StringBuilder builder = new StringBuilder("{");
+        boolean first = true;
+        for (Map.Entry<String, Object> entry : values.entrySet()) {
+            if (!first) {
+                builder.append(", ");
+            }
+            builder.append(entry.getKey()).append('=').append(entry.getValue());
+            first = false;
+        }
+        builder.append('}');
+        return builder.toString();
     }
 
     private JobResponse toJobResponse(

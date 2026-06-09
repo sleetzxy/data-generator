@@ -1,7 +1,8 @@
 package com.datagenerator.web.service;
 
+import com.datagenerator.web.config.DataGeneratorProperties;
 import com.datagenerator.web.config.JobRuntimeSettings;
-import com.datagenerator.web.storage.JobLogRepository;
+import com.datagenerator.web.storage.JobLogFileRepository;
 import com.datagenerator.web.storage.JobRepository;
 import com.datagenerator.web.storage.SqliteTestSupport;
 import com.datagenerator.core.config.ConnectionRegistry;
@@ -9,6 +10,8 @@ import com.datagenerator.core.constraint.ConstraintLoader;
 import com.datagenerator.core.engine.JobOrchestrator;
 import com.datagenerator.core.schema.YamlConfigLoader;
 import org.springframework.jdbc.core.JdbcTemplate;
+
+import java.nio.file.Path;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -27,9 +30,15 @@ public final class JobServiceTestSupport {
             JobScheduleExecutor scheduleExecutor) {}
 
     public static JobServiceContext createContext(JobRuntimeSettings runtimeSettings) {
+        return createContext(runtimeSettings, Path.of(System.getProperty("java.io.tmpdir"), "dg-test-logs"));
+    }
+
+    public static JobServiceContext createContext(JobRuntimeSettings runtimeSettings, Path logDir) {
         JdbcTemplate jdbcTemplate = SqliteTestSupport.createInMemoryJdbcTemplate();
         JobRepository jobRepository = new JobRepository(jdbcTemplate, SqliteTestSupport.objectMapper());
-        JobLogStore jobLogStore = new JobLogStore(new JobLogRepository(jdbcTemplate));
+        DataGeneratorProperties properties = new DataGeneratorProperties();
+        properties.getStorage().setLogDir(logDir.toString());
+        JobLogStore jobLogStore = new JobLogStore(new JobLogFileRepository(properties));
         JobCancellationRegistry cancellationRegistry = new JobCancellationRegistry();
         AsyncJobExecutor asyncJobExecutor = new AsyncJobExecutor(
                 runtimeSettings, jobRepository, jobLogStore, cancellationRegistry);

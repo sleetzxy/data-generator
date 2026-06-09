@@ -1,22 +1,28 @@
 package com.datagenerator.web.storage;
 
+import com.datagenerator.web.config.DataGeneratorProperties;
 import com.datagenerator.web.dto.JobLogEntry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-import org.springframework.jdbc.core.JdbcTemplate;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class JobLogRepositoryTest {
+class JobLogFileRepositoryTest {
 
-    private JobLogRepository repository;
+    @TempDir
+    Path tempDir;
+
+    private JobLogFileRepository repository;
 
     @BeforeEach
     void setUp() {
-        JdbcTemplate jdbcTemplate = SqliteTestSupport.createInMemoryJdbcTemplate();
-        repository = new JobLogRepository(jdbcTemplate);
+        DataGeneratorProperties properties = new DataGeneratorProperties();
+        properties.getStorage().setLogDir(tempDir.toString());
+        repository = new JobLogFileRepository(properties);
     }
 
     @Test

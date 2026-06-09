@@ -36,3 +36,6 @@ data-generator:
     sync-threshold: 5000
     batch-size: 1000
     thread-pool-size: 4
+  storage:
+    sqlite-path: ./data/dg-jobs.db
+    log-dir: ./data/job-logs

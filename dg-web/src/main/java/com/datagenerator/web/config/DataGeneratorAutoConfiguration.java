@@ -70,7 +70,7 @@ public class DataGeneratorAutoConfiguration {
             registry.registerReader(reader.type(), reader);
         }
         for (DataWriter writer : writers) {
-            registry.registerWriter(writer.type(), writer);
+            registry.registerWriterPrototype(writer.type(), writer);
         }
         return registry;
     }

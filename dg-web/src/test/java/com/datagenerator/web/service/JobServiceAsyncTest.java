@@ -45,7 +45,7 @@ class JobServiceAsyncTest {
     @Test
     void cancel_runningJob_staysCancelledNotCompleted() {
         JobOrchestrator orchestrator = mock(JobOrchestrator.class);
-        when(orchestrator.run(any(), any(), any())).thenAnswer(invocation -> {
+        when(orchestrator.run(any(), any(), any(), any())).thenAnswer(invocation -> {
             try {
                 Thread.sleep(800);
             } catch (InterruptedException exception) {
@@ -91,7 +91,7 @@ class JobServiceAsyncTest {
     void cancel_syncRunningJob_staysCancelled() throws Exception {
         CountDownLatch running = new CountDownLatch(1);
         JobOrchestrator orchestrator = mock(JobOrchestrator.class);
-        when(orchestrator.run(any(), any(), any())).thenAnswer(invocation -> {
+        when(orchestrator.run(any(), any(), any(), any())).thenAnswer(invocation -> {
             running.countDown();
             try {
                 Thread.sleep(3000);
@@ -187,7 +187,7 @@ class JobServiceAsyncTest {
 
     private static JobOrchestrator mockOrchestratorReturningSuccess() {
         JobOrchestrator orchestrator = mock(JobOrchestrator.class);
-        when(orchestrator.run(any(), any(), any()))
+        when(orchestrator.run(any(), any(), any(), any()))
                 .thenReturn(new JobResult(10_000, 10_000, 0, List.of(new TableResult("customers", 10_000, 0, "ok"))));
         return orchestrator;
     }

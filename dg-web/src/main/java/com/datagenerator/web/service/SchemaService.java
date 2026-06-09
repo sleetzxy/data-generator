@@ -34,7 +34,6 @@ public class SchemaService {
         SchemaResponse response = new SchemaResponse();
         response.setTable(definition.getTable());
         response.setConstraints(definition.getConstraints());
-        response.setSeed(definition.getSeed().isEmpty() ? null : definition.getSeed());
         response.setFields(definition.getFields().stream()
                 .map(this::toFieldResponse)
                 .toList());

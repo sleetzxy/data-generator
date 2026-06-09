@@ -97,6 +97,7 @@ public class DataGeneratorProperties {
     public static class StorageProperties {
 
         private String sqlitePath = "./data/dg-jobs.db";
+        private String logDir = "./data/job-logs";
 
         public String getSqlitePath() {
             return sqlitePath;
@@ -104,6 +105,14 @@ public class DataGeneratorProperties {
 
         public void setSqlitePath(String sqlitePath) {
             this.sqlitePath = sqlitePath;
+        }
+
+        public String getLogDir() {
+            return logDir;
+        }
+
+        public void setLogDir(String logDir) {
+            this.logDir = logDir;
         }
     }
 

@@ -39,5 +39,6 @@ class EndToEndTest {
 
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).contains("\"status\":\"COMPLETED\"");
+        assertThat(response.getBody()).contains("\"tables\"");
     }
 }

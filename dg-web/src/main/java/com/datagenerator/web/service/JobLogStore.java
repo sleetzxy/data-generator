@@ -1,7 +1,7 @@
 package com.datagenerator.web.service;
 
 import com.datagenerator.web.dto.JobLogEntry;
-import com.datagenerator.web.storage.JobLogRepository;
+import com.datagenerator.web.storage.JobLogFileRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -13,15 +13,15 @@ public class JobLogStore {
 
     private static final Logger log = LoggerFactory.getLogger(JobLogStore.class);
 
-    private final JobLogRepository jobLogRepository;
+    private final JobLogFileRepository jobLogFileRepository;
 
-    public JobLogStore(JobLogRepository jobLogRepository) {
-        this.jobLogRepository = jobLogRepository;
+    public JobLogStore(JobLogFileRepository jobLogFileRepository) {
+        this.jobLogFileRepository = jobLogFileRepository;
     }
 
     public void append(String jobId, String level, String message) {
         try {
-            jobLogRepository.append(jobId, level, message);
+            jobLogFileRepository.append(jobId, level, message);
         } catch (Exception exception) {
             log.error("Failed to append log for job {}: {}", jobId, message, exception);
         }
@@ -40,10 +40,10 @@ public class JobLogStore {
     }
 
     public List<JobLogEntry> getLogs(String jobId) {
-        return jobLogRepository.findByJobId(jobId);
+        return jobLogFileRepository.findByJobId(jobId);
     }
 
     public void remove(String jobId) {
-        jobLogRepository.deleteByJobId(jobId);
+        jobLogFileRepository.deleteByJobId(jobId);
     }
 }

@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
@@ -12,33 +13,62 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
-    private static final String INTERNAL_ERROR_MESSAGE = "Internal server error";
+    private static final String FALLBACK_ERROR_MESSAGE = "服务器内部错误，请稍后重试";
 
     @ExceptionHandler({IllegalArgumentException.class, ConfigLoadException.class})
     public ResponseEntity<ErrorResponse> handleBadRequest(RuntimeException exception) {
         log.warn("Bad request: {}", exception.getMessage());
         return ResponseEntity.badRequest()
-                .body(new ErrorResponse(HttpStatus.BAD_REQUEST.value(), exception.getMessage()));
+                .body(new ErrorResponse(HttpStatus.BAD_REQUEST.value(), resolveMessage(exception)));
     }
 
     @ExceptionHandler(JobNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(JobNotFoundException exception) {
         log.warn("Job not found: {}", exception.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(new ErrorResponse(HttpStatus.NOT_FOUND.value(), exception.getMessage()));
+                .body(new ErrorResponse(HttpStatus.NOT_FOUND.value(), resolveMessage(exception)));
     }
 
     @ExceptionHandler(ReadOnlyScheduleException.class)
     public ResponseEntity<ErrorResponse> handleReadOnlySchedule(ReadOnlyScheduleException exception) {
         log.warn("Read-only schedule: {}", exception.getMessage());
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
-                .body(new ErrorResponse(HttpStatus.FORBIDDEN.value(), exception.getMessage()));
+                .body(new ErrorResponse(HttpStatus.FORBIDDEN.value(), resolveMessage(exception)));
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadableMessage(HttpMessageNotReadableException exception) {
+        log.warn("Unreadable request body: {}", exception.getMessage());
+        return ResponseEntity.badRequest()
+                .body(new ErrorResponse(HttpStatus.BAD_REQUEST.value(), "请求体格式错误，请检查 JSON 内容"));
+    }
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalState(IllegalStateException exception) {
+        log.error("Illegal state", exception);
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), resolveMessage(exception)));
     }
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleInternalError(Exception exception) {
         log.error("Unhandled exception", exception);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), INTERNAL_ERROR_MESSAGE));
+                .body(new ErrorResponse(HttpStatus.INTERNAL_SERVER_ERROR.value(), resolveMessage(exception)));
+    }
+
+    static String resolveMessage(Throwable exception) {
+        String message = exception.getMessage();
+        if (message != null && !message.isBlank()) {
+            return message.trim();
+        }
+        Throwable cause = exception.getCause();
+        if (cause != null) {
+            String causeMessage = cause.getMessage();
+            if (causeMessage != null && !causeMessage.isBlank()) {
+                return causeMessage.trim();
+            }
+        }
+        return FALLBACK_ERROR_MESSAGE;
     }
 }
