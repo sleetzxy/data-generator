@@ -1,9 +1,8 @@
 const API = '/api/v1';
 const LOG_PAGE_SIZE = 10;
-const LOG_LINES_PAGE_SIZE = 50;
 const DEFINITION_PAGE_SIZE = 20;
-const PREVIEW_PAGE_SIZE = 10;
 const PREVIEW_FETCH_LIMIT = 10;
+const AUTO_REFRESH_INTERVAL_MS = 5000;
 
 const DEFAULT_JOB_TEMPLATE = `writer:
   type: csv
@@ -31,9 +30,8 @@ let definitionsPage = 1;
 let previewContext = {
     displayName: null,
     path: null,
-    rows: [],
-    columns: [],
-    page: 1
+    tables: [],
+    activeTab: 0
 };
 let logModalContext = {
     definitionName: null,
@@ -41,12 +39,19 @@ let logModalContext = {
     runs: [],
     page: 1,
     selectedJobId: null,
-    logDetailPages: {},
     logDetailLines: {}
 };
+let autoRefreshTimer = null;
 
 document.getElementById('btn-new-definition').addEventListener('click', () => openDefinitionModal(null));
 document.getElementById('btn-refresh-definitions').addEventListener('click', loadDefinitions);
+document.getElementById('auto-refresh-toggle').addEventListener('change', (event) => {
+    if (event.target.checked) {
+        startAutoRefresh();
+    } else {
+        stopAutoRefresh();
+    }
+});
 
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-cancel').addEventListener('click', closeModal);
@@ -131,49 +136,103 @@ function formatTime(iso) {
     }
 }
 
-function renderLogLines(logs, page = 1) {
+function renderLogLines(logs) {
     if (!logs.length) {
         return '暂无日志';
     }
-    const start = (page - 1) * LOG_LINES_PAGE_SIZE;
-    const pagedLogs = logs.slice(start, start + LOG_LINES_PAGE_SIZE);
-    return pagedLogs.map(entry =>
+    return logs.map(entry =>
         `<span class="log-line-${entry.level}">[${entry.timestamp}] ${entry.level} ${escapeHtml(entry.message)}</span>`
     ).join('\n');
 }
 
-function renderLogDetailPagination(jobId, totalLines, page) {
-    const totalPages = Math.max(1, Math.ceil(totalLines / LOG_LINES_PAGE_SIZE));
-    if (totalLines <= LOG_LINES_PAGE_SIZE) {
-        return '';
+function isScrollAtBottom(element, threshold = 48) {
+    if (!element) {
+        return false;
     }
-    return `
-        <div class="pagination log-detail-pagination">
-            <button type="button" class="btn small" ${page <= 1 ? 'disabled' : ''} onclick="changeLogDetailPage('${escapeAttr(jobId)}', ${page - 1})">上一页</button>
-            <span class="pagination-info">第 ${page} / ${totalPages} 页，共 ${totalLines} 条</span>
-            <button type="button" class="btn small" ${page >= totalPages ? 'disabled' : ''} onclick="changeLogDetailPage('${escapeAttr(jobId)}', ${page + 1})">下一页</button>
-        </div>
-    `;
+    return element.scrollHeight - element.scrollTop - element.clientHeight <= threshold;
 }
 
-function changeLogDetailPage(jobId, page) {
-    const logs = logModalContext.logDetailLines[jobId] || [];
-    const totalPages = Math.max(1, Math.ceil(logs.length / LOG_LINES_PAGE_SIZE));
-    if (page < 1 || page > totalPages) {
+function applyScrollState(element, state) {
+    if (!element || !state) {
         return;
     }
-    logModalContext.logDetailPages[jobId] = page;
-    const panel = document.querySelector(`[data-log-panel="${cssEscape(jobId)}"]`);
-    if (!panel) {
+    if (state.atBottom) {
+        element.scrollTop = element.scrollHeight;
+    } else {
+        element.scrollTop = state.scrollTop;
+    }
+}
+
+function buildLogDetailSummaryHtml(job, progress) {
+    return `
+            <div class="detail-summary log-detail-summary">
+                <div class="detail-item"><label>状态</label>${statusBadge(job.status)}</div>
+                <div class="detail-item"><label>提交时间</label>${formatTime(job.submittedAt)}</div>
+                <div class="detail-item"><label>耗时</label>${escapeHtml(job.duration || '-')}</div>
+                <div class="detail-item"><label>写入行数</label>${progress.writtenRows ?? 0} / ${progress.totalRows ?? 0}</div>
+                ${job.errorMessage ? `<div class="detail-item detail-item-wide"><label>错误</label>${escapeHtml(job.errorMessage)}</div>` : ''}
+            </div>`;
+}
+
+function captureLogModalScrollState() {
+    const modalBody = document.querySelector('#log-modal .modal-body');
+    const logView = logModalContext.selectedJobId
+        ? document.querySelector(`#log-modal [data-log-panel="${cssEscape(logModalContext.selectedJobId)}"] .log-view`)
+        : null;
+    return {
+        modal: modalBody
+            ? { scrollTop: modalBody.scrollTop, atBottom: isScrollAtBottom(modalBody) }
+            : null,
+        logView: logView
+            ? { scrollTop: logView.scrollTop, atBottom: isScrollAtBottom(logView) }
+            : null
+    };
+}
+
+function applyLogModalScrollState(state) {
+    if (!state) {
         return;
     }
-    const pre = panel.querySelector('.log-view');
-    if (pre) {
-        pre.innerHTML = renderLogLines(logs, page);
+    const modalBody = document.querySelector('#log-modal .modal-body');
+    applyScrollState(modalBody, state.modal);
+    const logView = logModalContext.selectedJobId
+        ? document.querySelector(`#log-modal [data-log-panel="${cssEscape(logModalContext.selectedJobId)}"] .log-view`)
+        : null;
+    applyScrollState(logView, state.logView);
+}
+
+function updateRunRowCells(jobId, job, progress) {
+    const row = document.querySelector(`#log-runs-body tr.log-run-row[data-job-id="${cssEscape(jobId)}"]`);
+    if (!row) {
+        return;
     }
-    const pagination = panel.querySelector('.log-detail-pagination');
-    if (pagination) {
-        pagination.outerHTML = renderLogDetailPagination(jobId, logs.length, page);
+    row.cells[1].innerHTML = statusBadge(job.status);
+    row.cells[3].textContent = job.duration || '-';
+    row.cells[4].textContent = `${progress.writtenRows ?? 0} / ${progress.totalRows ?? 0}`;
+}
+
+function syncPagedRunRowsInPlace() {
+    const pagedRuns = getPagedRuns(logModalContext.runs, logModalContext.page);
+    for (const run of pagedRuns) {
+        const latest = logModalContext.runs.find(item => item.jobId === run.jobId) || run;
+        updateRunRowCells(latest.jobId, latest, {
+            writtenRows: latest.writtenRows,
+            totalRows: latest.totalRows
+        });
+    }
+}
+
+function startAutoRefresh() {
+    stopAutoRefresh();
+    autoRefreshTimer = setInterval(() => {
+        loadDefinitions();
+    }, AUTO_REFRESH_INTERVAL_MS);
+}
+
+function stopAutoRefresh() {
+    if (autoRefreshTimer) {
+        clearInterval(autoRefreshTimer);
+        autoRefreshTimer = null;
     }
 }
 
@@ -473,9 +532,8 @@ function openPreviewModal(displayName, path) {
     previewContext = {
         displayName,
         path,
-        rows: [],
-        columns: [],
-        page: 1
+        tables: [],
+        activeTab: 0
     };
     document.getElementById('preview-title').textContent = `数据预览: ${displayName}`;
     document.getElementById('preview-content').innerHTML = '<p class="preview-loading">正在生成预览数据...</p>';
@@ -486,7 +544,7 @@ function openPreviewModal(displayName, path) {
 
 function closePreviewModal() {
     document.getElementById('preview-modal').classList.add('hidden');
-    previewContext = { displayName: null, path: null, rows: [], columns: [], page: 1 };
+    previewContext = { displayName: null, path: null, tables: [], activeTab: 0 };
     document.getElementById('preview-content').innerHTML = '';
     document.getElementById('preview-pagination').classList.add('hidden');
     document.getElementById('preview-pagination').innerHTML = '';
@@ -497,84 +555,22 @@ async function previewDefinition(displayName, path) {
     await runPreview();
 }
 
-function flattenPreviewRows(rowsByTable) {
-    const flat = [];
-    for (const [tableName, tableRows] of Object.entries(rowsByTable)) {
-        for (const row of tableRows) {
-            flat.push({ _table: tableName, ...row });
-        }
+function renderPreviewTableBody(table) {
+    const columns = table.columns || [];
+    const rows = table.rows || [];
+    let html = '';
+    if (table.schemaTable && table.schemaTable !== table.tableName) {
+        html += `<p class="preview-table-meta">物理表: ${escapeHtml(table.schemaTable)}</p>`;
     }
-    return flat;
-}
-
-function collectPreviewColumns(flatRows) {
-    const columns = ['_table'];
-    const seen = new Set(['_table']);
-    for (const row of flatRows) {
-        for (const key of Object.keys(row)) {
-            if (!seen.has(key)) {
-                seen.add(key);
-                columns.push(key);
-            }
-        }
-    }
-    return columns;
-}
-
-function previewColumnLabel(column) {
-    return column === '_table' ? '表名' : column;
-}
-
-function getPreviewTotalPages() {
-    return Math.max(1, Math.ceil(previewContext.rows.length / PREVIEW_PAGE_SIZE));
-}
-
-function getPagedPreviewRows() {
-    const start = (previewContext.page - 1) * PREVIEW_PAGE_SIZE;
-    return previewContext.rows.slice(start, start + PREVIEW_PAGE_SIZE);
-}
-
-function renderPreviewPagination() {
-    const pagination = document.getElementById('preview-pagination');
-    const totalPages = getPreviewTotalPages();
-    const { page, rows } = previewContext;
-
-    if (rows.length <= PREVIEW_PAGE_SIZE) {
-        pagination.classList.add('hidden');
-        pagination.innerHTML = '';
-        return;
-    }
-
-    pagination.classList.remove('hidden');
-    pagination.innerHTML = `
-        <button type="button" class="btn small" ${page <= 1 ? 'disabled' : ''} onclick="changePreviewPage(${page - 1})">上一页</button>
-        <span class="pagination-info">第 ${page} / ${totalPages} 页，共 ${rows.length} 条</span>
-        <button type="button" class="btn small" ${page >= totalPages ? 'disabled' : ''} onclick="changePreviewPage(${page + 1})">下一页</button>
-    `;
-}
-
-function renderPreviewTable() {
-    const panel = document.getElementById('preview-content');
-    const { rows, columns } = previewContext;
-
     if (!rows.length) {
-        panel.innerHTML = '<p class="preview-empty">无数据</p>';
-        renderPreviewPagination();
-        return;
+        return html + '<p class="preview-empty">该表无预览数据</p>';
     }
-
-    const totalPages = getPreviewTotalPages();
-    if (previewContext.page > totalPages) {
-        previewContext.page = totalPages;
-    }
-
-    const pagedRows = getPagedPreviewRows();
-    let html = '<div class="table-wrap preview-table-wrap"><table><thead><tr>';
+    html += '<div class="table-wrap preview-table-wrap"><table><thead><tr>';
     for (const col of columns) {
-        html += `<th>${escapeHtml(previewColumnLabel(col))}</th>`;
+        html += `<th>${escapeHtml(col)}</th>`;
     }
     html += '</tr></thead><tbody>';
-    for (const row of pagedRows) {
+    for (const row of rows) {
         html += '<tr>';
         for (const col of columns) {
             html += `<td>${formatPreviewCell(row[col])}</td>`;
@@ -582,17 +578,52 @@ function renderPreviewTable() {
         html += '</tr>';
     }
     html += '</tbody></table></div>';
-    panel.innerHTML = html;
-    renderPreviewPagination();
+    return html;
 }
 
-function changePreviewPage(page) {
-    const totalPages = getPreviewTotalPages();
-    if (page < 1 || page > totalPages) {
+function previewTabLabel(table) {
+    const name = table.tableName || '未命名表';
+    const count = (table.rows || []).length;
+    return count > 0 ? `${name} (${count})` : name;
+}
+
+function switchPreviewTab(index) {
+    if (index < 0 || index >= previewContext.tables.length) {
         return;
     }
-    previewContext.page = page;
-    renderPreviewTable();
+    previewContext.activeTab = index;
+    renderPreviewTables();
+}
+
+function renderPreviewTables() {
+    const panel = document.getElementById('preview-content');
+    const { tables, activeTab } = previewContext;
+
+    if (!tables.length) {
+        panel.innerHTML = '<p class="preview-empty">无数据</p>';
+        return;
+    }
+
+    if (tables.length === 1) {
+        panel.innerHTML = `<section class="preview-table-section">${renderPreviewTableBody(tables[0])}</section>`;
+        return;
+    }
+
+    let html = '<div class="preview-tabs">';
+    html += '<div class="preview-tab-bar" role="tablist">';
+    tables.forEach((table, index) => {
+        const active = index === activeTab ? ' active' : '';
+        html += `<button type="button" class="preview-tab${active}" role="tab" aria-selected="${index === activeTab}"
+            onclick="switchPreviewTab(${index})">${escapeHtml(previewTabLabel(table))}</button>`;
+    });
+    html += '</div>';
+    html += '<div class="preview-tab-panels">';
+    tables.forEach((table, index) => {
+        const hidden = index === activeTab ? '' : ' hidden';
+        html += `<section class="preview-tab-panel${hidden}" role="tabpanel">${renderPreviewTableBody(table)}</section>`;
+    });
+    html += '</div></div>';
+    panel.innerHTML = html;
 }
 
 function formatPreviewCell(value) {
@@ -622,11 +653,9 @@ async function runPreview() {
                 preview: { limit: PREVIEW_FETCH_LIMIT }
             })
         });
-        const rowsByTable = result.rows || {};
-        previewContext.rows = flattenPreviewRows(rowsByTable);
-        previewContext.columns = collectPreviewColumns(previewContext.rows);
-        previewContext.page = 1;
-        renderPreviewTable();
+        previewContext.tables = result.tables || [];
+        previewContext.activeTab = 0;
+        renderPreviewTables();
     } catch (err) {
         panel.innerHTML = `<p class="preview-error">预览失败: ${escapeHtml(err.message)}</p>`;
     }
@@ -735,11 +764,16 @@ function renderLogRunsTable() {
         logModalContext.selectedJobId = null;
     }
 
+    const scrollState = captureLogModalScrollState();
+    const preservedDetailHtml = logModalContext.selectedJobId
+        ? document.querySelector(`#log-modal [data-log-panel="${cssEscape(logModalContext.selectedJobId)}"]`)?.innerHTML
+        : null;
+
     let html = '';
     for (const run of pagedRuns) {
         const expanded = logModalContext.selectedJobId === run.jobId;
         html += `
-        <tr class="log-run-row${expanded ? ' selected' : ''}" onclick="toggleRunLogDetail('${escapeAttr(run.jobId)}')">
+        <tr class="log-run-row${expanded ? ' selected' : ''}" data-job-id="${escapeAttr(run.jobId)}" onclick="toggleRunLogDetail('${escapeAttr(run.jobId)}')">
             <td><code>${escapeHtml(run.jobId)}</code></td>
             <td>${statusBadge(run.status)}</td>
             <td>${formatTime(run.submittedAt)}</td>
@@ -747,19 +781,25 @@ function renderLogRunsTable() {
             <td>${run.writtenRows ?? 0} / ${run.totalRows ?? 0}</td>
         </tr>`;
         if (expanded) {
+            const detailContent = preservedDetailHtml || '加载中...';
             html += `
         <tr class="log-detail-row">
             <td colspan="5">
-                <div class="log-detail-panel" data-log-panel="${escapeAttr(run.jobId)}">加载中...</div>
+                <div class="log-detail-panel" data-log-panel="${escapeAttr(run.jobId)}">${detailContent}</div>
             </td>
         </tr>`;
         }
     }
     tbody.innerHTML = html;
     renderLogPagination();
+    applyLogModalScrollState(scrollState);
 
     if (logModalContext.selectedJobId) {
-        loadRunLogDetailContent(logModalContext.selectedJobId);
+        if (preservedDetailHtml) {
+            refreshLogDetailContent(logModalContext.selectedJobId, scrollState?.logView);
+        } else {
+            loadRunLogDetailContent(logModalContext.selectedJobId);
+        }
     }
 }
 
@@ -770,7 +810,6 @@ function openLogListModal(name, path, runs) {
         runs,
         page: 1,
         selectedJobId: null,
-        logDetailPages: {},
         logDetailLines: {}
     };
 
@@ -794,9 +833,6 @@ function toggleRunLogDetail(jobId) {
         logModalContext.selectedJobId = null;
     } else {
         logModalContext.selectedJobId = jobId;
-        if (!logModalContext.logDetailPages[jobId]) {
-            logModalContext.logDetailPages[jobId] = 1;
-        }
     }
     renderLogRunsTable();
 }
@@ -806,7 +842,10 @@ async function loadRunLogDetailContent(jobId) {
     if (!panel) {
         return;
     }
-    panel.textContent = '加载中...';
+    const isFirstLoad = !panel.querySelector('.log-view');
+    if (isFirstLoad) {
+        panel.textContent = '加载中...';
+    }
 
     try {
         const job = await api(`/jobs/${encodeURIComponent(jobId)}`);
@@ -815,24 +854,64 @@ async function loadRunLogDetailContent(jobId) {
 
         const logs = await api(`/jobs/${encodeURIComponent(jobId)}/logs`);
         logModalContext.logDetailLines[jobId] = logs;
-        const logPage = logModalContext.logDetailPages[jobId] || 1;
         panel.innerHTML = `
-            <div class="detail-summary log-detail-summary">
-                <div class="detail-item"><label>状态</label>${statusBadge(job.status)}</div>
-                <div class="detail-item"><label>提交时间</label>${formatTime(job.submittedAt)}</div>
-                <div class="detail-item"><label>耗时</label>${escapeHtml(job.duration || '-')}</div>
-                <div class="detail-item"><label>写入行数</label>${progress.writtenRows ?? 0} / ${progress.totalRows ?? 0}</div>
-                ${job.errorMessage ? `<div class="detail-item detail-item-wide"><label>错误</label>${escapeHtml(job.errorMessage)}</div>` : ''}
-            </div>
-            <pre class="log-view">${renderLogLines(logs, logPage)}</pre>
-            ${renderLogDetailPagination(jobId, logs.length, logPage)}
+            ${buildLogDetailSummaryHtml(job, progress)}
+            <pre class="log-view">${renderLogLines(logs)}</pre>
         `;
 
         if (run && run.status !== job.status) {
             run.status = job.status;
         }
+        updateRunRowCells(jobId, job, progress);
     } catch (err) {
         panel.textContent = '加载失败: ' + err.message;
+    }
+}
+
+async function refreshLogDetailContent(jobId, previousLogScrollState) {
+    const panel = document.querySelector(`[data-log-panel="${cssEscape(jobId)}"]`);
+    if (!panel) {
+        await loadRunLogDetailContent(jobId);
+        return;
+    }
+
+    const logView = panel.querySelector('.log-view');
+    const scrollState = previousLogScrollState || (logView
+        ? { scrollTop: logView.scrollTop, atBottom: isScrollAtBottom(logView) }
+        : null);
+
+    try {
+        const job = await api(`/jobs/${encodeURIComponent(jobId)}`);
+        const progress = job.progress || {};
+        const logs = await api(`/jobs/${encodeURIComponent(jobId)}/logs`);
+        logModalContext.logDetailLines[jobId] = logs;
+
+        const summary = panel.querySelector('.log-detail-summary');
+        if (summary) {
+            summary.outerHTML = buildLogDetailSummaryHtml(job, progress);
+        } else {
+            panel.innerHTML = `
+                ${buildLogDetailSummaryHtml(job, progress)}
+                <pre class="log-view">${renderLogLines(logs)}</pre>
+            `;
+        }
+
+        const targetLogView = panel.querySelector('.log-view');
+        if (targetLogView) {
+            targetLogView.innerHTML = renderLogLines(logs);
+            applyScrollState(targetLogView, scrollState);
+        }
+
+        const run = logModalContext.runs.find(item => item.jobId === jobId);
+        if (run) {
+            run.status = job.status;
+            run.duration = job.duration;
+            run.writtenRows = progress.writtenRows;
+            run.totalRows = progress.totalRows;
+        }
+        updateRunRowCells(jobId, job, progress);
+    } catch (_) {
+        // 自动刷新失败时不打断当前阅读
     }
 }
 
@@ -852,11 +931,20 @@ async function refreshOpenLogModal() {
 
     const selectedJobId = logModalContext.selectedJobId;
     logModalContext.runs = runs;
-    renderLogRunsTable();
 
-    if (selectedJobId && logModalContext.selectedJobId === selectedJobId) {
-        await loadRunLogDetailContent(selectedJobId);
+    const detailPanel = selectedJobId
+        ? document.querySelector(`#log-modal [data-log-panel="${cssEscape(selectedJobId)}"]`)
+        : null;
+    const selectedStillOnPage = selectedJobId
+        && getPagedRuns(runs, logModalContext.page).some(run => run.jobId === selectedJobId);
+
+    if (selectedJobId && detailPanel && selectedStillOnPage) {
+        syncPagedRunRowsInPlace();
+        await refreshLogDetailContent(selectedJobId);
+        return;
     }
+
+    renderLogRunsTable();
 }
 
 function closeLogModal() {
@@ -867,7 +955,6 @@ function closeLogModal() {
         runs: [],
         page: 1,
         selectedJobId: null,
-        logDetailPages: {},
         logDetailLines: {}
     };
     document.getElementById('log-runs-body').innerHTML = '';
