@@ -6,3 +6,5 @@ data/
 output/
 *.db
 **/application-local.yml
+
+dg-web/src/main/resources/configs/jobs/*.yaml
