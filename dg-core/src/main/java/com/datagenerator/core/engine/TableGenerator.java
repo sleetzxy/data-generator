@@ -6,6 +6,7 @@ import com.datagenerator.core.constraint.ConstraintValidatorRegistry;
 import com.datagenerator.core.constraint.field.ForeignKeyIndex;
 import com.datagenerator.core.generator.GeneratorRegistry;
 import com.datagenerator.core.reference.ReferenceDataLoader;
+import com.datagenerator.core.generator.GeneratorOutputFormatter;
 import com.datagenerator.core.schema.ConstraintDefinition;
 import com.datagenerator.core.schema.FieldDefinition;
 import com.datagenerator.core.schema.SchemaDefinition;
@@ -276,7 +277,7 @@ public class TableGenerator {
             }
             String strategy = String.valueOf(generatorConfig.getOrDefault("strategy", ""));
             Object value = generatorRegistry.get(strategy).generate(context, generatorConfig);
-            row.set(field.getName(), value);
+            row.set(field.getName(), GeneratorOutputFormatter.apply(value, generatorConfig));
         }
         return row;
     }

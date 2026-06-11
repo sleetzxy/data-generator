@@ -1,0 +1,6 @@
+table: customers
+fields:
+  - name: id
+    type: VARCHAR
+    primaryKey: true
+    generator: { strategy: sequence, prefix: 'ORD-', start: 1, width: 6 }

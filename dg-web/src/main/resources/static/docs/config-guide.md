@@ -135,17 +135,20 @@ tables:                   # 至少一张表
 
 ### 每个字段怎么写
 
-每个字段需要三样东西：
+每个字段至少需要 `name`、`type`、`generator`；可选 `primaryKey` 标识主键列（元数据，供阅读与 API 展示，不改变生成逻辑）：
 
 ```yaml
-- name: sgbh              # 列名，与数据库表一致
+- name: djbh              # 列名，与数据库表一致
   type: VARCHAR           # 逻辑类型，便于阅读
+  primaryKey: true        # 可选，标记主键列
   generator:              # 如何生成值
-    strategy: regex
-    pattern: '30000[0-9]{16}'
+    strategy: sequence
+    prefix: '4401152024'
+    start: 1
+    width: 6
 ```
 
-`generator` 用 `strategy` 选择生成方式，其余参数因策略而异（见 [选择生成策略](#选择生成策略)）。
+`generator` 用 `strategy` 选择生成方式，其余参数因策略而异（见 [选择生成策略](#选择生成策略)）。所有策略均支持通用参数 `prefix`、`width`（见 [通用 generator 参数](#通用-generator-参数)）。
 
 ---
 
@@ -186,14 +189,38 @@ data-generator:
 
 | 我想要… | 使用策略 | 示例 |
 |---------|----------|------|
-| 自增 ID | `sequence` | `{ strategy: sequence, start: 1, step: 1 }` |
+| 自增 ID / 带前缀编号 | `sequence` | `{ strategy: sequence, start: 1, prefix: 'ORD-', width: 6 }` |
+| UUID 主键 | `uuid` | `{ strategy: uuid }` 或 `{ strategy: uuid, dashed: false }` |
 | 随机整数 / 小数 / 字符串 | `random` | `{ strategy: random, type: int, min: 0, max: 100 }` |
 | 随机日期时间 | `random` + `datetime` | `{ strategy: random, type: datetime, min: '2024-01-01 00:00:00', max: '2024-12-31 23:59:59' }` |
 | 从固定列表随机 | `enum` | `{ strategy: enum, values: [A, B, C] }` |
+| 固定常量 | `literal` | `{ strategy: literal, value: 0 }` |
 | 按正则格式 | `regex` | `{ strategy: regex, pattern: '440115[0-9]{8}' }` |
+| 中国大陆手机号 | `phone` | `{ strategy: phone, region: cn }` |
+| 随机邮箱 | `email` | `{ strategy: email, domain: example.com }` |
+| 18 位身份证号 | `idcard` | `{ strategy: idcard, areaCode: '440115' }` |
 | 引用上游表某列 | `reference` | `{ strategy: reference, source: orders, field: id }` |
 | 从 Job seeds 采样 | `seed` | `{ strategy: seed, source: location_sample }`（见 [Job 级 seeds](#job-级-seeds从真实数据出发)） |
 | 表达式计算列值 | `expression` | `{ strategy: expression, expression: "price * qty", language: spel }` |
+
+### 通用 generator 参数
+
+以下参数对**所有** `strategy` 生效，在生成完成后统一格式化输出：
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `prefix` | 否 | 前缀字符串；配置后返回值变为字符串，**要求字段 `type` 为 VARCHAR / CHAR / TEXT 等字符串类型** |
+| `width` | 否 | 当原始值为数字时，先零填充再拼接 `prefix` |
+
+```yaml
+- name: order_id
+  type: VARCHAR
+  primaryKey: true
+  generator: { strategy: sequence, prefix: '4401152024', start: 1, width: 6 }
+# → 4401152024000001、4401152024000002 … 单次 Job 内唯一
+```
+
+Schema 加载时会校验：配置了 `prefix` 但 `type` 非字符串类型将报错。
 
 ### sequence — 递增编号
 
@@ -201,7 +228,16 @@ data-generator:
 generator: { strategy: sequence, start: 1, step: 1 }
 ```
 
-每张表按**行号**递增：`第 n 行 = start + n × step`（从 0 起算），适合主键、序号；大表并行生成时仍保持 deterministic。
+每张表按**行号**递增：`第 n 行 = start + n × step`（从 0 起算），适合主键、序号；大表并行生成时仍保持 deterministic。需要业务前缀时配 `prefix`（见 [通用 generator 参数](#通用-generator-参数)），不要单独用 `regex` 模拟自增主键（大量行时易碰撞）。
+
+### uuid — UUID
+
+```yaml
+generator: { strategy: uuid }
+generator: { strategy: uuid, dashed: false }   # 32 位 hex，无横线
+```
+
+适合全局唯一主键；单次 Job 内不会重复。
 
 ### random — 随机值
 
@@ -231,13 +267,76 @@ generator: { strategy: enum, values: [0, 0, 0, 1] }
 - 列表中**重复值**相当于加权（上例约 25% 为 1）
 - 空字符串 `''` 表示空值；写入 PostgreSQL 时会转为 `NULL`
 
+### literal — 固定常量
+
+```yaml
+generator: { strategy: literal, value: 'ACTIVE' }
+generator: { strategy: literal, value: 0 }
+```
+
+比 `enum` 只写一个固定值更直观。
+
 ### regex — 格式字符串
 
 ```yaml
-generator: { strategy: regex, pattern: '1[3-9][0-9]{9}' }
+generator: { strategy: regex, pattern: '30000[0-9]{16}' }
 ```
 
-适合身份证号、编号等有固定格式的字段。
+适合有固定格式、**不要求严格唯一**的编号；可与 `prefix` 组合。需要合法校验位的身份证号请用 `idcard`。
+
+### phone — 手机号
+
+```yaml
+generator: { strategy: phone, region: cn }
+```
+
+默认生成中国大陆 11 位手机号（`1[3-9]` 开头）。
+
+### email — 邮箱
+
+```yaml
+generator: { strategy: email, domain: company.com, minLength: 6, maxLength: 12 }
+```
+
+`domain` 默认 `example.com`。
+
+### idcard — 身份证号
+
+```yaml
+generator: { strategy: idcard, areaCode: '440115', birthDateMin: '1960-01-01', birthDateMax: '2005-12-31' }
+generator: { strategy: idcard, areaCode: '440115', birthDate: '1990-05-20', gender: male }
+```
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `areaCode` | 否 | 6 位区划码；未配置时从全国各地常用区划码中随机选取 |
+| `birthDate` | 否 | 固定出生日期 `yyyy-MM-dd` 或 `yyyyMMdd` |
+| `birthDateMin` / `birthDateMax` | 否 | 随机出生日期范围，默认 `1970-01-01` ~ `2005-12-31` |
+| `gender` | 否 | `male` / `female`（或 `m`/`f`/`1`/`0`），控制顺序码奇偶 |
+
+生成符合 GB 11643 的 18 位号码（含校验位）。**年龄、性别、出生日期等派生列**请先生成 `sfzh`，再用 `expression` 从号码解析（字段顺序：`sfzh` 必须在派生列之前）：
+
+```yaml
+- name: sfzh
+  type: VARCHAR
+  generator: { strategy: idcard, areaCode: '440115' }
+- name: csrq
+  type: VARCHAR
+  generator: { strategy: expression, expression: "#sfzh.substring(6, 14)" }
+- name: xb
+  type: VARCHAR
+  generator: { strategy: expression, expression: "(#sfzh.charAt(16) - '0') % 2 == 1 ? '1' : '2'" }
+- name: nl
+  type: INTEGER
+  generator:
+    strategy: expression
+    expression: >-
+      T(java.time.Period).between(
+        T(java.time.LocalDate).parse(#sfzh.substring(6, 14),
+          T(java.time.format.DateTimeFormatter).ofPattern('yyyyMMdd')),
+        T(java.time.LocalDate).now()
+      ).getYears()
+```
 
 ### reference — 引用其他表
 
@@ -699,6 +798,9 @@ A：检查从属 seed 的 query 是否使用 `:link_id` 占位符，且关联查
 
 **Q：如何只改生成行数而不改 YAML**  
 A：API 提交时使用 `"overrides": {"tables.incidents.count": 100}`。
+
+**Q：配置了 generator.prefix 但保存/运行报错 type 必须为字符串**  
+A：`prefix` 会把生成结果拼成字符串，字段 `type` 须为 `VARCHAR`、`CHAR`、`TEXT` 等字符串类型；纯数字自增且不需前缀时用 `sequence` 不配 `prefix` 即可。
 
 **Q：内置任务和自定义任务有什么区别**  
 A：内置任务随 jar 发布只读，调度可在 YAML 中配置；自定义任务保存在 `writable-config-dir/jobs/`，可在控制台编辑，`id`/显示名称/调度由 UI 管理，YAML 中勿写 `schedule`。

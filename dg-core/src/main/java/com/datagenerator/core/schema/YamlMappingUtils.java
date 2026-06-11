@@ -42,6 +42,16 @@ final class YamlMappingUtils {
         return value == null ? null : String.valueOf(value);
     }
 
+    static boolean parseBoolean(Object value) {
+        if (value == null) {
+            return false;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
+    }
+
     static long asLong(Object value) {
         if (value instanceof Number number) {
             return number.longValue();
@@ -78,6 +88,7 @@ final class YamlMappingUtils {
         FieldDefinition field = new FieldDefinition();
         field.setName(asString(source.get("name")));
         field.setType(asString(source.get("type")));
+        field.setPrimaryKey(parseBoolean(source.get("primaryKey")));
         field.setGenerator(asMap(source.get("generator")));
         return field;
     }
@@ -92,6 +103,7 @@ final class YamlMappingUtils {
             fields.add(toFieldDefinition(fieldSource));
         }
         schema.setFields(fields);
+        SchemaFieldValidator.validate(schema);
         return schema;
     }
 

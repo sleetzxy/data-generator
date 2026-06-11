@@ -77,10 +77,94 @@ class GeneratorsTest {
     }
 
     @Test
+    void uuid_generatesStandardFormat() {
+        var gen = new UuidGenerator();
+        String val = (String) gen.generate(emptyContext(), Map.of());
+        assertThat(val).matches("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}");
+    }
+
+    @Test
+    void uuid_withoutDashes_returns32HexChars() {
+        var gen = new UuidGenerator();
+        String val = (String) gen.generate(emptyContext(), Map.of("dashed", false));
+        assertThat(val).matches("[0-9a-f]{32}");
+    }
+
+    @Test
+    void phone_cn_generatesMobileNumber() {
+        var gen = new PhoneGenerator();
+        String val = (String) gen.generate(emptyContext(), Map.of("region", "cn"));
+        assertThat(val).matches("1[3-9][0-9]{9}");
+    }
+
+    @Test
+    void email_generatesAddressWithDomain() {
+        var gen = new EmailGenerator();
+        String val = (String) gen.generate(emptyContext(), Map.of("domain", "test.com", "minLength", 4, "maxLength", 4));
+        assertThat(val).isEqualTo(val.toLowerCase());
+        assertThat(val).endsWith("@test.com");
+        assertThat(val.indexOf('@')).isEqualTo(4);
+    }
+
+    @Test
+    void literal_returnsConfiguredValue() {
+        var gen = new LiteralGenerator();
+        assertThat(gen.generate(emptyContext(), Map.of("value", "ACTIVE"))).isEqualTo("ACTIVE");
+        assertThat(gen.generate(emptyContext(), Map.of("value", 0))).isEqualTo(0);
+    }
+
+    @Test
+    void idcard_generatesValid18DigitNumber() {
+        var gen = new IdCardGenerator();
+        String val = (String) gen.generate(
+                emptyContext(),
+                Map.of("areaCode", "110101", "birthDate", "1990-01-01", "gender", "male"));
+        assertThat(val).hasSize(18);
+        assertThat(val).matches("\\d{17}[0-9X]");
+        assertThat(val.charAt(16) % 2).isEqualTo(1);
+        assertThat(val.charAt(17)).isEqualTo(IdCardGenerator.calculateCheckDigit(val.substring(0, 17)));
+    }
+
+    @Test
+    void idcard_female_usesEvenSequenceDigit() {
+        var gen = new IdCardGenerator();
+        String val = (String) gen.generate(
+                emptyContext(),
+                Map.of("areaCode", "440115", "birthDate", "19950101", "gender", "female"));
+        assertThat(val.substring(0, 6)).isEqualTo("440115");
+        assertThat(val.substring(6, 14)).isEqualTo("19950101");
+        assertThat(val.charAt(16) % 2).isEqualTo(0);
+    }
+
+    @Test
+    void idcard_withoutAreaCode_picksFromNationwideCodes() {
+        var gen = new IdCardGenerator();
+        for (int i = 0; i < 20; i++) {
+            String val = (String) gen.generate(emptyContext(), Map.of("birthDate", "1990-01-01"));
+            assertThat(val).hasSize(18);
+            assertThat(val.substring(0, 6)).matches("\\d{6}");
+        }
+    }
+
+    @Test
+    void idcard_randomBirthDateWithinRange() {
+        var gen = new IdCardGenerator();
+        String val = (String) gen.generate(
+                emptyContext(),
+                Map.of("birthDateMin", "2000-01-01", "birthDateMax", "2000-01-01"));
+        assertThat(val.substring(6, 14)).isEqualTo("20000101");
+    }
+
+    @Test
     void registry_resolvesByStrategy() {
         var registry = new GeneratorRegistry();
         assertThat(registry.get("sequence")).isInstanceOf(SequenceGenerator.class);
         assertThat(registry.get("enum")).isInstanceOf(EnumGenerator.class);
+        assertThat(registry.get("uuid")).isInstanceOf(UuidGenerator.class);
+        assertThat(registry.get("phone")).isInstanceOf(PhoneGenerator.class);
+        assertThat(registry.get("email")).isInstanceOf(EmailGenerator.class);
+        assertThat(registry.get("literal")).isInstanceOf(LiteralGenerator.class);
+        assertThat(registry.get("idcard")).isInstanceOf(IdCardGenerator.class);
     }
 
     @Test

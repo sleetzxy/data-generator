@@ -41,6 +41,8 @@ public class SchemaService {
     }
 
     private SchemaFieldResponse toFieldResponse(FieldDefinition field) {
-        return new SchemaFieldResponse(field.getName(), field.getType(), field.getGenerator());
+        SchemaFieldResponse response = new SchemaFieldResponse(field.getName(), field.getType(), field.getGenerator());
+        response.setPrimaryKey(field.isPrimaryKey());
+        return response;
     }
 }

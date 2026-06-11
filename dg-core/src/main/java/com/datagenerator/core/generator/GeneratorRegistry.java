@@ -22,6 +22,11 @@ public class GeneratorRegistry {
         register(new SeedGenerator());
         register(new ReferenceGenerator(referenceDataLoader));
         register(new ExpressionGenerator());
+        register(new UuidGenerator());
+        register(new PhoneGenerator());
+        register(new EmailGenerator());
+        register(new LiteralGenerator());
+        register(new IdCardGenerator());
     }
 
     public void register(ValueGenerator generator) {

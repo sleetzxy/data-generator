@@ -1,0 +1,5 @@
+table: orders
+fields:
+  - name: order_id
+    type: BIGINT
+    generator: { strategy: sequence, prefix: 'ORD-', start: 1 }

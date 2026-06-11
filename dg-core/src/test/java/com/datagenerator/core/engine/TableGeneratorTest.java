@@ -174,6 +174,36 @@ class TableGeneratorTest {
         assertThat(writer.rows().get(1).get("batch_no")).isEqualTo(2L);
     }
 
+    @Test
+    void tableGenerator_appliesPrefixForAnyStrategy() {
+        SchemaDefinition schema = new SchemaDefinition();
+        schema.setTable("orders");
+        schema.setFields(List.of(
+                new FieldDefinition(
+                        "order_id",
+                        "VARCHAR",
+                        Map.of("strategy", "sequence", "start", 1, "step", 1, "prefix", "ORD-", "width", 4)),
+                new FieldDefinition(
+                        "code",
+                        "VARCHAR",
+                        Map.of("strategy", "regex", "pattern", "[0-9]{4}", "prefix", "C-"))));
+
+        tableGenerator.generate(
+                schema,
+                2,
+                List.of(),
+                pluginRegistry.getConstraintRegistry(),
+                Map.of(),
+                writer,
+                List.of(),
+                GenerationOptions.defaults());
+
+        assertThat(writer.rows().get(0).get("order_id")).isEqualTo("ORD-0001");
+        assertThat(writer.rows().get(1).get("order_id")).isEqualTo("ORD-0002");
+        assertThat(String.valueOf(writer.rows().get(0).get("code"))).startsWith("C-");
+        assertThat(String.valueOf(writer.rows().get(0).get("code"))).hasSize(6);
+    }
+
     static final class CollectingWriter implements DataWriter {
 
         private final List<DataRow> rows = new ArrayList<>();

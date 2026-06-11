@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class YamlConfigLoaderTest {
 
@@ -14,6 +15,22 @@ class YamlConfigLoaderTest {
     @BeforeEach
     void setUp() {
         loader = new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()));
+    }
+
+    @Test
+    void loadSchema_prefixOnNonStringType_throws() {
+        assertThatThrownBy(() -> loader.loadSchema("fixtures/schemas/invalid_prefix_type.yaml"))
+                .isInstanceOf(ConfigLoadException.class)
+                .hasMessageContaining("order_id")
+                .hasMessageContaining("VARCHAR, CHAR, TEXT");
+    }
+
+    @Test
+    void loadSchema_parsesPrimaryKeyFlag() {
+        SchemaDefinition schema = loader.loadSchema("fixtures/schemas/pk_customer.yaml");
+        assertThat(schema.getFields()).hasSize(1);
+        assertThat(schema.getFields().getFirst().isPrimaryKey()).isTrue();
+        assertThat(schema.getFields().getFirst().getGenerator()).containsEntry("prefix", "ORD-");
     }
 
     @Test

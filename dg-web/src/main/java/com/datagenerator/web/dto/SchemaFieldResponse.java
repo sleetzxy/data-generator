@@ -6,6 +6,7 @@ public class SchemaFieldResponse {
 
     private String name;
     private String type;
+    private boolean primaryKey;
     private Map<String, Object> generator;
 
     public SchemaFieldResponse() {
@@ -31,6 +32,14 @@ public class SchemaFieldResponse {
 
     public void setType(String type) {
         this.type = type;
+    }
+
+    public boolean isPrimaryKey() {
+        return primaryKey;
+    }
+
+    public void setPrimaryKey(boolean primaryKey) {
+        this.primaryKey = primaryKey;
     }
 
     public Map<String, Object> getGenerator() {
