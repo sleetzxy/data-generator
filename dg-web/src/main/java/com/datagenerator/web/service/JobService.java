@@ -501,6 +501,7 @@ public class JobService {
         return new JobExecutionListener() {
             private final long[] jobWrittenRows = {0};
             private final long[] jobFailedRows = {0};
+            private long lastLoggedJobWrittenRows = 0;
             private long lastProgressPersistMs = 0;
             private int batchesSincePersist = 0;
             private static final long PROGRESS_THROTTLE_MS = 3_000;
@@ -541,9 +542,11 @@ public class JobService {
                         tableName, new TableDetail(tableName, tableWrittenRows, tableFailedRows, "running"));
                 batchesSincePersist++;
                 if (shouldPersistProgress()) {
+                    long recentWritten = jobWrittenRows - lastLoggedJobWrittenRows;
                     jobLogStore.info(
                             jobId,
-                            "表 [" + tableName + "] 本批写入 " + batchWritten + " 行，任务累计 "
+                            "表 [" + tableName + "] 近期写入 " + recentWritten + " 行（"
+                                    + batchesSincePersist + " 批），任务累计 "
                                     + jobWrittenRows + " / " + totalRows + " 行");
                     persistRunningProgress(
                             jobId,
@@ -555,6 +558,7 @@ public class JobService {
                             jobWrittenRows,
                             jobFailedRows,
                             runningDetails);
+                    lastLoggedJobWrittenRows = jobWrittenRows;
                     lastProgressPersistMs = System.currentTimeMillis();
                     batchesSincePersist = 0;
                 }

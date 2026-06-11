@@ -3,7 +3,7 @@ package com.datagenerator.core.generator;
 import java.util.Map;
 
 /**
- * 对任意生成策略的输出统一应用 generator 配置中的 {@code prefix} / {@code width}。
+ * 对任意生成策略的输出统一应用 generator 配置中的 {@code default} / {@code prefix} / {@code width}。
  */
 public final class GeneratorOutputFormatter {
 
@@ -11,16 +11,24 @@ public final class GeneratorOutputFormatter {
     }
 
     public static Object apply(Object value, Map<String, Object> config) {
-        if (value == null) {
+        Object resolved = isEmpty(value) && config.containsKey("default") ? config.get("default") : value;
+        if (resolved == null) {
             return null;
         }
         Object prefixValue = config.get("prefix");
         if (prefixValue == null || String.valueOf(prefixValue).isBlank()) {
-            return value;
+            return resolved;
         }
         String prefix = String.valueOf(prefixValue);
-        String body = formatBody(value, config);
+        String body = formatBody(resolved, config);
         return prefix + body;
+    }
+
+    private static boolean isEmpty(Object value) {
+        if (value == null) {
+            return true;
+        }
+        return value instanceof String string && string.isEmpty();
     }
 
     private static String formatBody(Object value, Map<String, Object> config) {

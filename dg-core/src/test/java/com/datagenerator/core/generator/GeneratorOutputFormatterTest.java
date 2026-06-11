@@ -38,4 +38,21 @@ class GeneratorOutputFormatterTest {
         config.put("prefix", "X-");
         assertThat(GeneratorOutputFormatter.apply(null, config)).isNull();
     }
+
+    @Test
+    void apply_nullValueWithDefault_usesDefault() {
+        assertThat(GeneratorOutputFormatter.apply(null, Map.of("default", ""))).isEqualTo("");
+        assertThat(GeneratorOutputFormatter.apply(null, Map.of("default", "UNKNOWN"))).isEqualTo("UNKNOWN");
+    }
+
+    @Test
+    void apply_emptyStringWithDefault_usesDefault() {
+        assertThat(GeneratorOutputFormatter.apply("", Map.of("default", "FALLBACK"))).isEqualTo("FALLBACK");
+    }
+
+    @Test
+    void apply_nullValueWithDefaultAndPrefix_formatsDefault() {
+        Map<String, Object> config = Map.of("default", 1L, "prefix", "ORD-", "width", 4);
+        assertThat(GeneratorOutputFormatter.apply(null, config)).isEqualTo("ORD-0001");
+    }
 }

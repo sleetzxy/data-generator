@@ -77,6 +77,19 @@ class GeneratorsTest {
     }
 
     @Test
+    void random_datetimeWithFormat_returnsFormattedString() {
+        var gen = new RandomGenerator();
+        Object val = gen.generate(
+                emptyContext(),
+                Map.of(
+                        "type", "datetime",
+                        "min", "2024-06-26 00:00:00",
+                        "max", "2024-06-26 00:00:00",
+                        "format", "yyyy-MM-dd HH:mm:ss"));
+        assertThat(val).isEqualTo("2024-06-26 00:00:00");
+    }
+
+    @Test
     void uuid_generatesStandardFormat() {
         var gen = new UuidGenerator();
         String val = (String) gen.generate(emptyContext(), Map.of());

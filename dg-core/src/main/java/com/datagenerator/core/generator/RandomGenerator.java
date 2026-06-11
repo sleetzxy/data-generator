@@ -61,20 +61,44 @@ public class RandomGenerator extends AbstractValueGenerator {
         return builder.toString();
     }
 
-    private LocalDate randomDate(Map<String, Object> config) {
+    private Object randomDate(Map<String, Object> config) {
         LocalDate min = parseDate(config.getOrDefault("min", "1970-01-01"));
         LocalDate max = parseDate(config.getOrDefault("max", "2099-12-31"));
         long days = ChronoUnit.DAYS.between(min, max);
         long offset = days == 0 ? 0 : ThreadLocalRandom.current().nextLong(days + 1);
-        return min.plusDays(offset);
+        return formatTemporal(config, min.plusDays(offset));
     }
 
-    private LocalDateTime randomDateTime(Map<String, Object> config) {
+    private Object randomDateTime(Map<String, Object> config) {
         LocalDateTime min = parseDateTime(config.getOrDefault("min", "1970-01-01 00:00:00"));
         LocalDateTime max = parseDateTime(config.getOrDefault("max", "2099-12-31 23:59:59"));
         long seconds = ChronoUnit.SECONDS.between(min, max);
         long offset = seconds == 0 ? 0 : ThreadLocalRandom.current().nextLong(seconds + 1);
-        return min.plusSeconds(offset);
+        return formatTemporal(config, min.plusSeconds(offset));
+    }
+
+    private static Object formatTemporal(Map<String, Object> config, LocalDate value) {
+        String pattern = temporalFormat(config);
+        if (pattern == null) {
+            return value;
+        }
+        return value.format(DateTimeFormatter.ofPattern(pattern));
+    }
+
+    private static Object formatTemporal(Map<String, Object> config, LocalDateTime value) {
+        String pattern = temporalFormat(config);
+        if (pattern == null) {
+            return value;
+        }
+        return value.format(DateTimeFormatter.ofPattern(pattern));
+    }
+
+    private static String temporalFormat(Map<String, Object> config) {
+        Object format = config.get("format");
+        if (format == null || String.valueOf(format).isBlank()) {
+            return null;
+        }
+        return String.valueOf(format);
     }
 
     private static final DateTimeFormatter FLEXIBLE_DATE_TIME = new DateTimeFormatterBuilder()
