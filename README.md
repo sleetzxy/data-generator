@@ -329,7 +329,7 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}/record
 |------|------|
 | 四模块骨架 | `dg-spi` / `dg-core` / `dg-plugins` / `dg-web` |
 | 数据源插件 | PostgreSQL、ClickHouse、CSV 读写 |
-| 生成策略 | sequence、random、enum、regex、reference、seed、expression（SpEL/Aviator/Groovy）；**uuid、phone、email、literal、idcard**；字段级 **primaryKey** 标识；全策略通用 **prefix / width**（prefix 要求字符串 type） |
+| 生成策略 | sequence、random、enum、regex、reference、seed、expression（SpEL/Aviator/Groovy）；**uuid、phone、email、literal、idcard**（含 `from`/`part` 派生与复制）；字段级 **primaryKey** 标识；全策略通用 **prefix / width**（prefix 要求字符串 type） |
 | 约束引擎 | 字段级（range、nullable、foreign_key）；组合级 SpEL（conditional、mutex） |
 | 多表编排 | 单表快捷 Job + 多表 DAG（`depends_on` 拓扑排序） |
 | REST API | health、schemas、preview、jobs |

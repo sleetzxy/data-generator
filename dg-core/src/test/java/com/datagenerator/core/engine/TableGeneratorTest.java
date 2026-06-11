@@ -204,6 +204,42 @@ class TableGeneratorTest {
         assertThat(String.valueOf(writer.rows().get(0).get("code"))).hasSize(6);
     }
 
+    @Test
+    void tableGenerator_idcardGenerateAndDeriveFromSameRow() {
+        SchemaDefinition schema = new SchemaDefinition();
+        schema.setTable("person");
+        schema.setFields(List.of(
+                new FieldDefinition(
+                        "sfzmhm",
+                        "VARCHAR",
+                        Map.of("strategy", "idcard", "areaCode", "440115", "birthDate", "1990-01-01")),
+                new FieldDefinition(
+                        "xb",
+                        "VARCHAR",
+                        Map.of("strategy", "idcard", "from", "sfzmhm", "part", "gender")),
+                new FieldDefinition(
+                        "dabh",
+                        "VARCHAR",
+                        Map.of("strategy", "idcard", "from", "sfzmhm"))));
+
+        TableGenerationResult result = tableGenerator.generate(
+                schema,
+                1,
+                List.of(),
+                pluginRegistry.getConstraintRegistry(),
+                Map.of(),
+                writer,
+                List.of(),
+                GenerationOptions.defaults());
+
+        assertThat(result.failedRows()).isZero();
+        DataRow row = writer.rows().get(0);
+        String sfzmhm = String.valueOf(row.get("sfzmhm"));
+        assertThat(sfzmhm).hasSize(18);
+        assertThat(row.get("xb")).isIn("1", "2");
+        assertThat(row.get("dabh")).isEqualTo(sfzmhm);
+    }
+
     static final class CollectingWriter implements DataWriter {
 
         private final List<DataRow> rows = new ArrayList<>();

@@ -234,6 +234,21 @@ class GeneratorsTest {
     }
 
     @Test
+    void idcard_derivesGenderAgeAndBirthDateFromRowField() {
+        var gen = new IdCardGenerator();
+        DataRow row = new DataRow();
+        row.set("sfzmhm", "110101199001011234");
+        var ctx = new GenerationContext("person", 0, Map.of(), row);
+
+        assertThat(gen.generate(ctx, Map.of("from", "sfzmhm", "part", "gender"))).isEqualTo("1");
+        assertThat(gen.generate(ctx, Map.of("from", "sfzmhm", "part", "age", "baseYear", 2024)))
+                .isEqualTo("34");
+        assertThat(gen.generate(ctx, Map.of("from", "sfzmhm", "part", "birth_date")))
+                .isEqualTo("1990-01-01");
+        assertThat(gen.generate(ctx, Map.of("from", "sfzmhm"))).isEqualTo("110101199001011234");
+    }
+
+    @Test
     void expression_evaluatesFromCurrentRowFields() {
         var gen = new ExpressionGenerator();
         DataRow row = new DataRow();

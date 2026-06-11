@@ -198,7 +198,7 @@ data-generator:
 | 按正则格式 | `regex` | `{ strategy: regex, pattern: '440115[0-9]{8}' }` |
 | 中国大陆手机号 | `phone` | `{ strategy: phone, region: cn }` |
 | 随机邮箱 | `email` | `{ strategy: email, domain: example.com }` |
-| 18 位身份证号 | `idcard` | `{ strategy: idcard, areaCode: '440115' }` |
+| 18 位身份证号及派生 | `idcard` | `{ strategy: idcard, areaCode: '440115' }` / `{ strategy: idcard, from: sfzh, part: age }` |
 | 引用上游表某列 | `reference` | `{ strategy: reference, source: orders, field: id }` |
 | 从 Job seeds 采样 | `seed` | `{ strategy: seed, source: location_sample }`（见 [Job 级 seeds](#job-级-seeds从真实数据出发)） |
 | 表达式计算列值 | `expression` | `{ strategy: expression, expression: "price * qty", language: spel }` |
@@ -302,6 +302,8 @@ generator: { strategy: email, domain: company.com, minLength: 6, maxLength: 12 }
 
 ### idcard — 身份证号
 
+**生成新号码：**
+
 ```yaml
 generator: { strategy: idcard, areaCode: '440115', birthDateMin: '1960-01-01', birthDateMax: '2005-12-31' }
 generator: { strategy: idcard, areaCode: '440115', birthDate: '1990-05-20', gender: male }
@@ -314,29 +316,39 @@ generator: { strategy: idcard, areaCode: '440115', birthDate: '1990-05-20', gend
 | `birthDateMin` / `birthDateMax` | 否 | 随机出生日期范围，默认 `1970-01-01` ~ `2005-12-31` |
 | `gender` | 否 | `male` / `female`（或 `m`/`f`/`1`/`0`），控制顺序码奇偶 |
 
-生成符合 GB 11643 的 18 位号码（含校验位）。**年龄、性别、出生日期等派生列**请先生成 `sfzh`，再用 `expression` 从号码解析（字段顺序：`sfzh` 必须在派生列之前）：
+**从同表已有身份证号派生（`from` + `part`）：**
+
+| 参数 | 必填 | 说明 |
+|------|------|------|
+| `from` | 是 | 当前行已生成的身份证号列名（勿用 `field`，引擎会为 seed 等策略自动注入 `field`） |
+| `part` | 否 | 派生部分，默认 `full`（复制整号） |
+| `baseYear` | 否 | `part: age` 时用于计算年龄，默认当前年；测试数据建议与业务时点一致 |
+
+| `part` | 说明 |
+|--------|------|
+| `full` | 复制完整 18 位号码（默认，可省略 `part`） |
+| `gender` | 按顺序码奇偶返回 `'1'`（男）/ `'2'`（女） |
+| `age` | `baseYear` 减出生年（近似年龄） |
+| `birth_date` | 返回 `yyyy-MM-dd` 格式出生日期 |
+
+生成符合 GB 11643 的 18 位号码（含校验位）。**年龄、性别、出生日期、档案号等派生列**请先生成 `sfzh`，再用同一 `idcard` 策略派生（字段顺序：`sfzh` 必须在派生列之前）：
 
 ```yaml
 - name: sfzh
   type: VARCHAR
   generator: { strategy: idcard, areaCode: '440115' }
-- name: csrq
-  type: VARCHAR
-  generator: { strategy: expression, expression: "#sfzh.substring(6, 14)" }
 - name: xb
   type: VARCHAR
-  generator: { strategy: expression, expression: "(#sfzh.charAt(16) - '0') % 2 == 1 ? '1' : '2'" }
+  generator: { strategy: idcard, from: sfzh, part: gender }
 - name: nl
-  type: INTEGER
-  generator:
-    strategy: expression
-    expression: >-
-      T(java.time.Period).between(
-        T(java.time.LocalDate).parse(#sfzh.substring(6, 14),
-          T(java.time.format.DateTimeFormatter).ofPattern('yyyyMMdd')),
-        T(java.time.LocalDate).now()
-      ).getYears()
+  type: VARCHAR
+  generator: { strategy: idcard, from: sfzh, part: age, baseYear: 2024 }
+- name: dabh
+  type: VARCHAR
+  generator: { strategy: idcard, from: sfzh }
 ```
+
+复杂自定义逻辑仍可用 `expression`；SpEL 根对象为当前行字段 Map，**直接用字段名**（如 `sfzh`），**不要**加 `#` 前缀。
 
 ### reference — 引用其他表
 

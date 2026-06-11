@@ -55,11 +55,62 @@ public class IdCardGenerator extends AbstractValueGenerator {
 
     @Override
     public Object generate(GenerationContext ctx, Map<String, Object> config) {
+        Object from = config.get("from");
+        if (from != null && !String.valueOf(from).isBlank()) {
+            return deriveFromRow(ctx, config, String.valueOf(from).trim());
+        }
         String areaCode = resolveAreaCode(config);
         String birthDate = resolveBirthDate(config);
         int sequence = resolveSequence(config);
         String body17 = areaCode + birthDate + String.format("%03d", sequence);
         return body17 + calculateCheckDigit(body17);
+    }
+
+    private static Object deriveFromRow(GenerationContext ctx, Map<String, Object> config, String sourceField) {
+        Object source = ctx.rowBeingBuilt().get(sourceField);
+        if (source == null) {
+            throw new IllegalStateException(
+                    "idcard generator from '" + sourceField + "' is not available in the current row yet");
+        }
+        String idCard = String.valueOf(source);
+        String part = resolvePart(config);
+        return switch (part) {
+            case "full" -> idCard;
+            case "gender" -> deriveGender(idCard);
+            case "age" -> deriveAge(idCard, config);
+            case "birth_date" -> deriveBirthDate(idCard);
+            default -> throw new IllegalArgumentException(
+                    "idcard generator unknown part: " + part + " (supported: full, gender, age, birth_date)");
+        };
+    }
+
+    private static String resolvePart(Map<String, Object> config) {
+        Object part = config.get("part");
+        if (part == null || String.valueOf(part).isBlank()) {
+            return "full";
+        }
+        return String.valueOf(part).trim().toLowerCase();
+    }
+
+    static String deriveGender(String idCard) {
+        validateIdCardLength(idCard);
+        int digit = Character.digit(idCard.charAt(16), 10);
+        return digit % 2 == 1 ? "1" : "2";
+    }
+
+    static String deriveAge(String idCard, Map<String, Object> config) {
+        validateIdCardLength(idCard);
+        int birthYear = Integer.parseInt(idCard.substring(6, 10));
+        return String.valueOf(resolveBaseYear(config) - birthYear);
+    }
+
+    static String deriveBirthDate(String idCard) {
+        validateIdCardLength(idCard);
+        return idCard.substring(6, 10)
+                + "-"
+                + idCard.substring(10, 12)
+                + "-"
+                + idCard.substring(12, 14);
     }
 
     static char calculateCheckDigit(String body17) {
@@ -71,6 +122,21 @@ public class IdCardGenerator extends AbstractValueGenerator {
             sum += (body17.charAt(i) - '0') * WEIGHTS[i];
         }
         return CHECK_CODES[sum % 11];
+    }
+
+    private static int resolveBaseYear(Map<String, Object> config) {
+        Object value = config.get("baseYear");
+        if (value == null || String.valueOf(value).isBlank()) {
+            return LocalDate.now().getYear();
+        }
+        return Integer.parseInt(String.valueOf(value).trim());
+    }
+
+    private static void validateIdCardLength(String idCard) {
+        if (idCard.length() < 17) {
+            throw new IllegalArgumentException(
+                    "idcard part derivation requires at least 17 characters, got: " + idCard.length());
+        }
     }
 
     private static String resolveAreaCode(Map<String, Object> config) {
