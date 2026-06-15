@@ -490,12 +490,23 @@ seeds:
   - name: order
     link:
       seed: customer
-      on: id              # 父 seed 采样行的 id 列作为关联键
+      parent_field: id    # 父 seed 采样行中用于关联的列
     reader:
       type: postgresql
       connection: dev-pg
       query: "SELECT id, amount FROM orders WHERE id = :link_id LIMIT 1"
 ```
+
+`link` 字段说明：
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `seed` | 是 | 父 seed 的 `name` |
+| `parent_field` | 二选一 | 父 seed 采样行中的列名（**推荐**） |
+| `on` | 二选一 | 与 `parent_field` 同义；父子列名相同时可用 |
+| `local_field` | 否 | 从属 seed 查询侧列名；省略时与 `parent_field` / `on` 相同 |
+
+> **YAML 注意：** 不要写未加引号的 `on: id`。YAML 1.1 会把 `on` / `off` / `yes` / `no` 解析成布尔值，引擎读不到关联列，启动时报错 `seed link requires 'on' or 'parent_field'`。请优先使用 `parent_field`；若坚持用 `on`，须写成 `"on": id`。
 
 从属 seed 的 query 支持占位符：
 
@@ -828,6 +839,9 @@ A：确认已配置 `depends_on` 与 `reference align: index`；引擎会对 FK 
 
 **Q：link 关联 seed 采样失败**  
 A：检查从属 seed 的 query 是否使用 `:link_id` 占位符，且关联查询能返回恰好一行。
+
+**Q：启动报 `seed link requires 'on' or 'parent_field'`**  
+A：`link` 里未正确指定父列。把 `on: 列名` 改为 `parent_field: 列名`，或给 `on` 加引号：`"on": 列名`（见 [多 seed 关联（link）](#多-seed-关联link)）。
 
 **Q：如何只改生成行数而不改 YAML**  
 A：API 提交时使用 `"overrides": {"tables.incidents.count": 100}`。

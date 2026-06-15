@@ -135,6 +135,13 @@ class YamlConfigLoaderTest {
     }
 
     @Test
+    void loadJob_unquotedOnKeyword_parsesLinkParentColumn() {
+        JobDefinition job = loader.loadJob("fixtures/jobs/seed_link_on_keyword.yaml");
+
+        assertThat(job.getSeeds().get(1).getLink().resolveParentColumn()).isEqualTo("id");
+    }
+
+    @Test
     void overridePath_resolvesTableByName() {
         JobDefinition job = loader.loadJob("fixtures/jobs/ecommerce_seed.yaml");
 

@@ -173,6 +173,10 @@ final class YamlMappingUtils {
         SeedLinkDefinition link = new SeedLinkDefinition();
         link.setSeed(asString(source.get("seed")));
         Object onValue = source.get("on");
+        if (onValue == null && source.containsKey("true")) {
+            // YAML 1.1 将未加引号的 on 解析为布尔键；asMap 后键名为 "true"
+            onValue = source.get("true");
+        }
         if (onValue != null && !(onValue instanceof Boolean)) {
             link.setOn(asString(onValue));
         }

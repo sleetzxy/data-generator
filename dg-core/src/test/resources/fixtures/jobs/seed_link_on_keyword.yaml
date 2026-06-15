@@ -1,0 +1,28 @@
+id: seed_link_on_keyword
+name: seed link on 关键字解析
+
+writer:
+  type: csv
+  connection: local-csv
+  mode: insert
+
+seeds:
+  - name: header
+    template:
+      id: 100
+
+  - name: detail
+    link:
+      seed: header
+      on: id
+    template:
+      id: 100
+
+tables:
+  - name: export
+    count: 1
+    schema:
+      table: export
+      fields:
+        - name: id
+          generator: { strategy: seed, source: header, field: id }
