@@ -67,14 +67,45 @@ class JobOrchestratorTest {
     }
 
     @Test
-    void jobOrchestrator_runtimeWriterOverridesJobWriter() {
+    void jobOrchestrator_multiWrite_writesToAllTargets() {
+        CollectingWriter pgWriter = new CollectingWriter();
+        CollectingWriter ckWriter = new CollectingWriter();
+        PluginRegistry pluginRegistry = new PluginRegistry();
+        pluginRegistry.registerWriter("mock-pg", pgWriter);
+        pluginRegistry.registerWriter("mock-ck", ckWriter);
+        YamlConfigLoader configLoader =
+                new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()));
+        JobOrchestrator multiWriteOrchestrator = new JobOrchestrator(
+                configLoader,
+                new ConstraintLoader(configLoader),
+                new TableGenerator(pluginRegistry),
+                pluginRegistry,
+                new ConnectionRegistry());
+
+        var job = configLoader.loadJob("fixtures/jobs/multi_table.yaml");
+        job.setWriters(List.of(
+                Map.of("type", "mock-pg", "mode", "insert"),
+                Map.of("type", "mock-ck", "mode", "insert")));
+
+        JobResult result = multiWriteOrchestrator.run(
+                job, List.<Map<String, Object>>of(), GenerationOptions.defaults());
+
+        assertThat(result.writtenRows()).isEqualTo(15);
+        assertThat(pgWriter.rowsByTable("customers")).hasSize(5);
+        assertThat(ckWriter.rowsByTable("customers")).hasSize(5);
+        assertThat(pgWriter.rowsByTable("orders")).hasSize(10);
+        assertThat(ckWriter.rowsByTable("orders")).hasSize(10);
+    }
+
+    @Test
+    void jobOrchestrator_jobWriterOverridesRuntimeWriter() {
         var job = new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()))
                 .loadJob("fixtures/jobs/multi_table.yaml");
-        job.setWriter(Map.of("type", "postgresql", "mode", "insert"));
+        job.setWriter(Map.of("type", "mock", "mode", "insert"));
 
         JobResult result = orchestrator.run(
                 job,
-                Map.of("type", "mock", "mode", "insert"),
+                Map.of("type", "postgresql", "mode", "insert"),
                 GenerationOptions.defaults());
 
         assertThat(result.writtenRows()).isEqualTo(15);

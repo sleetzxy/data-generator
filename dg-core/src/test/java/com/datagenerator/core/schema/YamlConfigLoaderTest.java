@@ -91,6 +91,15 @@ class YamlConfigLoaderTest {
     }
 
     @Test
+    void loadJob_parsesWriters() {
+        JobDefinition job = loader.loadJob("fixtures/jobs/multi_write.yaml");
+        assertThat(job.getWriter()).isEmpty();
+        assertThat(job.getWriters()).hasSize(2);
+        assertThat(job.getWriters().get(0)).containsEntry("type", "postgresql");
+        assertThat(job.getWriters().get(1)).containsEntry("type", "clickhouse");
+    }
+
+    @Test
     void loadJob_inlineSchemaAndConstraints_parsesTableDefinition() {
         JobDefinition job = loader.loadJob("fixtures/jobs/inline_single.yaml");
         assertThat(job.getName()).isEqualTo("内联 Schema 单表造数");

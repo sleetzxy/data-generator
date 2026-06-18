@@ -1,0 +1,15 @@
+id: multi_write
+name: 多写示例
+
+writers:
+  - type: postgresql
+    connection: dev-pg
+    mode: insert
+  - type: clickhouse
+    connection: dev-ck
+    mode: insert
+
+tables:
+  - name: customers
+    count: 10
+    schema: schemas/customer.yaml

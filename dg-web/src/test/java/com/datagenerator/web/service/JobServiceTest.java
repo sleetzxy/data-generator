@@ -12,6 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -49,6 +50,6 @@ class JobServiceTest {
         assertThat(response.getJobConfig()).isEqualTo("jobs/demo.yaml");
         assertThat(response.getTriggerSource()).isEqualTo(TriggerSource.MANUAL);
         assertThat(jobService.getById(response.getJobId()).getStatus()).isEqualTo(JobStatus.PENDING);
-        verify(orchestrator, never()).run(any(), any(), any());
+        verify(orchestrator, never()).run(any(), anyList(), any());
     }
 }

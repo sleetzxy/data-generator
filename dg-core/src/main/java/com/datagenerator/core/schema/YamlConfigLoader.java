@@ -7,6 +7,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
+import com.datagenerator.core.config.WriterConfigResolver;
+
 public class YamlConfigLoader {
 
     private final ConfigPathResolver pathResolver;
@@ -45,6 +47,8 @@ public class YamlConfigLoader {
             job.setConstraints(YamlMappingUtils.asString(constraintsValue));
         }
         job.setWriter(YamlMappingUtils.asMap(root.get("writer")));
+        job.setWriters(YamlMappingUtils.asMapList(root.get("writers")));
+        WriterConfigResolver.validateJobWriters(job);
 
         List<SeedDefinition> seeds = new ArrayList<>();
         for (Map<String, Object> seedSource : YamlMappingUtils.asMapList(root.get("seeds"))) {

@@ -16,6 +16,7 @@ public class TableTask {
     private String constraints;
     private List<ConstraintDefinition> inlineConstraints = new ArrayList<>();
     private Map<String, Object> writer = new HashMap<>();
+    private List<Map<String, Object>> writers = new ArrayList<>();
 
     public String getName() {
         return name;
@@ -80,5 +81,21 @@ public class TableTask {
 
     public void setWriter(Map<String, Object> writer) {
         this.writer = writer == null ? new HashMap<>() : new HashMap<>(writer);
+    }
+
+    public List<Map<String, Object>> getWriters() {
+        return Collections.unmodifiableList(writers);
+    }
+
+    public void setWriters(List<Map<String, Object>> writers) {
+        if (writers == null || writers.isEmpty()) {
+            this.writers = new ArrayList<>();
+            return;
+        }
+        List<Map<String, Object>> copies = new ArrayList<>(writers.size());
+        for (Map<String, Object> writerMap : writers) {
+            copies.add(writerMap == null ? new HashMap<>() : new HashMap<>(writerMap));
+        }
+        this.writers = copies;
     }
 }

@@ -1,6 +1,7 @@
 package com.datagenerator.core.engine;
 
 import com.datagenerator.core.config.ConnectionRegistry;
+import com.datagenerator.core.config.WriterConfigResolver;
 import com.datagenerator.core.constraint.ConstraintLoader;
 import com.datagenerator.core.schema.ConfigLoadException;
 import com.datagenerator.core.schema.JobDefinition;
@@ -48,6 +49,21 @@ public class JobOrchestrator {
             Map<String, Object> writerConfigMap,
             GenerationOptions options,
             JobExecutionListener listener) {
+        return run(job, WriterConfigResolver.fromRuntimeOverride(writerConfigMap), options, listener);
+    }
+
+    public JobResult run(
+            JobDefinition job,
+            List<Map<String, Object>> runtimeWriters,
+            GenerationOptions options) {
+        return run(job, runtimeWriters, options, JobExecutionListener.NOOP);
+    }
+
+    public JobResult run(
+            JobDefinition job,
+            List<Map<String, Object>> runtimeWriters,
+            GenerationOptions options,
+            JobExecutionListener listener) {
         List<TableTask> sortedTables = DagSorter.sort(new ArrayList<>(job.getTables()));
         Map<String, List<DataRow>> upstreamTables = new HashMap<>();
         List<TableResult> details = new ArrayList<>();
@@ -56,7 +72,8 @@ public class JobOrchestrator {
         long failedRows = 0;
         int totalTables = sortedTables.size();
 
-        Map<String, Object> defaultWriterConfig = resolveDefaultWriter(job, writerConfigMap);
+        List<Map<String, Object>> defaultWriters =
+                WriterConfigResolver.resolveDefaultWriters(job, runtimeWriters);
         DataWriter writer = null;
         String activeWriterKey = null;
         SeedRowSnapshotStore seedRowSnapshots = new SeedRowSnapshotStore();
@@ -66,16 +83,16 @@ public class JobOrchestrator {
                 TableTask tableTask = sortedTables.get(tableIndex);
                 listener.onTableStarted(tableTask.getName(), tableIndex, totalTables, tableTask.getCount());
 
-                Map<String, Object> tableWriterConfig = resolveTableWriter(tableTask, defaultWriterConfig);
-                WriterConfig resolvedWriter = connectionRegistry.resolveWriter(tableWriterConfig);
-                String writerKey = writerKey(resolvedWriter);
+                List<Map<String, Object>> tableWriterConfigs =
+                        WriterConfigResolver.resolveTableWriters(tableTask, defaultWriters);
+                WriterConfigResolver.validateWriterMapsConfigured(tableTask.getName(), tableWriterConfigs);
+                String writerKey = WriterConfigResolver.writerKey(tableWriterConfigs, connectionRegistry);
                 if (writer == null || !writerKey.equals(activeWriterKey)) {
                     if (writer != null) {
                         writer.flush();
                         writer.close();
                     }
-                    writer = pluginRegistry.getWriter(resolvedWriter.type());
-                    writer.init(resolvedWriter);
+                    writer = createWriter(tableWriterConfigs);
                     activeWriterKey = writerKey;
                 }
 
@@ -140,36 +157,21 @@ public class JobOrchestrator {
         return new JobResult(totalRows, writtenRows, failedRows, details);
     }
 
-    private static Map<String, Object> resolveDefaultWriter(JobDefinition job, Map<String, Object> writerConfigMap) {
-        Map<String, Object> merged = new HashMap<>();
-        if (!job.getWriter().isEmpty()) {
-            merged.putAll(job.getWriter());
+    private DataWriter createWriter(List<Map<String, Object>> writerMaps) {
+        if (writerMaps.size() == 1) {
+            WriterConfig resolvedWriter = connectionRegistry.resolveWriter(writerMaps.getFirst());
+            DataWriter delegate = pluginRegistry.getWriter(resolvedWriter.type());
+            delegate.init(resolvedWriter);
+            return delegate;
         }
-        if (writerConfigMap != null) {
-            merged.putAll(writerConfigMap);
+        List<DataWriter> delegates = new ArrayList<>(writerMaps.size());
+        for (Map<String, Object> writerMap : writerMaps) {
+            WriterConfig resolvedWriter = connectionRegistry.resolveWriter(writerMap);
+            DataWriter delegate = pluginRegistry.getWriter(resolvedWriter.type());
+            delegate.init(resolvedWriter);
+            delegates.add(delegate);
         }
-        return merged;
-    }
-
-    private static Map<String, Object> resolveTableWriter(TableTask tableTask, Map<String, Object> defaultWriterConfig) {
-        Map<String, Object> merged = new HashMap<>(defaultWriterConfig);
-        if (!tableTask.getWriter().isEmpty()) {
-            merged.putAll(tableTask.getWriter());
-        }
-        if (merged.isEmpty() || merged.get("type") == null || String.valueOf(merged.get("type")).isBlank()) {
-            throw new IllegalArgumentException(
-                    "Table '" + tableTask.getName() + "' requires writer configuration");
-        }
-        return merged;
-    }
-
-    private static String writerKey(WriterConfig config) {
-        return String.join(
-                "|",
-                String.valueOf(config.type()),
-                String.valueOf(config.connection()),
-                String.valueOf(config.path()),
-                String.valueOf(config.url()));
+        return new CompositeWriter(delegates);
     }
 
     private SchemaDefinition resolveSchema(TableTask tableTask) {

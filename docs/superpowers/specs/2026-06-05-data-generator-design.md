@@ -139,7 +139,7 @@ public interface DataWriter extends Plugin {
 ```
 
 - **Reader**：读取参考数据或已有数据采样
-- **Writer**：批量写入生成结果
+- **Writer**：批量写入生成结果；Job 级 **`writer` 单写**或 **`writers` 多写**（同一批数据 fan-out 至多个插件实例，由 `CompositeWriter` 编排）
 - 批量粒度由 `dg-core/engine` 统一控制，默认 1000 行/批
 
 ### 4.2 生成策略扩展（Generator）
@@ -424,6 +424,8 @@ ExpressionValidators   →  SpEL/Aviator/Groovy
 
 ### 7.2 提交任务请求
 
+单写：
+
 ```json
 {
   "jobConfig": "jobs/ecommerce_seed.yaml",
@@ -445,6 +447,18 @@ ExpressionValidators   →  SpEL/Aviator/Groovy
 }
 ```
 
+多写（`writer` 与 `writers` 不可同请求并用；Job YAML 已配置写入时以 YAML 为准）：
+
+```json
+{
+  "jobConfig": "jobs/ecommerce_seed.yaml",
+  "writers": [
+    { "type": "postgresql", "connection": "dev-pg", "mode": "insert" },
+    { "type": "clickhouse", "connection": "dev-ck", "mode": "insert" }
+  ]
+}
+```
+
 **overrides 路径规则：** `tables.{name}.{field}`，其中 `{name}` 对应 Job YAML 中 `tables[].name` 字段值（非数组下标）。
 
 ### 7.3 预览请求
@@ -460,7 +474,7 @@ ExpressionValidators   →  SpEL/Aviator/Groovy
 }
 ```
 
-- 忽略 `writer` 配置，不写入任何数据源
+- 忽略 `writer` / `writers` 配置，不写入任何数据源
 - 返回每个指定表的前 N 行（N = `preview.limit`，默认 10，上限 100）
 - 响应格式与 §7.5 类似，额外包含 `rows` 数组（生成的样本数据）
 

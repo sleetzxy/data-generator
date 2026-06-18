@@ -1,6 +1,7 @@
 package com.datagenerator.web.service;
 
 import com.datagenerator.web.config.JobRuntimeSettings;
+import com.datagenerator.web.dto.JobSubmitRequest;
 import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintLoader;
 import com.datagenerator.core.engine.JobOrchestrator;
@@ -40,46 +41,45 @@ class JobServiceWriterResolutionTest {
     }
 
     @Test
-    void resolveWriter_jobYamlOnly_usesJobWriter() throws Exception {
+    void resolveRuntimeWriters_jobYamlOnly_usesJobWriter() throws Exception {
         JobDefinition job = jobWithTable("orders", Map.of());
         job.setWriter(Map.of("type", "csv", "connection", "local-csv", "mode", "insert"));
 
-        Map<String, Object> resolved = invokeResolveWriter(job, Map.of());
+        List<Map<String, Object>> resolved = invokeResolveRuntimeWriters(job, requestWithWriter(Map.of()));
 
-        assertThat(resolved).containsEntry("type", "csv");
-        assertThat(resolved).containsEntry("connection", "local-csv");
+        assertThat(resolved).isEmpty();
     }
 
     @Test
-    void resolveWriter_jobOverridesRequestWriter() throws Exception {
+    void resolveRuntimeWriters_jobWritersOverrideRequestWriters() throws Exception {
         JobDefinition job = jobWithTable("orders", Map.of());
-        job.setWriter(Map.of("type", "csv", "connection", "local-csv", "mode", "insert"));
+        job.setWriters(List.of(
+                Map.of("type", "postgresql", "connection", "pg", "mode", "insert"),
+                Map.of("type", "clickhouse", "connection", "ck", "mode", "insert")));
 
-        Map<String, Object> resolved = invokeResolveWriter(
+        List<Map<String, Object>> resolved = invokeResolveRuntimeWriters(
                 job,
-                Map.of("connection", "traffic-output"));
+                requestWithWriters(List.of(Map.of("type", "csv", "connection", "local-csv", "mode", "insert"))));
 
-        assertThat(resolved).containsEntry("type", "csv");
-        assertThat(resolved).containsEntry("connection", "local-csv");
+        assertThat(resolved).containsExactly(
+                Map.of("type", "csv", "connection", "local-csv", "mode", "insert"));
     }
 
     @Test
-    void resolveWriter_tableWriterOverridesJobWriter() throws Exception {
+    void resolveRuntimeWriters_tableWriterOverridesJobWriter() throws Exception {
         JobDefinition job = jobWithTable(
                 "orders",
                 Map.of("type", "csv", "connection", "traffic-output", "mode", "insert"));
         job.setWriter(Map.of("type", "csv", "connection", "local-csv", "mode", "insert"));
 
-        Map<String, Object> resolved = invokeResolveWriter(job, Map.of());
-
-        assertThat(resolved).containsEntry("connection", "local-csv");
+        invokeResolveRuntimeWriters(job, requestWithWriter(Map.of()));
     }
 
     @Test
-    void resolveWriter_missingTableWriter_throws() {
+    void resolveRuntimeWriters_missingTableWriter_throws() {
         JobDefinition job = jobWithTable("orders", Map.of());
 
-        assertThatThrownBy(() -> invokeResolveWriter(job, Map.of()))
+        assertThatThrownBy(() -> invokeResolveRuntimeWriters(job, requestWithWriter(Map.of())))
                 .hasCauseInstanceOf(IllegalArgumentException.class)
                 .cause()
                 .hasMessageContaining("orders");
@@ -95,12 +95,24 @@ class JobServiceWriterResolutionTest {
         return job;
     }
 
+    private static JobSubmitRequest requestWithWriter(Map<String, Object> writer) {
+        JobSubmitRequest request = new JobSubmitRequest();
+        request.setWriter(writer);
+        return request;
+    }
+
+    private static JobSubmitRequest requestWithWriters(List<Map<String, Object>> writers) {
+        JobSubmitRequest request = new JobSubmitRequest();
+        request.setWriters(writers);
+        return request;
+    }
+
     @SuppressWarnings("unchecked")
-    private Map<String, Object> invokeResolveWriter(
-            JobDefinition job, Map<String, Object> requestWriter) throws Exception {
+    private List<Map<String, Object>> invokeResolveRuntimeWriters(
+            JobDefinition job, JobSubmitRequest request) throws Exception {
         var method = JobService.class.getDeclaredMethod(
-                "resolveWriter", JobDefinition.class, Map.class);
+                "resolveRuntimeWriters", JobDefinition.class, JobSubmitRequest.class);
         method.setAccessible(true);
-        return (Map<String, Object>) method.invoke(jobService, job, requestWriter);
+        return (List<Map<String, Object>>) method.invoke(jobService, job, request);
     }
 }

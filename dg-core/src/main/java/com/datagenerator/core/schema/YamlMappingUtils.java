@@ -24,7 +24,7 @@ final class YamlMappingUtils {
     }
 
     @SuppressWarnings("unchecked")
-    static List<Map<String, Object>> asMapList(Object value) {
+    public static List<Map<String, Object>> asMapList(Object value) {
         if (value == null) {
             return List.of();
         }
@@ -143,6 +143,7 @@ final class YamlMappingUtils {
             task.setConstraints(asString(constraintsValue));
         }
         task.setWriter(asMap(source.get("writer")));
+        task.setWriters(asMapList(source.get("writers")));
         return task;
     }
 

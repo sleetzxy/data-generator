@@ -110,7 +110,7 @@ flowchart TB
 
 - **dg-web** 负责 HTTP 适配、认证、任务调度与持久化；不直接操作数据源
 - **dg-core** 纯业务引擎，按 YAML 定义驱动生成流水线，通过 SPI 调用插件
-- **插件** 各自独立 AutoConfiguration 注册，按需引入 classpath；Reader 读参考数据，Writer 写生成结果
+- **插件** 各自独立 AutoConfiguration 注册，按需引入 classpath；Reader 读参考数据，Writer 写生成结果；支持 Job 级 **`writers` 多写**（同一批数据同时写入 PG / ClickHouse / CSV 等多个目标）
 - 小任务同步返回，超过 `sync-threshold` 行数转异步；任务元数据存 SQLite，运行日志按任务写入 `log-dir` 文件，批次 flush 后更新进度（节流持久化，表完成时强制落盘）
 - 单表行数 ≥ 5000 时，引擎按 `thread-pool-size` **并行生成**行数据；多表 DAG 上游表在内存中仅保留下游 `reference` / `foreign_key` 所需列
 
@@ -287,6 +287,8 @@ curl -b cookies.txt http://localhost:8080/api/v1/job-definitions/my_builtin/sche
 
 ### 提交生成任务
 
+单写示例：
+
 ```bash
 curl -b cookies.txt -X POST http://localhost:8080/api/v1/jobs \
   -H "Content-Type: application/json" \
@@ -301,7 +303,21 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/jobs \
   }'
 ```
 
-写入 PostgreSQL 时将 `writer.type` 改为 `postgresql`，`connection` 指向 `application.yml` 中已配置的连接名。
+多写（同一批数据同时写入 PG 与 ClickHouse；Job YAML 中已配置 `writers` 时以 YAML 为准）：
+
+```bash
+curl -b cookies.txt -X POST http://localhost:8080/api/v1/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jobConfig": "jobs/my_job.yaml",
+    "writers": [
+      { "type": "postgresql", "connection": "dev-pg", "mode": "insert" },
+      { "type": "clickhouse", "connection": "dev-ck", "mode": "insert" }
+    ]
+  }'
+```
+
+写入 PostgreSQL 时将 `type` 改为 `postgresql`，`connection` 指向 `application.yml` 中已配置的连接名。单写/多写 YAML 与优先级说明见 Web 控制台「配置指南 → 指定写入目标」。
 
 ### 查询任务与日志
 
@@ -332,6 +348,7 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}/record
 | 生成策略 | sequence、random、enum、regex、reference、seed、expression（SpEL/Aviator/Groovy）；**uuid、phone、email、literal、idcard**（含 `from`/`part` 派生与复制）；字段级 **primaryKey** 标识；全策略通用 **default / prefix / width**（`default` 用于 null/空串兜底；`prefix` 要求字符串 type） |
 | 约束引擎 | 字段级（range、nullable、foreign_key）；组合级 SpEL（conditional、mutex） |
 | 多表编排 | 单表快捷 Job + 多表 DAG（`depends_on` 拓扑排序） |
+| 写入目标 | 单写 `writer`；多写 `writers`（同一批数据 fan-out 至 PG / ClickHouse / CSV 等） |
 | REST API | health、schemas、preview、jobs |
 
 ### P2（当前）

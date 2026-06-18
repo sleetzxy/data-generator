@@ -19,6 +19,7 @@ import com.datagenerator.web.dto.TriggerSource;
 import com.datagenerator.web.exception.JobNotFoundException;
 import com.datagenerator.web.internal.CollectingWriter;
 import com.datagenerator.core.config.ConnectionRegistry;
+import com.datagenerator.core.config.WriterConfigResolver;
 import com.datagenerator.core.constraint.ConstraintLoader;
 import com.datagenerator.core.engine.GenerationOptions;
 import com.datagenerator.core.engine.JobExecutionListener;
@@ -120,7 +121,7 @@ public class JobService {
                 .orElseThrow(() -> new JobNotFoundException(jobId));
         JobDefinition job = loadAndApplyOverrides(request);
         GenerationOptions options = toGenerationOptions(request.getOptions());
-        Map<String, Object> writer = resolveWriter(job, request.getWriter());
+        List<Map<String, Object>> writers = resolveRuntimeWriters(job, request);
         long estimatedRows = estimateTotalRows(job);
 
         jobLogStore.info(jobId, "任务已提交，配置文件: " + request.getJobConfig());
@@ -136,13 +137,13 @@ public class JobService {
             } else {
                 jobLogStore.info(jobId, "超过同步阈值 " + syncThreshold + "，转为异步执行");
             }
-            asyncJobExecutor.submit(jobId, () -> executeAndStore(jobId, job, writer, options));
+            asyncJobExecutor.submit(jobId, () -> executeAndStore(jobId, job, writers, options));
             return;
         }
 
         log.info("Executing accepted job {} sync (estimatedRows={})", jobId, estimatedRows);
         jobLogStore.info(jobId, "同步执行中");
-        executeAndStore(jobId, job, writer, options);
+        executeAndStore(jobId, job, writers, options);
     }
 
     JobSubmitResult doSubmit(JobSubmitRequest request, TriggerSource triggerSource) {
@@ -178,14 +179,14 @@ public class JobService {
             } else {
                 jobLogStore.info(jobId, "超过同步阈值 " + syncThreshold + "，转为异步执行");
             }
-            asyncJobExecutor.submit(jobId, () -> executeAndStore(jobId, job, resolveWriter(job, request.getWriter()), options));
+            asyncJobExecutor.submit(jobId, () -> executeAndStore(jobId, job, resolveRuntimeWriters(job, request), options));
             JobResponse pending = jobRepository.findById(jobId).orElseThrow();
             return new JobSubmitResult(pending, true);
         }
 
         log.info("Submitting sync job {} (estimatedRows={})", jobId, estimatedRows);
         jobLogStore.info(jobId, "同步执行中");
-        JobResponse response = executeAndStore(jobId, job, resolveWriter(job, request.getWriter()), options);
+        JobResponse response = executeAndStore(jobId, job, resolveRuntimeWriters(job, request), options);
         return new JobSubmitResult(response, false);
     }
 
@@ -291,7 +292,7 @@ public class JobService {
     private JobResponse executeAndStore(
             String jobId,
             JobDefinition job,
-            Map<String, Object> writer,
+            List<Map<String, Object>> runtimeWriters,
             GenerationOptions options) {
         long start = System.currentTimeMillis();
         JobResponse current = jobRepository.findById(jobId).orElse(null);
@@ -308,10 +309,10 @@ public class JobService {
                 jobRepository.update(current);
             }
             jobLogStore.info(jobId, "开始生成数据，共 " + totalTables + " 张表，目标 " + totalRows + " 行");
-            logJobContext(jobId, job, writer, options);
+            logJobContext(jobId, job, runtimeWriters, options);
             JobExecutionListener progressListener = createProgressListener(
                     jobId, jobConfig, submittedAt, totalTables, totalRows, runningDetails);
-            JobResult result = jobOrchestrator.run(job, writer, options, progressListener);
+            JobResult result = jobOrchestrator.run(job, runtimeWriters, options, progressListener);
             for (TableResult tableResult : result.details()) {
                 jobLogStore.info(
                         jobId,
@@ -370,30 +371,24 @@ public class JobService {
     }
 
     /**
-     * 请求体 writer 覆盖 Job YAML 中的 writer；二者至少配置一处。
+     * 请求体 writer/writers 作为运行时默认值；Job YAML 中的 writer/writers 优先。
      */
-    private Map<String, Object> resolveWriter(JobDefinition job, Map<String, Object> requestWriter) {
-        Map<String, Object> merged = new HashMap<>();
-        if (requestWriter != null && !requestWriter.isEmpty()) {
-            merged.putAll(requestWriter);
+    private List<Map<String, Object>> resolveRuntimeWriters(JobDefinition job, JobSubmitRequest request) {
+        List<Map<String, Object>> runtimeWriters = WriterConfigResolver.fromRuntimeOverride(request.getWriters());
+        if (runtimeWriters.isEmpty()) {
+            runtimeWriters = WriterConfigResolver.fromRuntimeOverride(request.getWriter());
         }
-        if (!job.getWriter().isEmpty()) {
-            merged.putAll(job.getWriter());
-        }
-        validateWriterConfigured(job, merged);
-        return merged;
+        validateWriterConfigured(job, runtimeWriters);
+        return runtimeWriters;
     }
 
-    private void validateWriterConfigured(JobDefinition job, Map<String, Object> defaultWriter) {
+    private void validateWriterConfigured(JobDefinition job, List<Map<String, Object>> runtimeWriters) {
+        List<Map<String, Object>> defaultWriters =
+                WriterConfigResolver.resolveDefaultWriters(job, runtimeWriters);
         for (TableTask table : job.getTables()) {
-            Map<String, Object> effective = new HashMap<>(defaultWriter);
-            effective.putAll(table.getWriter());
-            if (effective.isEmpty()
-                    || effective.get("type") == null
-                    || String.valueOf(effective.get("type")).isBlank()) {
-                throw new IllegalArgumentException(
-                        "表 '" + table.getName() + "' 缺少 writer 配置，请在表级或 job 级指定");
-            }
+            List<Map<String, Object>> effective =
+                    WriterConfigResolver.resolveTableWriters(table, defaultWriters);
+            WriterConfigResolver.validateWriterMapsConfigured(table.getName(), effective);
         }
     }
 
@@ -423,6 +418,7 @@ public class JobService {
         previewJob.setInlineConstraints(new ArrayList<>(job.getInlineConstraints()));
         previewJob.setSeeds(new ArrayList<>(job.getSeeds()));
         previewJob.setWriter(Map.of());
+        previewJob.setWriters(List.of());
 
         List<TableTask> tables = new ArrayList<>();
         for (TableTask tableTask : job.getTables()) {
@@ -432,6 +428,7 @@ public class JobService {
             TableTask copy = copyTableTask(tableTask);
             copy.setCount(Math.min(copy.getCount(), limit));
             copy.setWriter(Map.of());
+            copy.setWriters(List.of());
             tables.add(copy);
         }
         previewJob.setTables(tables);
@@ -448,6 +445,7 @@ public class JobService {
         copy.setConstraints(source.getConstraints());
         copy.setInlineConstraints(new ArrayList<>(source.getInlineConstraints()));
         copy.setWriter(new HashMap<>(source.getWriter()));
+        copy.setWriters(new ArrayList<>(source.getWriters()));
         return copy;
     }
 
@@ -644,9 +642,11 @@ public class JobService {
     private void logJobContext(
             String jobId,
             JobDefinition job,
-            Map<String, Object> writer,
+            List<Map<String, Object>> runtimeWriters,
             GenerationOptions options) {
-        jobLogStore.info(jobId, "Writer 配置: " + summarizeMap(writer));
+        List<Map<String, Object>> defaultWriters =
+                WriterConfigResolver.resolveDefaultWriters(job, runtimeWriters);
+        jobLogStore.info(jobId, "Writer 配置: " + summarizeWriters(defaultWriters));
         jobLogStore.info(
                 jobId,
                 "生成选项: batchSize=" + options.batchSize()
@@ -662,14 +662,27 @@ public class JobService {
                     "表 [" + table.getName() + "] count=" + table.getCount()
                             + ", schema=" + schemaRef
                             + ", depends_on=" + table.getDependsOn()
-                            + ", writer=" + summarizeMap(mergeTableWriter(writer, table)));
+                            + ", writer=" + summarizeWriters(
+                                    WriterConfigResolver.resolveTableWriters(table, defaultWriters)));
         }
     }
 
-    private static Map<String, Object> mergeTableWriter(Map<String, Object> defaultWriter, TableTask table) {
-        Map<String, Object> merged = new HashMap<>(defaultWriter);
-        merged.putAll(table.getWriter());
-        return merged;
+    private static String summarizeWriters(List<Map<String, Object>> writers) {
+        if (writers == null || writers.isEmpty()) {
+            return "[]";
+        }
+        if (writers.size() == 1) {
+            return summarizeMap(writers.getFirst());
+        }
+        StringBuilder builder = new StringBuilder("[");
+        for (int index = 0; index < writers.size(); index++) {
+            if (index > 0) {
+                builder.append(", ");
+            }
+            builder.append(summarizeMap(writers.get(index)));
+        }
+        builder.append(']');
+        return builder.toString();
     }
 
     private static String summarizeMap(Map<String, Object> values) {

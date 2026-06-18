@@ -187,7 +187,7 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 |---|---|
 | P1 | PG/CH/CSV、Schema 驱动生成、SpEL 约束、DAG 编排、同步 Job |
 | P2 | histogram/normal 分布、异步 202、Aviator、JTS within |
-| P3 | Job 级 seeds、Groovy、repair/warn 约束、DELETE 取消任务 |
+| P3 | Job 级 seeds、Groovy、repair/warn 约束、DELETE 取消任务、**writers 多写**（PG/CK/CSV 等同批 fan-out） |
 | Web/运维 | Web 控制台、Cron 调度、表单登录（`data-generator.auth.*`）、SQLite 任务记录 + 文件运行日志、Job 定义 CRUD |
 
 详见 `README.md`。

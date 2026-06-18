@@ -43,7 +43,7 @@ tables:
 
 | 部分 | 作用 | 配置位置 |
 |------|------|----------|
-| **Job** | 任务唯一 ID、描述名称、默认写入方式 | YAML 顶层 `id`、`name`、`writer`；控制台自定义任务另有 UI 字段 |
+| **Job** | 任务唯一 ID、描述名称、默认写入方式 | YAML 顶层 `id`、`name`、`writer` 或 `writers`；控制台自定义任务另有 UI 字段 |
 | **Seeds** | 从真实/维表数据采样作底稿，多源可关联 | 顶层 `seeds[]`（Job 级，非 schema 内） |
 | **表任务** | 每张表生成多少行、依赖关系 | `tables[]` |
 | **Schema** | 字段列表及每列如何生成 | `tables[].schema` |
@@ -101,10 +101,15 @@ tables: []
 id: my_job_name           # 任务唯一标识，必填，全局不可重复
 name: 我的业务造数任务     # 任务描述名称，说明用途，可中文
 
-writer:                   # 默认写入方式（可被表级覆盖）
+writer:                   # 默认写入方式（可被表级覆盖）；单写时使用
   type: csv               # csv | postgresql | clickhouse
   connection: local-csv   # 连接名，见 application.yml
   mode: insert
+
+# 多写时使用 writers（与 writer 二选一），同一批数据写入多个库，例如：
+# writers:
+#   - { type: postgresql, connection: dev-pg, mode: insert }
+#   - { type: clickhouse, connection: dev-ck, mode: insert }
 
 tables:                   # 至少一张表
   - name: customers       # 逻辑名，多表引用时用此名
@@ -117,7 +122,7 @@ tables:                   # 至少一张表
           generator: { strategy: sequence, start: 1, step: 1 }
 ```
 
-在控制台**新建自定义任务**时，编辑区只需写 `writer`、`tables` 等业务配置；`id`、`name` 由系统与「任务名称」输入框分别维护。
+在控制台**新建自定义任务**时，编辑区只需写 `writer` / `writers`、`tables` 等业务配置；`id`、`name` 由系统与「任务名称」输入框分别维护。
 
 ### 顶层字段说明
 
@@ -125,7 +130,8 @@ tables:                   # 至少一张表
 |------|------|------|
 | `id` | 是* | 任务唯一标识，仅含字母、数字、下划线、连字符，以字母开头；全局不可重复。*控制台新建自定义任务时自动生成 |
 | `name` | 否 | 任务描述名称，可中文。*控制台自定义任务请在「任务名称」填写，勿在 YAML 重复 |
-| `writer` | 否 | Job 级默认写入配置，可被表级覆盖 |
+| `writer` | 否 | Job 级**单写**配置（写入一个目标），可被表级覆盖；与 `writers` **二选一** |
+| `writers` | 否 | Job 级**多写**配置（同一批数据写入多个目标，如 PG + ClickHouse）；与 `writer` **二选一** |
 | `seeds` | 否 | Job 级命名种子列表，供字段 `strategy: seed` 引用（见 [Job 级 seeds](#job-级-seeds从真实数据出发)） |
 | `schedule` | 否 | 定时调度（仅**内置** Job；自定义任务请用控制台） |
 | `constraints` | 否 | 引用外部约束文件或内联约束列表 |
@@ -621,7 +627,11 @@ constraints:
 
 ## 指定写入目标
 
-### Job 级默认 Writer
+写入配置有两种模式：**单写**（`writer`）与**多写**（`writers`）。数据只生成一次；多写时同一批行会 fan-out 到列表中的每个目标，**各库收到的字段值相同**（仅连接/物理表可能不同）。
+
+### 单写（`writer`）
+
+写入单个数据源，适用于只落一个库或只导出 CSV 的场景：
 
 ```yaml
 writer:
@@ -630,21 +640,49 @@ writer:
   mode: insert
 ```
 
-### 表级覆盖
+### 多写（`writers`）
 
-同一份 Job 中，不同表可写入不同目标：
+同一 Job 运行时，将**同一批生成结果**同时写入多个目标（如 PostgreSQL + ClickHouse）：
 
 ```yaml
+writers:
+  - type: postgresql
+    connection: dev-road
+    mode: insert
+  - type: clickhouse
+    connection: dev-wf
+    mode: insert
+```
+
+说明：
+
+- 每个列表项结构与单写 `writer` 相同（`type`、`connection`、`mode` 等）
+- 各目标写入**同一份行数据**；若某目标写入失败，其他目标可能已成功，任务进度按最小成功批次数统计
+- 同一层级**不能**同时配置 `writer` 与 `writers`
+- 表级同样支持 `writers`，用于某张表单独多写或覆盖 Job 默认
+
+### 表级覆盖
+
+同一份 Job 中，不同表可写入不同目标（单写或多写均可）：
+
+```yaml
+# Job 级默认：双写 PG + ClickHouse
+writers:
+  - type: postgresql
+    connection: dev-safety
+    mode: insert
+  - type: clickhouse
+    connection: dev-wf
+    mode: insert
+
 tables:
   - name: orders
-    writer:
-      type: postgresql
-      connection: dev-safety
-      mode: insert
+    # 继承 Job 级 writers
     schema:
       table: orders
 
   - name: order_items
+    # 该表仅写 CSV，覆盖 Job 级
     writer:
       type: csv
       connection: traffic-output
@@ -653,7 +691,7 @@ tables:
       table: order_items
 ```
 
-**优先级**：表级 writer > Job 级 writer > API 请求中的 writer。
+**优先级**：表级 `writer` / `writers` > Job 级 `writer` / `writers` > API 请求中的 `writer` / `writers`。
 
 | type | 说明 |
 |------|------|
@@ -662,6 +700,22 @@ tables:
 | `csv` | 输出为 `{path}/{table}.csv` |
 
 当前仅支持 `mode: insert`。
+
+### API 运行时覆盖
+
+提交任务时可通过请求体覆盖默认写入（Job YAML 中已配置 `writer` / `writers` 时，**以 YAML 为准**）：
+
+```json
+{
+  "jobConfig": "jobs/my_job.yaml",
+  "writers": [
+    { "type": "postgresql", "connection": "dev-pg", "mode": "insert" },
+    { "type": "clickhouse", "connection": "dev-ck", "mode": "insert" }
+  ]
+}
+```
+
+单写仍可使用 `"writer": { "type": "csv", "connection": "local-csv", "mode": "insert" }`。`writer` 与 `writers` 在请求体中亦不可同时使用。
 
 ### 写入 PostgreSQL 时注意
 
@@ -691,6 +745,20 @@ tables:
 curl -X POST http://localhost:8080/api/v1/jobs \
   -H "Content-Type: application/json" \
   -d '{"jobConfig": "jobs/my_job.yaml", "overrides": {"tables.customers.count": 500}}'
+```
+
+也可在请求体中指定运行时写入（Job YAML 未配置时生效）：
+
+```bash
+curl -X POST http://localhost:8080/api/v1/jobs \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jobConfig": "jobs/my_job.yaml",
+    "writers": [
+      {"type": "postgresql", "connection": "dev-pg", "mode": "insert"},
+      {"type": "clickhouse", "connection": "dev-ck", "mode": "insert"}
+    ]
+  }'
 ```
 
 **overrides** 目前仅支持覆盖 `tables.{表名}.count`。
@@ -820,7 +888,13 @@ tables:
 ## 常见问题
 
 **Q：保存后运行报错「Unknown connection」**  
-A：检查 `writer.connection` / `seeds[].reader.connection` 是否在 `application.yml` 的 `connections` 中定义，且服务已重启。
+A：检查 `writer.connection` / `writers[].connection` / `seeds[].reader.connection` 是否在 `application.yml` 的 `connections` 中定义，且服务已重启。
+
+**Q：多写（writers）时各库数据是否一致？**  
+A：一致。引擎只生成一次数据，同一批次会写入 `writers` 中的每个目标；各库表结构、类型映射差异可能导致存储表现略有不同，但源行字段值相同。若某一目标写入失败，其他目标可能已有数据，请查看任务日志与各库实际行数。
+
+**Q：能否同时写 `writer` 和 `writers`？**  
+A：不能。Job 级、表级、API 请求体均须**二选一**；同时配置会在加载或校验时报错。
 
 **Q：PostgreSQL 写入 bigint 列失败**  
 A：不要用空字符串表示空值；改用 `enum: ['']` 或不生成该字段。
