@@ -124,14 +124,69 @@ flowchart TB
 ### 构建与运行
 
 ```bash
-# 打包可执行 fat jar
-mvn -pl dg-web package -DskipTests
+# 打包可执行 fat jar（-am 会同时构建 dg-core 与插件，避免 fat jar 内嵌过期依赖）
+mvn clean package -pl dg-web -am -DskipTests
 
 # 启动（默认从 classpath 读取 configs/，无需指定工作目录）
 java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 ```
 
 服务默认监听 `http://localhost:8080`。可通过环境变量、`application.yml` 或 `application-local.yml` 覆盖 `data-generator.*` 配置（本地敏感项推荐后者，见 `application-local.yml.example`）。
+
+### 部署打包（Linux / Windows）
+
+在 Windows 开发机上可一键打出含启停脚本的 zip 包：
+
+```powershell
+# 标准打包（含 Maven 构建）
+.\scripts\package.ps1
+
+# 指定内置 JDK 目录（解压后为安装包内 jdk/，不影响系统 JDK）
+.\scripts\package.ps1 -JdkPath D:\jdk-21
+
+# 跳过构建，使用已有 target jar
+.\scripts\package.ps1 -SkipBuild
+```
+
+输出：`build/dist/data-generator-<version>.zip`。解压后目录结构：
+
+```
+data-generator-<version>/
+├── bin/linux/       start.sh / stop.sh / status.sh
+├── bin/windows/     start.bat / stop.bat / status.bat
+├── lib/             应用 fat jar
+├── conf/            本地配置模板（application-local.yml.example、java.opts.example）
+├── jdk/             可选内置 JDK（存在时启停脚本优先使用）
+├── data/            运行时数据目录
+└── logs/            控制台日志
+```
+
+**Java 选择优先级**（启停脚本仅在本进程内生效，不修改系统 `JAVA_HOME` / `PATH`）：
+
+1. 安装包内 `jdk/bin/java`（或 `java.exe`）
+2. 系统 `JAVA_HOME`
+3. 系统 `PATH` 中的 `java`
+
+**端口**：环境变量 `SERVER_PORT` > `conf/application-local.yml` 等配置文件 > 默认 `8080`。
+
+```bash
+# Linux
+unzip data-generator-0.1.0-SNAPSHOT.zip
+cd data-generator-0.1.0-SNAPSHOT
+chmod +x bin/linux/*.sh
+./bin/linux/start.sh
+./bin/linux/stop.sh
+./bin/linux/status.sh
+```
+
+```bat
+REM Windows
+bin\windows\start.bat
+bin\windows\stop.bat
+bin\windows\status.bat
+```
+
+本地配置：将 `conf/application-local.yml.example` 复制为 `conf/application-local.yml` 后修改；可选 `conf/java.opts` 设置 `JAVA_OPTS`。
 
 ### Web 控制台
 
@@ -379,6 +434,7 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}/record
 | 任务持久化 | SQLite 存储任务记录；运行日志写入 `log-dir` 文件，重启后可查历史 |
 | Job 定义 CRUD | REST + Web UI；自定义 YAML 存 `writable-config-dir`，调度存 SQLite |
 | Job 定时调度 | Cron 触发、同配置 FIFO 排队、手动运行与调度并存 |
+| 部署打包 | `scripts/package.ps1` 生成 zip；`bin/linux`、`bin/windows` 启停脚本；可选内置 JDK |
 
 ## 许可证
 

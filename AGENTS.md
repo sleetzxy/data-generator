@@ -150,12 +150,14 @@ dg-web → dg-plugin-* → dg-spi
 # 全量测试
 mvn clean test
 
-# 打包
-mvn -pl dg-web package -DskipTests
+# 打包（-am 同时构建 dg-core / 插件，避免 fat jar 内嵌过期的本地仓库依赖）
+mvn clean package -pl dg-web -am -DskipTests
 
 # 启动（任意目录均可，默认从 classpath 读取 configs/）
 java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 ```
+
+**部署打包**（Windows 开发机）：`.\scripts\package.ps1` 生成 `build/dist/data-generator-<version>.zip`，内含 `bin/linux`、`bin/windows` 启停脚本与 `lib/` jar。详见 `README.md`「部署打包」一节。
 
 **完成任何实现或修复后**，必须运行相关测试并确认通过，再向用户报告成功。
 
@@ -203,6 +205,7 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 | 修改生成/约束逻辑 | 改 `dg-core`；补单元测试 |
 | 修改任务持久化 | 改 `dg-web/.../storage/`（`JobRepository`、`JobLogFileRepository`）；任务记录见 job-log-sqlite spec，运行日志见 `storage.log-dir` |
 | 修改认证/登录 | 改 `SecurityConfig` + `DataGeneratorProperties.AuthProperties`；静态页 `static/login.html` |
+| 修改部署/启停脚本 | 改 `scripts/linux`、`scripts/windows`；打包逻辑在 `scripts/package.ps1`（Maven 须带 `-am`） |
 | 排查调用链 | `codegraph_trace` → `codegraph_explore` |
 
 ---
