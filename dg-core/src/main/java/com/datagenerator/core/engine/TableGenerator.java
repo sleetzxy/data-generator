@@ -25,6 +25,8 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 public class TableGenerator {
 
@@ -104,8 +106,9 @@ public class TableGenerator {
             BatchWrittenCallback batchWrittenCallback,
             SeedRowSnapshotStore seedRowSnapshots) {
         ConstraintPipeline pipeline = new ConstraintPipeline(constraints, constraintRegistry, options.onConstraintFail());
+        CancellationChecker cancellationChecker = options.cancellationChecker();
         GenerationPipeline writePipeline =
-                new GenerationPipeline(writer, options.batchSize(), batchWrittenCallback);
+                new GenerationPipeline(writer, options.batchSize(), batchWrittenCallback, cancellationChecker);
         ForeignKeyIndex foreignKeyIndex = ForeignKeyIndex.build(upstreamTables, constraints);
         Map<String, Object> constraintBindings = foreignKeyIndex.isEmpty()
                 ? Map.of()
@@ -125,6 +128,8 @@ public class TableGenerator {
             seedSampler.preloadCaches(schema);
         }
 
+        CancellationChecks.throwIfCancelled(cancellationChecker);
+
         if (shouldGenerateInParallel(count, options.generationParallelism())) {
             constraintFailedRows = generateRowsInParallel(
                     schema,
@@ -136,9 +141,13 @@ public class TableGenerator {
                     seedRowSnapshots,
                     constraintBindings,
                     options,
-                    generatedRows);
+                    generatedRows,
+                    cancellationChecker);
         } else {
             for (int rowIndex = 0; rowIndex < count; rowIndex++) {
+                if (rowIndex % 256 == 0) {
+                    CancellationChecks.throwIfCancelled(cancellationChecker);
+                }
                 DataRow row = generateValidRow(
                         schema,
                         tableName,
@@ -158,6 +167,7 @@ public class TableGenerator {
         }
 
         for (DataRow row : generatedRows) {
+            CancellationChecks.throwIfCancelled(cancellationChecker);
             writePipeline.accept(tableName, row);
         }
 
@@ -178,14 +188,15 @@ public class TableGenerator {
             SeedRowSnapshotStore seedRowSnapshots,
             Map<String, Object> constraintBindings,
             GenerationOptions options,
-            List<DataRow> generatedRows) {
+            List<DataRow> generatedRows,
+            CancellationChecker cancellationChecker) {
         int parallelism = options.generationParallelism();
         DataRow[] rows = new DataRow[(int) count];
         long[] failedRows = {0};
         int chunkSize = (int) ((count + parallelism - 1) / parallelism);
         ExecutorService executor = Executors.newFixedThreadPool(parallelism);
+        List<Future<?>> futures = new ArrayList<>();
         try {
-            List<Future<?>> futures = new ArrayList<>();
             for (int chunk = 0; chunk < parallelism; chunk++) {
                 int start = chunk * chunkSize;
                 int end = (int) Math.min(count, (long) (chunk + 1) * chunkSize);
@@ -194,6 +205,9 @@ public class TableGenerator {
                 }
                 futures.add(executor.submit(() -> {
                     for (int rowIndex = start; rowIndex < end; rowIndex++) {
+                        if (rowIndex % 256 == 0 && Thread.currentThread().isInterrupted()) {
+                            throw new JobCancelledException();
+                        }
                         DataRow row = generateValidRow(
                                 schema,
                                 tableName,
@@ -214,13 +228,22 @@ public class TableGenerator {
                     }
                 }));
             }
-            for (Future<?> future : futures) {
-                future.get();
-            }
+            awaitParallelFutures(futures, cancellationChecker);
+        } catch (JobCancelledException exception) {
+            cancelParallelFutures(futures);
+            executor.shutdownNow();
+            throw exception;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new IllegalStateException("Parallel row generation interrupted", exception);
+            cancelParallelFutures(futures);
+            executor.shutdownNow();
+            throw new JobCancelledException();
         } catch (ExecutionException exception) {
+            cancelParallelFutures(futures);
+            executor.shutdownNow();
+            if (exception.getCause() instanceof JobCancelledException cancelled) {
+                throw cancelled;
+            }
             throw new IllegalStateException("Parallel row generation failed", exception.getCause());
         } finally {
             executor.shutdown();
@@ -232,6 +255,27 @@ public class TableGenerator {
             }
         }
         return failedRows[0];
+    }
+
+    private static void awaitParallelFutures(List<Future<?>> futures, CancellationChecker cancellationChecker)
+            throws InterruptedException, ExecutionException {
+        for (Future<?> future : futures) {
+            while (!future.isDone()) {
+                CancellationChecks.throwIfCancelled(cancellationChecker);
+                try {
+                    future.get(200, TimeUnit.MILLISECONDS);
+                } catch (TimeoutException ignored) {
+                    // 继续轮询，以便及时响应取消
+                }
+            }
+            future.get();
+        }
+    }
+
+    private static void cancelParallelFutures(List<Future<?>> futures) {
+        for (Future<?> future : futures) {
+            future.cancel(true);
+        }
     }
 
     private static boolean shouldGenerateInParallel(long count, int generationParallelism) {

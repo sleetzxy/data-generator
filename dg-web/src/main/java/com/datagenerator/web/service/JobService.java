@@ -22,6 +22,7 @@ import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.config.WriterConfigResolver;
 import com.datagenerator.core.constraint.ConstraintLoader;
 import com.datagenerator.core.engine.GenerationOptions;
+import com.datagenerator.core.engine.JobCancelledException;
 import com.datagenerator.core.engine.JobExecutionListener;
 import com.datagenerator.core.engine.JobOrchestrator;
 import com.datagenerator.core.engine.JobResult;
@@ -221,16 +222,16 @@ public class JobService {
         }
         String jobConfig = response.getJobConfig();
         cancellationRegistry.markCancelled(jobId);
-        if (asyncJobExecutor.cancel(jobId)) {
-            scheduleExecutor.onJobTerminal(jobConfig);
-            return;
-        }
-        if (cancellationRegistry.interruptRunning(jobId)) {
-            JobResponse current = jobRepository.findById(jobId).orElseThrow();
-            if (!isTerminalStatus(current.getStatus())) {
-                current.setStatus(JobStatus.CANCELLED);
-                jobRepository.update(current);
-                jobLogStore.warn(jobId, "任务已被用户取消");
+        boolean asyncCancelled = asyncJobExecutor.cancel(jobId);
+        boolean interrupted = cancellationRegistry.interruptRunning(jobId);
+        if (asyncCancelled || interrupted) {
+            if (!asyncCancelled) {
+                JobResponse current = jobRepository.findById(jobId).orElseThrow();
+                if (!isTerminalStatus(current.getStatus())) {
+                    current.setStatus(JobStatus.CANCELLED);
+                    jobRepository.update(current);
+                    jobLogStore.warn(jobId, "任务已被用户取消");
+                }
             }
             scheduleExecutor.onJobTerminal(jobConfig);
             return;
@@ -312,7 +313,9 @@ public class JobService {
             logJobContext(jobId, job, runtimeWriters, options);
             JobExecutionListener progressListener = createProgressListener(
                     jobId, jobConfig, submittedAt, totalTables, totalRows, runningDetails);
-            JobResult result = jobOrchestrator.run(job, runtimeWriters, options, progressListener);
+            GenerationOptions executionOptions =
+                    options.withCancellationChecker(() -> isJobCancelled(jobId));
+            JobResult result = jobOrchestrator.run(job, runtimeWriters, executionOptions, progressListener);
             for (TableResult tableResult : result.details()) {
                 jobLogStore.info(
                         jobId,
@@ -340,6 +343,15 @@ public class JobService {
                     "任务完成，耗时 " + response.getDuration()
                             + "，共写入 " + result.writtenRows() + " 行");
             return response;
+        } catch (JobCancelledException cancelled) {
+            JobResponse latest = jobRepository.findById(jobId).orElseThrow(
+                    () -> new IllegalStateException("Job not found: " + jobId));
+            if (!isTerminalStatus(latest.getStatus())) {
+                latest.setStatus(JobStatus.CANCELLED);
+                jobRepository.update(latest);
+                jobLogStore.warn(jobId, "任务已被用户取消");
+            }
+            return latest;
         } catch (Exception exception) {
             if (isJobCancelled(jobId)) {
                 throw exception;

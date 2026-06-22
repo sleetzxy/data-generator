@@ -1,5 +1,6 @@
 package com.datagenerator.web.service;
 
+import com.datagenerator.core.engine.JobCancelledException;
 import com.datagenerator.web.config.JobRuntimeSettings;
 import com.datagenerator.web.dto.JobProgress;
 import com.datagenerator.web.dto.JobResponse;
@@ -75,6 +76,9 @@ public class AsyncJobExecutor {
                     return;
                 }
                 task.run();
+            } catch (JobCancelledException cancelled) {
+                markCancelled(jobId);
+                jobLogStore.warn(jobId, "任务已取消");
             } catch (Exception exception) {
                 if (cancellationRegistry.isCancelled(jobId)) {
                     markCancelled(jobId);

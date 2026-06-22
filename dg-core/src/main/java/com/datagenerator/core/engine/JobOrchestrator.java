@@ -80,6 +80,7 @@ public class JobOrchestrator {
 
         try {
             for (int tableIndex = 0; tableIndex < sortedTables.size(); tableIndex++) {
+                CancellationChecks.throwIfCancelled(options.cancellationChecker());
                 TableTask tableTask = sortedTables.get(tableIndex);
                 listener.onTableStarted(tableTask.getName(), tableIndex, totalTables, tableTask.getCount());
 
