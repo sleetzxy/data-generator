@@ -32,7 +32,10 @@ import com.datagenerator.core.schema.FieldDefinition;
 import com.datagenerator.core.schema.JobDefinition;
 import com.datagenerator.core.schema.OverridePathResolver;
 import com.datagenerator.core.schema.SchemaDefinition;
+import com.datagenerator.core.schema.SeedDefinition;
 import com.datagenerator.core.schema.TableTask;
+import com.datagenerator.spi.model.ReaderConfig;
+import com.datagenerator.spi.model.WriterConfig;
 import com.datagenerator.core.schema.YamlConfigLoader;
 import com.datagenerator.web.storage.JobRepository;
 import org.slf4j.Logger;
@@ -233,6 +236,14 @@ public class JobService {
                     jobLogStore.warn(jobId, "任务已被用户取消");
                 }
             }
+            scheduleExecutor.onJobTerminal(jobConfig);
+            return;
+        }
+        JobResponse current = jobRepository.findById(jobId).orElseThrow();
+        if (current.getStatus() == JobStatus.PENDING || current.getStatus() == JobStatus.RUNNING) {
+            current.setStatus(JobStatus.CANCELLED);
+            jobRepository.update(current);
+            jobLogStore.warn(jobId, "任务已被用户取消");
             scheduleExecutor.onJobTerminal(jobConfig);
             return;
         }
@@ -656,15 +667,25 @@ public class JobService {
             JobDefinition job,
             List<Map<String, Object>> runtimeWriters,
             GenerationOptions options) {
+        ConnectionRegistry effectiveRegistry = connectionRegistry.withOverlay(job.getConnections());
         List<Map<String, Object>> defaultWriters =
                 WriterConfigResolver.resolveDefaultWriters(job, runtimeWriters);
-        jobLogStore.info(jobId, "Writer 配置: " + summarizeWriters(defaultWriters));
+        jobLogStore.info(jobId, "Writer 配置: " + summarizeResolvedWriters(defaultWriters, effectiveRegistry));
         jobLogStore.info(
                 jobId,
                 "生成选项: batchSize=" + options.batchSize()
                         + ", maxRetries=" + options.maxRetries()
                         + ", onConstraintFail=" + options.onConstraintFail());
         jobLogStore.info(jobId, "Job seeds 数量: " + job.getSeeds().size());
+        for (SeedDefinition seed : job.getSeeds()) {
+            if (seed.getReader().isEmpty()) {
+                continue;
+            }
+            jobLogStore.info(
+                    jobId,
+                    "Seed [" + seed.getName() + "] reader: "
+                            + summarizeReaderConfig(effectiveRegistry.resolveReader(seed.getReader())));
+        }
         for (TableTask table : job.getTables()) {
             String schemaRef = table.getSchemaDefinition() != null
                     ? "inline"
@@ -674,44 +695,60 @@ public class JobService {
                     "表 [" + table.getName() + "] count=" + table.getCount()
                             + ", schema=" + schemaRef
                             + ", depends_on=" + table.getDependsOn()
-                            + ", writer=" + summarizeWriters(
-                                    WriterConfigResolver.resolveTableWriters(table, defaultWriters)));
+                            + ", writer=" + summarizeResolvedWriters(
+                                    WriterConfigResolver.resolveTableWriters(table, defaultWriters),
+                                    effectiveRegistry));
         }
     }
 
-    private static String summarizeWriters(List<Map<String, Object>> writers) {
+    private static String summarizeResolvedWriters(
+            List<Map<String, Object>> writers, ConnectionRegistry registry) {
         if (writers == null || writers.isEmpty()) {
             return "[]";
         }
         if (writers.size() == 1) {
-            return summarizeMap(writers.getFirst());
+            return summarizeWriterConfig(registry.resolveWriter(writers.getFirst()));
         }
         StringBuilder builder = new StringBuilder("[");
         for (int index = 0; index < writers.size(); index++) {
             if (index > 0) {
                 builder.append(", ");
             }
-            builder.append(summarizeMap(writers.get(index)));
+            builder.append(summarizeWriterConfig(registry.resolveWriter(writers.get(index))));
         }
         builder.append(']');
         return builder.toString();
     }
 
-    private static String summarizeMap(Map<String, Object> values) {
-        if (values == null || values.isEmpty()) {
-            return "{}";
+    private static String summarizeWriterConfig(WriterConfig config) {
+        List<String> fields = new ArrayList<>();
+        addConfigField(fields, "type", config.type());
+        addConfigField(fields, "connection", config.connection());
+        addConfigField(fields, "mode", config.mode());
+        addConfigField(fields, "table", config.table());
+        addConfigField(fields, "path", config.path());
+        addConfigField(fields, "url", config.url());
+        addConfigField(fields, "username", config.username());
+        addConfigField(fields, "password", config.password());
+        return "{" + String.join(", ", fields) + "}";
+    }
+
+    private static String summarizeReaderConfig(ReaderConfig config) {
+        List<String> fields = new ArrayList<>();
+        addConfigField(fields, "type", config.type());
+        addConfigField(fields, "connection", config.connection());
+        addConfigField(fields, "path", config.path());
+        addConfigField(fields, "url", config.url());
+        addConfigField(fields, "username", config.username());
+        addConfigField(fields, "password", config.password());
+        return "{" + String.join(", ", fields) + "}";
+    }
+
+    private static void addConfigField(List<String> fields, String key, String value) {
+        if (value == null || value.isBlank()) {
+            return;
         }
-        StringBuilder builder = new StringBuilder("{");
-        boolean first = true;
-        for (Map.Entry<String, Object> entry : values.entrySet()) {
-            if (!first) {
-                builder.append(", ");
-            }
-            builder.append(entry.getKey()).append('=').append(entry.getValue());
-            first = false;
-        }
-        builder.append('}');
-        return builder.toString();
+        fields.add(key + '=' + value);
     }
 
     private JobResponse toJobResponse(

@@ -1,0 +1,27 @@
+id: job_level_connections
+name: Job 级 connections 测试
+connections:
+  my-pg:
+    type: postgresql
+    url: jdbc:postgresql://job-host:5432/jobdb
+    username: jobuser
+    password: jobpass
+writer:
+  type: postgresql
+  connection: my-pg
+  mode: insert
+seeds:
+  - name: sample
+    reader:
+      type: postgresql
+      connection: my-pg
+      query: SELECT 1
+tables:
+  - name: items
+    count: 1
+    schema:
+      table: items
+      fields:
+        - name: id
+          type: BIGINT
+          generator: { strategy: sequence, start: 1, step: 1 }

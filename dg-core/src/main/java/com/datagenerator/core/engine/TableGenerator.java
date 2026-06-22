@@ -1,5 +1,6 @@
 package com.datagenerator.core.engine;
 
+import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintPipeline;
 import com.datagenerator.core.constraint.ConstraintValidationOutcome;
 import com.datagenerator.core.constraint.ConstraintValidatorRegistry;
@@ -30,11 +31,13 @@ import java.util.concurrent.TimeoutException;
 
 public class TableGenerator {
 
+    private final PluginRegistry pluginRegistry;
     private final GeneratorRegistry generatorRegistry;
     private final ReferenceDataLoader referenceDataLoader;
     private final YamlConfigLoader configLoader;
 
     public TableGenerator(GeneratorRegistry generatorRegistry) {
+        this.pluginRegistry = null;
         this.generatorRegistry = generatorRegistry;
         this.referenceDataLoader = null;
         this.configLoader = null;
@@ -45,6 +48,7 @@ public class TableGenerator {
     }
 
     public TableGenerator(PluginRegistry pluginRegistry, YamlConfigLoader configLoader) {
+        this.pluginRegistry = pluginRegistry;
         this.generatorRegistry = pluginRegistry.getGeneratorRegistry();
         this.referenceDataLoader = pluginRegistry.getReferenceDataLoader();
         this.configLoader = configLoader;
@@ -91,6 +95,7 @@ public class TableGenerator {
                 jobSeeds,
                 options,
                 batchWrittenCallback,
+                null,
                 null);
     }
 
@@ -105,6 +110,32 @@ public class TableGenerator {
             GenerationOptions options,
             BatchWrittenCallback batchWrittenCallback,
             SeedRowSnapshotStore seedRowSnapshots) {
+        return generate(
+                schema,
+                count,
+                constraints,
+                constraintRegistry,
+                upstreamTables,
+                writer,
+                jobSeeds,
+                options,
+                batchWrittenCallback,
+                seedRowSnapshots,
+                null);
+    }
+
+    public TableGenerationResult generate(
+            SchemaDefinition schema,
+            long count,
+            List<ConstraintDefinition> constraints,
+            ConstraintValidatorRegistry constraintRegistry,
+            Map<String, List<DataRow>> upstreamTables,
+            DataWriter writer,
+            List<SeedDefinition> jobSeeds,
+            GenerationOptions options,
+            BatchWrittenCallback batchWrittenCallback,
+            SeedRowSnapshotStore seedRowSnapshots,
+            ConnectionRegistry connectionRegistry) {
         ConstraintPipeline pipeline = new ConstraintPipeline(constraints, constraintRegistry, options.onConstraintFail());
         CancellationChecker cancellationChecker = options.cancellationChecker();
         GenerationPipeline writePipeline =
@@ -121,9 +152,10 @@ public class TableGenerator {
         List<SeedDefinition> sortedSeeds = jobSeeds == null || jobSeeds.isEmpty()
                 ? List.of()
                 : SeedDependencySorter.sort(new ArrayList<>(jobSeeds));
-        SeedSampler seedSampler = sortedSeeds.isEmpty() || referenceDataLoader == null
+        ReferenceDataLoader seedReferenceLoader = resolveSeedReferenceLoader(connectionRegistry);
+        SeedSampler seedSampler = sortedSeeds.isEmpty() || seedReferenceLoader == null
                 ? null
-                : new SeedSampler(referenceDataLoader, configLoader, sortedSeeds);
+                : new SeedSampler(seedReferenceLoader, configLoader, sortedSeeds);
         if (seedSampler != null) {
             seedSampler.preloadCaches(schema);
         }
@@ -255,6 +287,16 @@ public class TableGenerator {
             }
         }
         return failedRows[0];
+    }
+
+    private ReferenceDataLoader resolveSeedReferenceLoader(ConnectionRegistry connectionRegistry) {
+        if (referenceDataLoader == null) {
+            return null;
+        }
+        if (connectionRegistry == null || pluginRegistry == null) {
+            return referenceDataLoader;
+        }
+        return new ReferenceDataLoader(pluginRegistry, connectionRegistry);
     }
 
     private static void awaitParallelFutures(List<Future<?>> futures, CancellationChecker cancellationChecker)

@@ -48,6 +48,7 @@ public class YamlConfigLoader {
         }
         job.setWriter(YamlMappingUtils.asMap(root.get("writer")));
         job.setWriters(YamlMappingUtils.asMapList(root.get("writers")));
+        job.setConnections(YamlMappingUtils.asNamedConnectionMap(root.get("connections")));
         WriterConfigResolver.validateJobWriters(job);
 
         List<SeedDefinition> seeds = new ArrayList<>();

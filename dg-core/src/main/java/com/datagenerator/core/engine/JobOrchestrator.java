@@ -74,6 +74,7 @@ public class JobOrchestrator {
 
         List<Map<String, Object>> defaultWriters =
                 WriterConfigResolver.resolveDefaultWriters(job, runtimeWriters);
+        ConnectionRegistry effectiveRegistry = connectionRegistry.withOverlay(job.getConnections());
         DataWriter writer = null;
         String activeWriterKey = null;
         SeedRowSnapshotStore seedRowSnapshots = new SeedRowSnapshotStore();
@@ -87,13 +88,13 @@ public class JobOrchestrator {
                 List<Map<String, Object>> tableWriterConfigs =
                         WriterConfigResolver.resolveTableWriters(tableTask, defaultWriters);
                 WriterConfigResolver.validateWriterMapsConfigured(tableTask.getName(), tableWriterConfigs);
-                String writerKey = WriterConfigResolver.writerKey(tableWriterConfigs, connectionRegistry);
+                String writerKey = WriterConfigResolver.writerKey(tableWriterConfigs, effectiveRegistry);
                 if (writer == null || !writerKey.equals(activeWriterKey)) {
                     if (writer != null) {
                         writer.flush();
                         writer.close();
                     }
-                    writer = createWriter(tableWriterConfigs);
+                    writer = createWriter(tableWriterConfigs, effectiveRegistry);
                     activeWriterKey = writerKey;
                 }
 
@@ -124,7 +125,8 @@ public class JobOrchestrator {
                         job.getSeeds(),
                         options,
                         batchCallback,
-                        seedRowSnapshots);
+                        seedRowSnapshots,
+                        effectiveRegistry);
 
                 List<DataRow> upstreamRows = result.generatedRows();
                 Set<String> requiredFields = collectUpstreamFields(
@@ -158,16 +160,16 @@ public class JobOrchestrator {
         return new JobResult(totalRows, writtenRows, failedRows, details);
     }
 
-    private DataWriter createWriter(List<Map<String, Object>> writerMaps) {
+    private DataWriter createWriter(List<Map<String, Object>> writerMaps, ConnectionRegistry registry) {
         if (writerMaps.size() == 1) {
-            WriterConfig resolvedWriter = connectionRegistry.resolveWriter(writerMaps.getFirst());
+            WriterConfig resolvedWriter = registry.resolveWriter(writerMaps.getFirst());
             DataWriter delegate = pluginRegistry.getWriter(resolvedWriter.type());
             delegate.init(resolvedWriter);
             return delegate;
         }
         List<DataWriter> delegates = new ArrayList<>(writerMaps.size());
         for (Map<String, Object> writerMap : writerMaps) {
-            WriterConfig resolvedWriter = connectionRegistry.resolveWriter(writerMap);
+            WriterConfig resolvedWriter = registry.resolveWriter(writerMap);
             DataWriter delegate = pluginRegistry.getWriter(resolvedWriter.type());
             delegate.init(resolvedWriter);
             delegates.add(delegate);

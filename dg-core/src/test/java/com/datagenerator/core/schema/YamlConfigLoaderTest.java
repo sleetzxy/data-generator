@@ -91,6 +91,16 @@ class YamlConfigLoaderTest {
     }
 
     @Test
+    void loadJob_parsesJobLevelConnections() {
+        JobDefinition job = loader.loadJob("fixtures/jobs/job_level_connections.yaml");
+
+        assertThat(job.getConnections()).containsKey("my-pg");
+        assertThat(job.getConnections().get("my-pg")).containsEntry(
+                "url", "jdbc:postgresql://job-host:5432/jobdb");
+        assertThat(job.getWriter()).containsEntry("connection", "my-pg");
+    }
+
+    @Test
     void loadJob_parsesWriters() {
         JobDefinition job = loader.loadJob("fixtures/jobs/multi_write.yaml");
         assertThat(job.getWriter()).isEmpty();

@@ -101,6 +101,32 @@ class ConnectionRegistryTest {
     }
 
     @Test
+    void withOverlay_jobConnectionOverridesGlobal() {
+        ConnectionRegistry registry = new ConnectionRegistry(Map.of(
+                "my-pg", Map.of(
+                        "type", "postgresql",
+                        "url", "jdbc:postgresql://global:5432/globaldb",
+                        "username", "global",
+                        "password", "global-pass")));
+
+        ConnectionRegistry effective = registry.withOverlay(Map.of(
+                "my-pg", Map.of(
+                        "type", "postgresql",
+                        "url", "jdbc:postgresql://job:5432/jobdb",
+                        "username", "jobuser",
+                        "password", "jobpass")));
+
+        WriterConfig resolved = effective.resolveWriter(Map.of(
+                "type", "postgresql",
+                "connection", "my-pg",
+                "mode", "insert"));
+
+        assertThat(resolved.url()).isEqualTo("jdbc:postgresql://job:5432/jobdb");
+        assertThat(resolved.username()).isEqualTo("jobuser");
+        assertThat(resolved.password()).isEqualTo("jobpass");
+    }
+
+    @Test
     void resolveWriter_namedConnection_blankPasswordOverridesRegistry() {
         ConnectionRegistry registry = new ConnectionRegistry(Map.of(
                 "dev-ch", Map.of(

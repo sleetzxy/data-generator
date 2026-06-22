@@ -26,6 +26,19 @@ public class ConnectionRegistry {
         }
     }
 
+    /**
+     * 合并 Job 级 connections 覆盖层；同名连接以 overlay 为准。
+     */
+    public ConnectionRegistry withOverlay(Map<String, Map<String, Object>> overlay) {
+        if (overlay == null || overlay.isEmpty()) {
+            return this;
+        }
+        Map<String, Map<String, Object>> merged = new HashMap<>();
+        connections.forEach((name, config) -> merged.put(name, new HashMap<>(config)));
+        overlay.forEach((name, config) -> merged.put(name, new HashMap<>(config)));
+        return new ConnectionRegistry(merged);
+    }
+
     public ReaderConfig resolveReader(Map<String, Object> readerMap) {
         Map<String, Object> source = readerMap == null ? Map.of() : readerMap;
         Map<String, Object> connection = resolveConnectionConfig(source);
