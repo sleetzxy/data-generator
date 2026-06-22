@@ -160,7 +160,7 @@ tables:                   # 至少一张表
 
 ## 配置连接
 
-连接信息放在 **`application.yml`**，Job 里只写连接**名称**，避免把密码写进业务配置。
+推荐将连接信息放在 **`application.yml`**，Job 里通过连接**名称**引用，避免把密码写进业务配置。
 
 ```yaml
 data-generator:
@@ -185,7 +185,57 @@ data-generator:
 | `username` / `password` | 数据库 | 凭证 |
 | `path` | CSV | 文件输出目录 |
 
-修改连接后需**重启服务**；Job YAML 无需改动。
+修改 `application.yml` 中的连接后需**重启服务**。
+
+### Job 内联连接（可选）
+
+`writer` / `writers` / `seeds[].reader` 也支持在 Job YAML 中**直接写连接**，无需在 `application.yml` 注册名称。两种方式可混用。
+
+**方式一：连接字段平铺在 reader / writer 上**
+
+```yaml
+writers:
+  - type: postgresql
+    url: jdbc:postgresql://host:5432/MY_DB
+    username: postgres
+    password: secret
+    mode: insert
+
+seeds:
+  - name: road_sample
+    reader:
+      type: postgresql
+      url: jdbc:postgresql://host:5432/ROAD_DB
+      username: postgres
+      password: secret
+      query: SELECT 1
+```
+
+**方式二：`connection` 写为内联对象**
+
+```yaml
+writers:
+  - type: clickhouse
+    connection:
+      url: jdbc:clickhouse://host:8123/default
+      username: default
+      password: ""
+    mode: insert
+```
+
+**方式三：命名连接 + 局部覆盖**（仍引用 `application.yml`，但可覆盖 `url` / `username` 等）
+
+```yaml
+writer:
+  type: postgresql
+  connection: dev-safety
+  url: jdbc:postgresql://other-host:5432/OTHER_DB   # 覆盖注册表中的 url
+  mode: insert
+```
+
+字段优先级（高 → 低）：reader/writer 上的直接字段 > 内联 `connection` 对象 > `application.yml` 命名连接。
+
+> 内联连接适合临时环境或一次性任务；生产环境仍建议集中维护 `application.yml`，便于轮换凭证且不把密码写入 Job 文件。
 
 ---
 
@@ -888,7 +938,7 @@ tables:
 ## 常见问题
 
 **Q：保存后运行报错「Unknown connection」**  
-A：检查 `writer.connection` / `writers[].connection` / `seeds[].reader.connection` 是否在 `application.yml` 的 `connections` 中定义，且服务已重启。
+A：当 `connection` 为**字符串**时，须在 `application.yml` 的 `connections` 中定义同名连接并重启服务；若使用 [Job 内联连接](#job-内联连接可选)（直接写 `url`/`username`/`password` 或将 `connection` 写为对象），则无需在 `application.yml` 注册。
 
 **Q：多写（writers）时各库数据是否一致？**  
 A：一致。引擎只生成一次数据，同一批次会写入 `writers` 中的每个目标；各库表结构、类型映射差异可能导致存储表现略有不同，但源行字段值相同。若某一目标写入失败，其他目标可能已有数据，请查看任务日志与各库实际行数。

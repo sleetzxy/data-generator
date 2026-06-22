@@ -102,10 +102,29 @@ public class LookupReferenceSource {
 
     private static String rowCacheKey(Map<String, Object> config) {
         ReadRequest request = buildRequest(config);
-        Object connection = config.get("reader") instanceof Map<?, ?> readerConfig
-                ? readerConfig.get("connection")
-                : config.get("connection");
-        return String.valueOf(connection) + ":" + request.query();
+        Map<String, Object> readerMap = resolveReaderMap(config);
+        return connectionCacheKey(readerMap) + ":" + request.query();
+    }
+
+    private static String connectionCacheKey(Map<String, Object> readerMap) {
+        Object connection = readerMap.get("connection");
+        if (connection instanceof String connectionName && !connectionName.isBlank()) {
+            return connectionName;
+        }
+        if (connection instanceof Map<?, ?> inlineMap) {
+            return firstNonBlankObject(inlineMap.get("url"), inlineMap.get("path"));
+        }
+        return firstNonBlankObject(readerMap.get("url"), readerMap.get("path"));
+    }
+
+    private static String firstNonBlankObject(Object primary, Object fallback) {
+        if (primary != null && !String.valueOf(primary).isBlank()) {
+            return String.valueOf(primary);
+        }
+        if (fallback != null && !String.valueOf(fallback).isBlank()) {
+            return String.valueOf(fallback);
+        }
+        return "inline";
     }
 
     private static String requireField(Map<String, Object> config) {
