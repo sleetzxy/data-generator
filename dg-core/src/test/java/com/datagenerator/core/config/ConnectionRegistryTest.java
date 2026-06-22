@@ -70,6 +70,55 @@ class ConnectionRegistryTest {
     }
 
     @Test
+    void resolveReader_inlineConnectionMap_overriddenByTopLevelFields() {
+        ConnectionRegistry registry = new ConnectionRegistry();
+
+        ReaderConfig resolved = registry.resolveReader(Map.of(
+                "type", "postgresql",
+                "connection", Map.of(
+                        "url", "jdbc:postgresql://inline:5432/db",
+                        "username", "inline",
+                        "password", "inline-pass"),
+                "url", "jdbc:postgresql://override:5432/db",
+                "username", "override",
+                "query", "SELECT 1"));
+
+        assertThat(resolved.url()).isEqualTo("jdbc:postgresql://override:5432/db");
+        assertThat(resolved.username()).isEqualTo("override");
+        assertThat(resolved.password()).isEqualTo("inline-pass");
+    }
+
+    @Test
+    void resolveReader_unknownNamedConnection_throws() {
+        ConnectionRegistry registry = new ConnectionRegistry();
+
+        assertThatThrownBy(() -> registry.resolveReader(Map.of(
+                        "type", "postgresql",
+                        "connection", "missing",
+                        "query", "SELECT 1")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Unknown connection: missing");
+    }
+
+    @Test
+    void resolveWriter_namedConnection_blankPasswordOverridesRegistry() {
+        ConnectionRegistry registry = new ConnectionRegistry(Map.of(
+                "dev-ch", Map.of(
+                        "type", "clickhouse",
+                        "url", "jdbc:clickhouse://localhost:8123/default",
+                        "username", "default",
+                        "password", "registry-pass")));
+
+        WriterConfig resolved = registry.resolveWriter(Map.of(
+                "type", "clickhouse",
+                "connection", "dev-ch",
+                "password", "",
+                "mode", "insert"));
+
+        assertThat(resolved.password()).isEmpty();
+    }
+
+    @Test
     void resolveWriter_inlineConnectionFields_withoutNamedConnection() {
         ConnectionRegistry registry = new ConnectionRegistry();
 
@@ -101,6 +150,7 @@ class ConnectionRegistryTest {
         assertThat(resolved.connection()).isNull();
         assertThat(resolved.url()).isEqualTo("jdbc:clickhouse://localhost:8123/default");
         assertThat(resolved.username()).isEqualTo("default");
+        assertThat(resolved.password()).isEmpty();
     }
 
     @Test

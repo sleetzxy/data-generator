@@ -30,15 +30,13 @@ public class ConnectionRegistry {
         Map<String, Object> source = readerMap == null ? Map.of() : readerMap;
         Map<String, Object> connection = resolveConnectionConfig(source);
         return new ReaderConfig(
-                firstNonBlank(
-                        asString(source.get("type")),
-                        asString(connection.get("type"))),
+                asString(connection.get("type")),
                 connectionName(source),
                 asString(source.get("query")),
-                firstNonBlank(asString(source.get("path")), asString(connection.get("path"))),
-                firstNonBlank(asString(source.get("url")), asString(connection.get("url"))),
-                firstNonBlank(asString(source.get("username")), asString(connection.get("username"))),
-                firstNonBlank(asString(source.get("password")), asString(connection.get("password"))));
+                asString(connection.get("path")),
+                asString(connection.get("url")),
+                asString(connection.get("username")),
+                asString(connection.get("password")));
     }
 
     public ReaderConfig resolveReader(ReaderConfig config) {
@@ -53,23 +51,21 @@ public class ConnectionRegistry {
                 firstNonBlank(config.path(), asString(connection.get("path"))),
                 firstNonBlank(config.url(), asString(connection.get("url"))),
                 firstNonBlank(config.username(), asString(connection.get("username"))),
-                firstNonBlank(config.password(), asString(connection.get("password"))));
+                preferExplicit(config.password(), asString(connection.get("password"))));
     }
 
     public WriterConfig resolveWriter(Map<String, Object> writerMap) {
         Map<String, Object> source = writerMap == null ? Map.of() : writerMap;
         Map<String, Object> connection = resolveConnectionConfig(source);
         return new WriterConfig(
-                firstNonBlank(
-                        asString(source.get("type")),
-                        asString(connection.get("type"))),
+                asString(connection.get("type")),
                 connectionName(source),
                 asString(source.get("mode")),
                 asString(source.get("table")),
-                firstNonBlank(asString(source.get("path")), asString(connection.get("path"))),
-                firstNonBlank(asString(source.get("url")), asString(connection.get("url"))),
-                firstNonBlank(asString(source.get("username")), asString(connection.get("username"))),
-                firstNonBlank(asString(source.get("password")), asString(connection.get("password"))));
+                asString(connection.get("path")),
+                asString(connection.get("url")),
+                asString(connection.get("username")),
+                asString(connection.get("password")));
     }
 
     public WriterConfig resolveWriter(WriterConfig config) {
@@ -85,7 +81,25 @@ public class ConnectionRegistry {
                 firstNonBlank(config.path(), asString(connection.get("path"))),
                 firstNonBlank(config.url(), asString(connection.get("url"))),
                 firstNonBlank(config.username(), asString(connection.get("username"))),
-                firstNonBlank(config.password(), asString(connection.get("password"))));
+                preferExplicit(config.password(), asString(connection.get("password"))));
+    }
+
+    /**
+     * 生成 reader 连接维度的缓存键，与 {@link #resolveReader(Map)} 解析结果一致。
+     */
+    public String readerConnectionCacheKey(Map<String, Object> readerMap) {
+        return readerConnectionCacheKey(resolveReader(readerMap));
+    }
+
+    /**
+     * 根据已解析的 reader 配置生成连接缓存键。
+     */
+    public static String readerConnectionCacheKey(ReaderConfig resolved) {
+        String endpoint = firstNonBlank(resolved.url(), resolved.path());
+        if (resolved.connection() != null && !resolved.connection().isBlank()) {
+            return resolved.connection() + "|" + nullToEmpty(endpoint);
+        }
+        return firstNonBlank(endpoint, "inline");
     }
 
     /**
@@ -101,8 +115,11 @@ public class ConnectionRegistry {
             merged.putAll(resolveNamedConnection(connectionName));
         }
         for (String key : INLINE_CONNECTION_KEYS) {
+            if (!source.containsKey(key)) {
+                continue;
+            }
             String value = asString(source.get(key));
-            if (value != null && !value.isBlank()) {
+            if ("password".equals(key) || (value != null && !value.isBlank())) {
                 merged.put(key, value);
             }
         }
@@ -133,6 +150,14 @@ public class ConnectionRegistry {
             return primary;
         }
         return fallback;
+    }
+
+    private static String preferExplicit(String primary, String fallback) {
+        return primary != null ? primary : fallback;
+    }
+
+    private static String nullToEmpty(String value) {
+        return value == null ? "" : value;
     }
 
     private static String asString(Object value) {

@@ -59,10 +59,10 @@ public class LookupReferenceSource {
 
     private void initReader(Map<String, Object> config) {
         Map<String, Object> readerMap = resolveReaderMap(config);
-        ReaderConfig resolved = connectionRegistry == null
-                ? toReaderConfig(readerMap)
-                : connectionRegistry.resolveReader(readerMap);
-        reader.init(resolved);
+        ConnectionRegistry registry = connectionRegistry != null
+                ? connectionRegistry
+                : new ConnectionRegistry();
+        reader.init(registry.resolveReader(readerMap));
     }
 
     private static ReadRequest buildRequest(Map<String, Object> config) {
@@ -89,42 +89,17 @@ public class LookupReferenceSource {
         return readerMap;
     }
 
-    private static ReaderConfig toReaderConfig(Map<String, Object> readerMap) {
-        return new ReaderConfig(
-                asString(readerMap.get("type")),
-                asString(readerMap.get("connection")),
-                asString(readerMap.get("query")),
-                asString(readerMap.get("path")),
-                asString(readerMap.get("url")),
-                asString(readerMap.get("username")),
-                asString(readerMap.get("password")));
-    }
-
-    private static String rowCacheKey(Map<String, Object> config) {
+    private String rowCacheKey(Map<String, Object> config) {
         ReadRequest request = buildRequest(config);
         Map<String, Object> readerMap = resolveReaderMap(config);
         return connectionCacheKey(readerMap) + ":" + request.query();
     }
 
-    private static String connectionCacheKey(Map<String, Object> readerMap) {
-        Object connection = readerMap.get("connection");
-        if (connection instanceof String connectionName && !connectionName.isBlank()) {
-            return connectionName;
-        }
-        if (connection instanceof Map<?, ?> inlineMap) {
-            return firstNonBlankObject(inlineMap.get("url"), inlineMap.get("path"));
-        }
-        return firstNonBlankObject(readerMap.get("url"), readerMap.get("path"));
-    }
-
-    private static String firstNonBlankObject(Object primary, Object fallback) {
-        if (primary != null && !String.valueOf(primary).isBlank()) {
-            return String.valueOf(primary);
-        }
-        if (fallback != null && !String.valueOf(fallback).isBlank()) {
-            return String.valueOf(fallback);
-        }
-        return "inline";
+    private String connectionCacheKey(Map<String, Object> readerMap) {
+        ConnectionRegistry registry = connectionRegistry != null
+                ? connectionRegistry
+                : new ConnectionRegistry();
+        return registry.readerConnectionCacheKey(readerMap);
     }
 
     private static String requireField(Map<String, Object> config) {
@@ -133,9 +108,5 @@ public class LookupReferenceSource {
             throw new IllegalArgumentException("lookup reference requires 'field'");
         }
         return String.valueOf(field);
-    }
-
-    private static String asString(Object value) {
-        return value == null ? null : String.valueOf(value);
     }
 }
