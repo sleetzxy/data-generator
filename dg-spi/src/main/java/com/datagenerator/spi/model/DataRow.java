@@ -1,7 +1,7 @@
 package com.datagenerator.spi.model;
 
 import java.util.Collections;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -12,11 +12,11 @@ public class DataRow {
     private final Map<String, Object> fields;
 
     public DataRow() {
-        this.fields = new HashMap<>();
+        this.fields = new LinkedHashMap<>();
     }
 
     public DataRow(Map<String, Object> fields) {
-        this.fields = new HashMap<>(fields);
+        this.fields = new LinkedHashMap<>(fields);
     }
 
     public Object get(String name) {
