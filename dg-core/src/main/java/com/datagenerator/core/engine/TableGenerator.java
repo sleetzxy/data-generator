@@ -22,6 +22,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -30,6 +33,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 public class TableGenerator {
+
+    private static final Logger log = LoggerFactory.getLogger(TableGenerator.class);
 
     private final PluginRegistry pluginRegistry;
     private final GeneratorRegistry generatorRegistry;
@@ -162,8 +167,15 @@ public class TableGenerator {
 
         CancellationChecks.throwIfCancelled(cancellationChecker);
 
-        if (shouldGenerateInParallel(count, options.generationParallelism())) {
-            constraintFailedRows = generateRowsInParallel(
+        int effectiveParallelism = effectiveParallelism(count, options.generationParallelism());
+        if (effectiveParallelism > 1) {
+            log.info(
+                    "表 [{}] 启用并行造数: {} 行, 并行度={}, batchSize={}",
+                    tableName,
+                    count,
+                    effectiveParallelism,
+                    options.batchSize());
+            constraintFailedRows = generateAndWriteInParallel(
                     schema,
                     count,
                     tableName,
@@ -173,6 +185,8 @@ public class TableGenerator {
                     seedRowSnapshots,
                     constraintBindings,
                     options,
+                    effectiveParallelism,
+                    writePipeline,
                     generatedRows,
                     cancellationChecker);
         } else {
@@ -195,12 +209,8 @@ public class TableGenerator {
                     continue;
                 }
                 generatedRows.add(row);
+                writePipeline.accept(tableName, row);
             }
-        }
-
-        for (DataRow row : generatedRows) {
-            CancellationChecks.throwIfCancelled(cancellationChecker);
-            writePipeline.accept(tableName, row);
         }
 
         writePipeline.flush(tableName);
@@ -210,7 +220,7 @@ public class TableGenerator {
                 constraintFailedRows + writePipeline.getFailedRows());
     }
 
-    private long generateRowsInParallel(
+    private long generateAndWriteInParallel(
             SchemaDefinition schema,
             long count,
             String tableName,
@@ -220,18 +230,37 @@ public class TableGenerator {
             SeedRowSnapshotStore seedRowSnapshots,
             Map<String, Object> constraintBindings,
             GenerationOptions options,
+            int parallelism,
+            GenerationPipeline writePipeline,
             List<DataRow> generatedRows,
             CancellationChecker cancellationChecker) {
-        int parallelism = options.generationParallelism();
-        DataRow[] rows = new DataRow[(int) count];
+        int rowCount = (int) count;
+        DataRow[] rows = new DataRow[rowCount];
+        boolean[] rowFinished = new boolean[rowCount];
         long[] failedRows = {0};
-        int chunkSize = (int) ((count + parallelism - 1) / parallelism);
+        Object writeMonitor = new Object();
+        boolean[] generationComplete = {false};
+
+        Thread writerThread = Thread.ofPlatform()
+                .name("dg-writer-" + tableName)
+                .start(() -> drainRowsInOrder(
+                        rowCount,
+                        rows,
+                        rowFinished,
+                        tableName,
+                        writePipeline,
+                        generatedRows,
+                        cancellationChecker,
+                        writeMonitor,
+                        generationComplete));
+
+        int chunkSize = (rowCount + parallelism - 1) / parallelism;
         ExecutorService executor = Executors.newFixedThreadPool(parallelism);
         List<Future<?>> futures = new ArrayList<>();
         try {
             for (int chunk = 0; chunk < parallelism; chunk++) {
                 int start = chunk * chunkSize;
-                int end = (int) Math.min(count, (long) (chunk + 1) * chunkSize);
+                int end = Math.min(rowCount, (chunk + 1) * chunkSize);
                 if (start >= end) {
                     break;
                 }
@@ -257,6 +286,7 @@ public class TableGenerator {
                         } else {
                             rows[rowIndex] = row;
                         }
+                        markRowFinished(rowFinished, writeMonitor, rowIndex);
                     }
                 }));
             }
@@ -264,29 +294,101 @@ public class TableGenerator {
         } catch (JobCancelledException exception) {
             cancelParallelFutures(futures);
             executor.shutdownNow();
+            writerThread.interrupt();
             throw exception;
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             cancelParallelFutures(futures);
             executor.shutdownNow();
+            writerThread.interrupt();
             throw new JobCancelledException();
         } catch (ExecutionException exception) {
             cancelParallelFutures(futures);
             executor.shutdownNow();
+            writerThread.interrupt();
             if (exception.getCause() instanceof JobCancelledException cancelled) {
                 throw cancelled;
             }
             throw new IllegalStateException("Parallel row generation failed", exception.getCause());
         } finally {
             executor.shutdown();
-        }
-
-        for (DataRow row : rows) {
-            if (row != null) {
-                generatedRows.add(row);
+            synchronized (writeMonitor) {
+                generationComplete[0] = true;
+                writeMonitor.notifyAll();
             }
         }
+
+        awaitWriterThread(writerThread);
         return failedRows[0];
+    }
+
+    private static void markRowFinished(boolean[] rowFinished, Object writeMonitor, int rowIndex) {
+        synchronized (writeMonitor) {
+            rowFinished[rowIndex] = true;
+            writeMonitor.notifyAll();
+        }
+    }
+
+    private static void drainRowsInOrder(
+            int rowCount,
+            DataRow[] rows,
+            boolean[] rowFinished,
+            String tableName,
+            GenerationPipeline writePipeline,
+            List<DataRow> generatedRows,
+            CancellationChecker cancellationChecker,
+            Object writeMonitor,
+            boolean[] generationComplete) {
+        int nextIndex = 0;
+        try {
+            while (nextIndex < rowCount) {
+                CancellationChecks.throwIfCancelled(cancellationChecker);
+                DataRow rowToWrite;
+                synchronized (writeMonitor) {
+                    while (nextIndex < rowCount && !rowFinished[nextIndex]) {
+                        if (generationComplete[0]) {
+                            rowFinished[nextIndex] = true;
+                            break;
+                        }
+                        writeMonitor.wait(100L);
+                    }
+                    if (nextIndex >= rowCount) {
+                        break;
+                    }
+                    rowToWrite = rows[nextIndex];
+                    nextIndex++;
+                }
+                if (rowToWrite != null) {
+                    generatedRows.add(rowToWrite);
+                    writePipeline.accept(tableName, rowToWrite);
+                }
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new JobCancelledException();
+        } catch (JobCancelledException exception) {
+            // 任务取消时正常退出写线程
+        }
+    }
+
+    private static void awaitWriterThread(Thread writerThread) {
+        try {
+            writerThread.join();
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            writerThread.interrupt();
+            throw new JobCancelledException();
+        }
+        if (writerThread.isAlive()) {
+            throw new IllegalStateException("Writer thread did not finish");
+        }
+    }
+
+    private static int effectiveParallelism(long count, int generationParallelism) {
+        if (count < GenerationOptions.PARALLEL_ROW_THRESHOLD || generationParallelism <= 1) {
+            return 1;
+        }
+        return Math.min(generationParallelism, (int) count);
     }
 
     private ReferenceDataLoader resolveSeedReferenceLoader(ConnectionRegistry connectionRegistry) {
@@ -318,10 +420,6 @@ public class TableGenerator {
         for (Future<?> future : futures) {
             future.cancel(true);
         }
-    }
-
-    private static boolean shouldGenerateInParallel(long count, int generationParallelism) {
-        return count >= GenerationOptions.PARALLEL_ROW_THRESHOLD && generationParallelism > 1;
     }
 
     private DataRow generateValidRow(

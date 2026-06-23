@@ -6,7 +6,9 @@ import com.datagenerator.spi.model.ReadRequest;
 import com.datagenerator.spi.model.ReaderConfig;
 import com.datagenerator.spi.reader.DataReader;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -16,6 +18,9 @@ import java.util.concurrent.ConcurrentHashMap;
  * Loads column values from a {@link DataReader} lookup source, with per-field caching.
  */
 public class LookupReferenceSource {
+
+    /** 未显式配置 maxRows 时的默认上限，避免 seed 查询全表 materialize。 */
+    public static final int DEFAULT_MAX_ROWS = 50_000;
 
     private final DataReader reader;
     private final ConnectionRegistry connectionRegistry;
@@ -51,9 +56,14 @@ public class LookupReferenceSource {
     private List<DataRow> readRows(Map<String, Object> config) {
         initReader(config);
         ReadRequest request = buildRequest(config);
+        int maxRows = resolveMaxRows(config);
         try (var stream = reader.read(request)) {
-            List<DataRow> rows = stream.toList();
-            return rows;
+            Iterator<DataRow> iterator = stream.iterator();
+            List<DataRow> rows = new ArrayList<>();
+            while (iterator.hasNext() && rows.size() < maxRows) {
+                rows.add(iterator.next());
+            }
+            return List.copyOf(rows);
         }
     }
 
@@ -89,10 +99,24 @@ public class LookupReferenceSource {
         return readerMap;
     }
 
+    private static int resolveMaxRows(Map<String, Object> config) {
+        Object value = config.get("maxRows");
+        if (value == null && config.get("reader") instanceof Map<?, ?> readerConfig) {
+            value = readerConfig.get("maxRows");
+        }
+        if (value == null) {
+            return DEFAULT_MAX_ROWS;
+        }
+        if (value instanceof Number number) {
+            return Math.max(1, number.intValue());
+        }
+        return Math.max(1, Integer.parseInt(String.valueOf(value)));
+    }
+
     private String rowCacheKey(Map<String, Object> config) {
         ReadRequest request = buildRequest(config);
         Map<String, Object> readerMap = resolveReaderMap(config);
-        return connectionCacheKey(readerMap) + ":" + request.query();
+        return connectionCacheKey(readerMap) + ":" + request.query() + ":max=" + resolveMaxRows(config);
     }
 
     private String connectionCacheKey(Map<String, Object> readerMap) {

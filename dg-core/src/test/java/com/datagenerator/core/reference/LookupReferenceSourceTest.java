@@ -100,6 +100,42 @@ class LookupReferenceSourceTest {
         assertThat(rowsFrom(source, withOverride)).containsExactly("jdbc:postgresql://override/db");
     }
 
+    @Test
+    void loadRows_maxRows_capsMaterializedRows() {
+        DataReader mockReader = new DataReader() {
+            @Override
+            public String type() {
+                return "mock";
+            }
+
+            @Override
+            public void init(ReaderConfig config) {
+            }
+
+            @Override
+            public Stream<DataRow> read(ReadRequest request) {
+                return Stream.of(
+                        new DataRow(Map.of("code", "A")),
+                        new DataRow(Map.of("code", "B")),
+                        new DataRow(Map.of("code", "C")));
+            }
+
+            @Override
+            public void close() {
+            }
+        };
+        LookupReferenceSource source = new LookupReferenceSource(mockReader);
+        Map<String, Object> config = Map.of(
+                "reader", Map.of(
+                        "type", "mock",
+                        "query", "SELECT 1",
+                        "maxRows", 2));
+
+        assertThat(source.loadRows(config)).hasSize(2);
+        assertThat(source.loadRows(config).stream().map(row -> row.get("code")).toList())
+                .containsExactly("A", "B");
+    }
+
     private static List<Object> rowsFrom(LookupReferenceSource source, Map<String, Object> config) {
         return source.loadRows(config).stream()
                 .map(row -> row.get("code"))

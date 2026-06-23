@@ -44,7 +44,6 @@ public class GenerationPipeline {
     }
 
     public void accept(String tableName, DataRow row) {
-        CancellationChecks.throwIfCancelled(cancellationChecker);
         buffer.add(row);
         if (buffer.size() >= batchSize) {
             flushBatch(tableName);
