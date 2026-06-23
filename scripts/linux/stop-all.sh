@@ -7,4 +7,5 @@ source "$SCRIPT_DIR/env.sh"
 # shellcheck source=service.sh
 source "$SCRIPT_DIR/service.sh"
 
-start_app web
+stop_app ai
+stop_app web

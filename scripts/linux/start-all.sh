@@ -8,3 +8,4 @@ source "$SCRIPT_DIR/env.sh"
 source "$SCRIPT_DIR/service.sh"
 
 start_app web
+start_app ai
