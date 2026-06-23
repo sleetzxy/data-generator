@@ -6,6 +6,8 @@ public class JobOptions {
     private Integer syncThreshold;
     private String onConstraintFail;
     private Integer maxRetries;
+    /** 造数并行度，覆盖 application.yml 默认值 */
+    private Integer generationParallelism;
 
     public Integer getBatchSize() {
         return batchSize;
@@ -37,5 +39,13 @@ public class JobOptions {
 
     public void setMaxRetries(Integer maxRetries) {
         this.maxRetries = maxRetries;
+    }
+
+    public Integer getGenerationParallelism() {
+        return generationParallelism;
+    }
+
+    public void setGenerationParallelism(Integer generationParallelism) {
+        this.generationParallelism = generationParallelism;
     }
 }

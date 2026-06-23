@@ -325,7 +325,7 @@ public class JobService {
             JobExecutionListener progressListener = createProgressListener(
                     jobId, jobConfig, submittedAt, totalTables, totalRows, runningDetails);
             GenerationOptions executionOptions =
-                    options.withCancellationChecker(() -> isJobCancelled(jobId));
+                    options.withCancellationChecker(() -> isJobCancelledInMemory(jobId));
             JobResult result = jobOrchestrator.run(job, runtimeWriters, executionOptions, progressListener);
             for (TableResult tableResult : result.details()) {
                 jobLogStore.info(
@@ -675,7 +675,9 @@ public class JobService {
                 jobId,
                 "生成选项: batchSize=" + options.batchSize()
                         + ", maxRetries=" + options.maxRetries()
-                        + ", onConstraintFail=" + options.onConstraintFail());
+                        + ", onConstraintFail=" + options.onConstraintFail()
+                        + ", generationParallelism=" + options.generationParallelism()
+                        + " (并行阈值=" + GenerationOptions.PARALLEL_ROW_THRESHOLD + " 行)");
         jobLogStore.info(jobId, "Job seeds 数量: " + job.getSeeds().size());
         for (SeedDefinition seed : job.getSeeds()) {
             if (seed.getReader().isEmpty()) {
@@ -819,7 +821,16 @@ public class JobService {
                 onConstraintFail = options.getOnConstraintFail();
             }
         }
-        return new GenerationOptions(batchSize, maxRetries, onConstraintFail, runtimeSettings.threadPoolSize());
+        return new GenerationOptions(batchSize, maxRetries, onConstraintFail, resolveGenerationParallelism(options));
+    }
+
+    private int resolveGenerationParallelism(JobOptions options) {
+        if (options != null
+                && options.getGenerationParallelism() != null
+                && options.getGenerationParallelism() > 0) {
+            return options.getGenerationParallelism();
+        }
+        return runtimeSettings.effectiveGenerationParallelism();
     }
 
     private int resolveSyncThreshold(JobOptions options) {
@@ -861,8 +872,15 @@ public class JobService {
         return new JobProgress(0, 0, 0, 0, 0);
     }
 
+    /**
+     * 热路径取消探测：仅查内存标记，避免每行触发 SQLite 查询。
+     */
+    private boolean isJobCancelledInMemory(String jobId) {
+        return cancellationRegistry.isCancelled(jobId) || asyncJobExecutor.isCancelled(jobId);
+    }
+
     private boolean isJobCancelled(String jobId) {
-        if (cancellationRegistry.isCancelled(jobId) || asyncJobExecutor.isCancelled(jobId)) {
+        if (isJobCancelledInMemory(jobId)) {
             return true;
         }
         return jobRepository.findById(jobId)

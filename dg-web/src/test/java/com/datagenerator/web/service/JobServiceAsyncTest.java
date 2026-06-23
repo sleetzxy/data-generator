@@ -110,6 +110,8 @@ class JobServiceAsyncTest {
         job.setTables(List.of(table));
         when(configLoader.loadJob("jobs/small.yaml")).thenReturn(job);
 
+        ConnectionRegistry connectionRegistry = new ConnectionRegistry();
+
         JobRuntimeSettings runtimeSettings = new JobRuntimeSettings(10_000, 1000, 2);
         JobServiceTestSupport.JobServiceContext context = JobServiceTestSupport.createContext(runtimeSettings);
         JobService jobService = new JobService(
@@ -117,7 +119,7 @@ class JobServiceAsyncTest {
                 mock(PreviewJobOrchestratorFactory.class),
                 configLoader,
                 mock(ConstraintLoader.class),
-                mock(ConnectionRegistry.class),
+                connectionRegistry,
                 runtimeSettings,
                 context.jobRepository(),
                 context.jobLogStore(),
@@ -173,7 +175,7 @@ class JobServiceAsyncTest {
     private static JobService createJobService(JobOrchestrator orchestrator) {
         YamlConfigLoader configLoader = mock(YamlConfigLoader.class);
         ConstraintLoader constraintLoader = mock(ConstraintLoader.class);
-        ConnectionRegistry connectionRegistry = mock(ConnectionRegistry.class);
+        ConnectionRegistry connectionRegistry = new ConnectionRegistry();
 
         JobDefinition job = new JobDefinition();
         TableTask table = new TableTask();

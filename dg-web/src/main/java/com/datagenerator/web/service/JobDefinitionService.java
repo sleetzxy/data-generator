@@ -3,6 +3,7 @@ package com.datagenerator.web.service;
 import com.datagenerator.web.dto.JobDefinitionRequest;
 import com.datagenerator.web.dto.JobDefinitionResponse;
 import com.datagenerator.web.dto.JobScheduleRequest;
+import com.datagenerator.web.dto.JobYamlValidationResponse;
 import com.datagenerator.web.storage.JobScheduleRepository;
 import com.datagenerator.core.schema.ConfigLoadException;
 import com.datagenerator.core.schema.ConfigPathResolver;
@@ -50,6 +51,15 @@ public class JobDefinitionService {
         this.scheduleManager = scheduleManager;
         this.scheduleExecutor = scheduleExecutor;
         this.scheduleRepository = scheduleRepository;
+    }
+
+    public JobYamlValidationResponse validateYaml(String yaml) {
+        try {
+            configLoader.loadJobFromContent(yaml);
+            return JobYamlValidationResponse.ok();
+        } catch (ConfigLoadException exception) {
+            return JobYamlValidationResponse.fail(List.of(exception.getMessage()));
+        }
     }
 
     public List<JobDefinitionResponse> list() {

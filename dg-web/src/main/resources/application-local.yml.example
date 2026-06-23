@@ -11,6 +11,8 @@ data-generator:
   auth:
     username: admin
     password: your-secure-password
+  service-auth:
+    token: ai-tokens
   connections:
     dev-safety:
       type: postgresql

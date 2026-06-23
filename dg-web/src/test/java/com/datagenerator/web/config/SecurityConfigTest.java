@@ -19,7 +19,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
         "data-generator.auth.enabled=true",
         "data-generator.auth.username=testuser",
-        "data-generator.auth.password=testpass"
+        "data-generator.auth.password=testpass",
+        "data-generator.service-auth.token=service-secret"
 })
 class SecurityConfigTest {
 
@@ -67,5 +68,19 @@ class SecurityConfigTest {
     void health_withoutCredentials_returnsOk() throws Exception {
         mockMvc.perform(get("/api/v1/health"))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void protectedApi_withServiceAuth_returnsOk() throws Exception {
+        mockMvc.perform(get("/api/v1/config/connections")
+                        .header("X-DG-Service-Auth", "service-secret"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void protectedApi_withInvalidServiceAuth_returnsUnauthorized() throws Exception {
+        mockMvc.perform(get("/api/v1/config/connections")
+                        .header("X-DG-Service-Auth", "wrong-token"))
+                .andExpect(status().isUnauthorized());
     }
 }

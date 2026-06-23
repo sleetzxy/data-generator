@@ -1167,3 +1167,8 @@ document.addEventListener('visibilitychange', () => {
         startAutoRefresh();
     }
 });
+
+function openDefinitionModalForAi(yaml) {
+    openDefinitionModal(null, yaml, false, null, null);
+}
+window.openDefinitionModalForAi = openDefinitionModalForAi;

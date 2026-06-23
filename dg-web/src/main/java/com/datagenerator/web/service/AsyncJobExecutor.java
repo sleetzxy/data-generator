@@ -157,6 +157,9 @@ public class AsyncJobExecutor {
     }
 
     private void persistStatus(JobResponse current, JobStatus status) {
+        if (current.getStatus() == JobStatus.CANCELLED && status != JobStatus.CANCELLED) {
+            return;
+        }
         current.setStatus(status);
         jobRepository.update(current);
     }
