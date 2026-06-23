@@ -1,0 +1,32 @@
+# dg-ai 独立 HTTP 服务示例配置
+# 启动：java -jar dg-ai-*.jar
+# 敏感项（LLM api-key 等）请写入 application-local.yml，见 application-local.yml.example
+
+spring:
+  config:
+    import: optional:classpath:application-local.yml
+
+server:
+  port: 8081
+
+ai:
+  enabled: true
+  server: true
+  remote-services:
+    data-generator-web:
+      base-url: http://localhost:8080
+      service-auth-token: ai-tokens
+  default-provider: deepseek
+  request-timeout: 120s
+  max-output-tokens: 8192
+  chat-memory-max-messages: 40
+  session:
+    ttl: 2h
+    max-sessions: 100
+  providers:
+    deepseek:
+      type: open-ai-compatible
+      base-url: https://api.deepseek.com/v1
+      api-key: ${DEEPSEEK_API_KEY:}
+      model: deepseek-chat
+      max-output-tokens: 8192
