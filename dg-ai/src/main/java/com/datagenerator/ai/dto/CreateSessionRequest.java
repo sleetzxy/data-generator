@@ -1,7 +1,10 @@
 package com.datagenerator.ai.dto;
 
+import jakarta.validation.constraints.NotBlank;
+
 public class CreateSessionRequest {
 
+    @NotBlank
     private String skillId;
     private String provider;
 
