@@ -18,9 +18,9 @@
 
     <dependencies>
         <dependency>
-            <groupId>com.clickhouse</groupId>
+            <groupId>ru.yandex.clickhouse</groupId>
             <artifactId>clickhouse-jdbc</artifactId>
-            <classifier>all</classifier>
+            <classifier>shaded</classifier>
         </dependency>
         <dependency>
             <groupId>org.testcontainers</groupId>

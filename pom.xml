@@ -26,7 +26,7 @@
         <maven.compiler.release>21</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <snakeyaml.version>2.2</snakeyaml.version>
-        <clickhouse-jdbc.version>0.6.3</clickhouse-jdbc.version>
+        <clickhouse-jdbc.version>0.3.1-patch</clickhouse-jdbc.version>
         <opencsv.version>5.9</opencsv.version>
         <generex.version>1.0.2</generex.version>
         <aviator.version>5.4.3</aviator.version>
@@ -96,11 +96,12 @@
                 <artifactId>snakeyaml</artifactId>
                 <version>${snakeyaml.version}</version>
             </dependency>
+            <!-- 0.3.1-patch 仅发布在 ru.yandex.clickhouse，shaded 为含依赖的 fat jar -->
             <dependency>
-                <groupId>com.clickhouse</groupId>
+                <groupId>ru.yandex.clickhouse</groupId>
                 <artifactId>clickhouse-jdbc</artifactId>
                 <version>${clickhouse-jdbc.version}</version>
-                <classifier>all</classifier>
+                <classifier>shaded</classifier>
             </dependency>
             <dependency>
                 <groupId>com.opencsv</groupId>
