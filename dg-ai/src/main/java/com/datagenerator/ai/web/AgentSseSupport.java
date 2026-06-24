@@ -154,7 +154,8 @@ public final class AgentSseSupport {
                 COMPLETED.remove(emitter);
                 return;
             }
-            if ("done".equals(event.getEvent()) || "error".equals(event.getEvent())) {
+            // 不再在 "done" 事件时关闭连接 — done 仅表示一次响应完成，连接应保持打开以支持后续追问
+            if ("error".equals(event.getEvent())) {
                 if (doneFlag.compareAndSet(false, true)) {
                     try {
                         emitter.complete();
