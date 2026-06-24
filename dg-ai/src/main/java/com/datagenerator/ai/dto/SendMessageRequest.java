@@ -1,7 +1,10 @@
 package com.datagenerator.ai.dto;
 
+import jakarta.validation.constraints.NotBlank;
+
 public class SendMessageRequest {
 
+    @NotBlank
     private String content;
 
     public SendMessageRequest() {
