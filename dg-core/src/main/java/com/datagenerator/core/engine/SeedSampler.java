@@ -154,8 +154,8 @@ public class SeedSampler {
         Map<String, Object> loadConfig = buildLoadConfig(seed, parentRow, linkId);
         String readerType = resolveReaderType(seed, loadConfig);
         List<DataRow> rows = referenceDataLoader.loadRows(readerType, loadConfig);
-        if (rows.size() != 1) {
-            return null;
+        if (rows.isEmpty()) {
+            return new DataRow();
         }
         return rows.getFirst();
     }
