@@ -16,6 +16,8 @@ import com.datagenerator.ai.skill.runtime.SkillRuntimeRegistry;
 import com.datagenerator.ai.skill.runtime.generatejob.GenerateJobSkillRuntime;
 import com.datagenerator.ai.tool.generatejob.JobGeneratorTools;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -80,6 +82,12 @@ public class AiAutoConfiguration {
     @Bean
     ChatMemoryStore chatMemoryStore(AiProperties properties) {
         return new InMemoryChatMemoryStore(properties);
+    }
+
+    @Bean(name = "agentExecutor", destroyMethod = "shutdown")
+    public ExecutorService agentExecutor(AiProperties properties) {
+        int size = Math.max(1, properties.getAgentThreadPoolSize());
+        return Executors.newFixedThreadPool(size);
     }
 
     @Bean
