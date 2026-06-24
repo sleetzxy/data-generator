@@ -20,16 +20,22 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import org.springframework.validation.annotation.Validated;
+import jakarta.validation.Valid;
+import java.util.concurrent.Executor;
 
+@Validated
 @RestController
 @RequestMapping("/api/v1/agent")
 @ConditionalOnProperty(prefix = "ai", name = "server", havingValue = "true")
 public class AgentController {
 
     private final AgentSessionService agentSessionService;
+    private final Executor agentExecutor;
 
-    public AgentController(AgentSessionService agentSessionService) {
+    public AgentController(AgentSessionService agentSessionService, Executor agentExecutor) {
         this.agentSessionService = agentSessionService;
+        this.agentExecutor = agentExecutor;
     }
 
     @GetMapping("/skills")
@@ -43,7 +49,7 @@ public class AgentController {
     }
 
     @PostMapping("/sessions")
-    public ResponseEntity<SessionResponse> createSession(@RequestBody CreateSessionRequest request) {
+    public ResponseEntity<SessionResponse> createSession(@Valid @RequestBody CreateSessionRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(agentSessionService.createSession(request));
     }
@@ -62,9 +68,9 @@ public class AgentController {
     @PostMapping(value = "/sessions/{sessionId}/messages", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter sendMessage(
             @PathVariable String sessionId,
-            @RequestBody SendMessageRequest request) {
+            @Valid @RequestBody SendMessageRequest request) {
         SseEmitter emitter = AgentSseSupport.openStream(agentSessionService);
-        AgentSseSupport.sendMessageAsync(agentSessionService, emitter, sessionId, request.getContent());
+        AgentSseSupport.sendMessageAsync(agentSessionService, emitter, sessionId, request.getContent(), agentExecutor);
         return emitter;
     }
 }
