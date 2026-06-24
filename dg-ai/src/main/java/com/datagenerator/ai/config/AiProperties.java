@@ -19,6 +19,9 @@ public class AiProperties {
     private SessionProperties session = new SessionProperties();
     private Map<String, ProviderProperties> providers = new HashMap<>();
 
+    /** Agent 异步执行线程池大小 (绑定配置键: ai.agent-thread-pool-size) */
+    private int agentThreadPoolSize = 10;
+
     public boolean isEnabled() {
         return enabled;
     }
@@ -89,6 +92,14 @@ public class AiProperties {
 
     public void setProviders(Map<String, ProviderProperties> providers) {
         this.providers = providers;
+    }
+
+    public int getAgentThreadPoolSize() {
+        return agentThreadPoolSize;
+    }
+
+    public void setAgentThreadPoolSize(int agentThreadPoolSize) {
+        this.agentThreadPoolSize = agentThreadPoolSize;
     }
 
     /** Tool Port 回调的外部 HTTP 服务 */
