@@ -189,7 +189,17 @@ public class AgentSessionService {
 
     private void handleError(Throwable error, Consumer<SseEvent> emitter) {
         Throwable root = unwrap(error);
-        log.error("Agent streaming failed", root);
+        // 特殊处理模型输出的工具参数 JSON 解析错误，给前端更友好的提示并降低日志级别
+        if (isTruncatedToolArgumentsError(root)) {
+            log.warn("Agent streaming produced invalid tool arguments JSON: {}", root.getMessage());
+            emitter.accept(SseEventFactory.error(
+                    "INVALID_TOOL_ARGS",
+                    "模型生成的工具参数不是合法 JSON，可能被截断或格式不正确。请尝试缩短输入或调整提示以输出严格 JSON。"));
+            return;
+        }
+
+        // 其他错误降级为 warn（避免大量错误堆栈噪声），同时返回统一错误事件
+        log.warn("Agent streaming failed: {}", root.getMessage());
         emitter.accept(SseEventFactory.error("AGENT_ERROR", formatStreamError(root)));
     }
 
