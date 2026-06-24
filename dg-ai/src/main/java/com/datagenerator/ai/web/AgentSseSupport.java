@@ -62,13 +62,34 @@ public final class AgentSseSupport {
     }
 
     /**
-     * 兼容旧调用，使���公共线程池执行异步任务。
+     * 兼容旧调用，使公共线程池执行异步任务。
      */
     public static void sendMessageAsync(
             AgentSessionService agentSessionService,
             SseEmitter emitter,
             String sessionId,
             String content) {
+
+        // 在 emitter 生命周期结束时，尝试取消后端会话以释放资源
+        emitter.onCompletion(() -> {
+            try {
+                agentSessionService.deleteSession(sessionId);
+            } catch (Exception ignored) {
+            }
+        });
+        emitter.onTimeout(() -> {
+            try {
+                agentSessionService.deleteSession(sessionId);
+            } catch (Exception ignored) {
+            }
+        });
+        emitter.onError(throwable -> {
+            try {
+                agentSessionService.deleteSession(sessionId);
+            } catch (Exception ignored) {
+            }
+        });
+
         CompletableFuture.runAsync(() -> {
             try {
                 agentSessionService.sendMessage(
@@ -88,6 +109,27 @@ public final class AgentSseSupport {
             String sessionId,
             String content,
             Executor executor) {
+
+        // 在 emitter 生命周期结束时，尝试取消后端会话以释放资源
+        emitter.onCompletion(() -> {
+            try {
+                agentSessionService.deleteSession(sessionId);
+            } catch (Exception ignored) {
+            }
+        });
+        emitter.onTimeout(() -> {
+            try {
+                agentSessionService.deleteSession(sessionId);
+            } catch (Exception ignored) {
+            }
+        });
+        emitter.onError(throwable -> {
+            try {
+                agentSessionService.deleteSession(sessionId);
+            } catch (Exception ignored) {
+            }
+        });
+
         CompletableFuture.runAsync(() -> {
             try {
                 agentSessionService.sendMessage(
