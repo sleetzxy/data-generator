@@ -148,6 +148,31 @@ class JobDefinitionServiceTest {
     }
 
     @Test
+    void list_updateDoesNotChangeCustomSortOrder() throws Exception {
+        Files.createDirectories(primaryDir.resolve("jobs"));
+        Files.writeString(
+                primaryDir.resolve("jobs/builtin.yaml"),
+                "id: builtin\nname: 内置任务\ntables: []");
+
+        service.create(request("older_job", "旧任务", "tables: []"));
+        Thread.sleep(20);
+        service.create(request("newer_job", "新任务", "tables: []"));
+
+        var created = service.get("older_job");
+        service.update("older_job", request("older_job", "旧任务已更新", """
+                id: %s
+                tables:
+                  - name: t1
+                    count: 1
+                """.formatted(created.getId())));
+        Thread.sleep(20);
+
+        assertThat(service.list())
+                .extracting("fileName")
+                .containsExactly("builtin", "newer_job", "older_job");
+    }
+
+    @Test
     void list_builtinFirst_customSortedByCreatedAtDesc() throws Exception {
         Files.createDirectories(primaryDir.resolve("jobs"));
         Files.writeString(

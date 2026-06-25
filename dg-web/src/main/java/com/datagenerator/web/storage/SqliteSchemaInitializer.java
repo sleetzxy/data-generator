@@ -54,6 +54,7 @@ public final class SqliteSchemaInitializer {
                 )
                 """);
         ensureColumn(jdbcTemplate, "jobs", "trigger_source", "TEXT");
+        ensureColumn(jdbcTemplate, "job_schedules", "created_at", "TEXT");
     }
 
     private static void ensureColumn(

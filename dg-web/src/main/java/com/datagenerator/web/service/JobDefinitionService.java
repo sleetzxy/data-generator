@@ -24,6 +24,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -117,6 +118,7 @@ public class JobDefinitionService {
         String content = injectDisplayName(contentWithId, displayName);
         validateContent(content, null);
         writeContent(configPath, content);
+        scheduleRepository.ensureCreatedAt(configPath, Instant.now().toString());
         try {
             applySchedule(configPath, normalizedSchedule);
             JobDefinition job = configLoader.loadJob(configPath);
@@ -189,17 +191,31 @@ public class JobDefinitionService {
         if (builtin) {
             return null;
         }
+        Optional<String> stored = scheduleRepository.findCreatedAt(configPath);
+        if (stored.isPresent()) {
+            return stored.get();
+        }
         Path overlayFile = pathResolver.resolveOverlay(configPath);
         if (overlayFile == null || !Files.isRegularFile(overlayFile)) {
             return null;
         }
+        Instant created = readFileCreationTime(overlayFile);
+        if (created == null) {
+            return null;
+        }
+        String createdAt = created.toString();
+        scheduleRepository.ensureCreatedAt(configPath, createdAt);
+        return createdAt;
+    }
+
+    private Instant readFileCreationTime(Path file) {
         try {
-            BasicFileAttributes attributes = Files.readAttributes(overlayFile, BasicFileAttributes.class);
+            BasicFileAttributes attributes = Files.readAttributes(file, BasicFileAttributes.class);
             Instant created = attributes.creationTime().toInstant();
             if (created.equals(Instant.EPOCH)) {
-                created = attributes.lastModifiedTime().toInstant();
+                return null;
             }
-            return created.toString();
+            return created;
         } catch (IOException exception) {
             return null;
         }
