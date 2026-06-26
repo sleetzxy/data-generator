@@ -26,7 +26,11 @@ Tool Set（job-generator-tools） ← JobGeneratorTools，多 Agent 可共用
 | **Agent** | `ai.agents.<agentId>.tool-set-id`；`prompt/templates/{agentId}/` | 编排入口：系统提示、工作流程、选模型、挂 Memory、装配 Tool |
 | **Tool Set** | `ToolProvider.toolSetId()` | 声明可用 Tool 集合 |
 
-扩展新 Agent：实现 `AgentRuntime` 并注册 Bean → 添加 `prompt/templates/<agentId>/` → 在 `ai.agents` 下配置 `tool-set-id`。
+扩展新 Agent：
+1. 实现 `AgentRuntime` 并注册 Bean
+2. 实现 `ChatMemoryContentCompressor` 提供 Agent 专属记忆压缩策略（可选）
+3. 添加 `prompt/templates/<agentId>/` 系统提示
+4. 在 `ai.agents` 下配置 `tool-set-id` 及可选记忆参数
 
 > Cursor 侧开发文档仍可使用 `.cursor/skills/generate-job/`；运行时 Prompt 以 `prompt/templates/{agentId}/` 为准。
 
@@ -175,11 +179,11 @@ POST /api/v1/agent/sessions
 src/main/java/com/datagenerator/ai/
 ├── web/              AgentController、DTO、SSE
 ├── application/      会话服务、workflow
-├── agent/            AgentRuntime、Orchestrator、DraftResult*
-├── memory/           ChatMemory
+├── agent/            AgentRuntime、Orchestrator、JobGeneratorMemoryCompressor、DraftResult*
+├── memory/           ChatMemoryStore、ChatMemoryContentCompressor（接口）、SummarizingChatMemory
 ├── tool/             Tool Set、JobGeneratorTools
 ├── prompt/           PromptTemplateLoader
-└── config/           AiProperties、AiAutoConfiguration
+└── config/           AiProperties、AiAutoConfiguration（含 RestTemplate/DataGeneratorWebClient）
 ```
 
 ---
@@ -189,6 +193,9 @@ src/main/java/com/datagenerator/ai/
 | 配置键 | 说明 |
 |--------|------|
 | `ai.agents.<id>.tool-set-id` | Agent 绑定的 Tool Set（必填） |
+| `ai.agents.<id>.chat-memory-max-tokens` | 覆盖全局 `ai.chat-memory-max-tokens`（可选） |
+| `ai.agents.<id>.chat-memory-max-messages` | 覆盖全局 `ai.chat-memory-max-messages`（可选） |
+| `ai.agents.<id>.chat-memory-tool-result-max-chars` | 覆盖全局 `ai.chat-memory-tool-result-max-chars`（可选） |
 | `ai.default-provider` | 默认 LLM |
 | `ai.session.ttl` | 会话空闲过期（默认 `2h`） |
 | `ai.remote-services.data-generator-web.*` | Tool 回调 dg-web |

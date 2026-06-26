@@ -249,7 +249,8 @@ java -jar dg-ai/target/dg-ai-0.1.0-SNAPSHOT.jar
 | 修改生成/约束逻辑 | 改 `dg-core`；补单元测试 |
 | 修改任务持久化 | 改 `dg-web/.../storage/`（`JobRepository`、`JobLogFileRepository`） |
 | 修改认证/登录 | 改 `SecurityConfig` + `DataGeneratorProperties.AuthProperties`；静态页 `static/login.html` |
-| 修改 AI Agent | 改 `dg-ai`（`prompt/templates/{agentId}/`、`JobGeneratorTools`、workflow/agent 层）；dg-web 改 `static/agent.js` 与 `proxy/` |
+| 修改 AI Agent | 改 `dg-ai`（`prompt/templates/{agentId}/`、`JobGeneratorTools`、workflow/agent 层、`ChatMemoryContentCompressor` 实现）；dg-web 改 `static/agent.js` 与 `proxy/` |
+| 新增 AI Agent | 实现 `AgentRuntime` + 注册 Bean → 实现 `ChatMemoryContentCompressor`（可选） → 添加 `prompt/templates/<agentId>/` → 配置 `ai.agents.<id>.*` |
 | 修改部署/启停脚本 | 改 `scripts/linux`、`scripts/windows`；打包逻辑在 `scripts/package.ps1` |
 | 排查调用链 | `codegraph_trace` → `codegraph_explore` |
 
