@@ -14,7 +14,7 @@ import java.util.stream.Collectors;
  * JobGenerator Agent 专属的记忆内容压缩策略。
  * <p>将对话记忆中的大段结构化 JSON / YAML 替换为摘要；完整内容存于会话草稿或参考缓存。
  */
-public class JobGeneratorMemoryCompressor implements ChatMemoryContentCompressor {
+public final class JobGeneratorMemoryCompressor implements ChatMemoryContentCompressor {
 
     private static final Pattern JSON_BLOCK = Pattern.compile(
             "```json\\s*\\n[\\s\\S]*?```", Pattern.CASE_INSENSITIVE);
@@ -23,6 +23,9 @@ public class JobGeneratorMemoryCompressor implements ChatMemoryContentCompressor
     /** 仅匹配 2 空格缩进的 {@code - name:}，即 {@code tables:} 的直接子项，避免误计列/生成器级别的 name */
     static final Pattern TABLE_NAME = Pattern.compile(
             "^  -\\s+name:\\s*(\\S+)\\s*$", Pattern.MULTILINE);
+
+    /** summarizeTables 返回的表数量提示前缀，与 {@link #summarizeTables(String)} 格式保持同步 */
+    private static final String TABLE_HINT_PREFIX = "，约 ";
 
     static final Set<String> TOOL_RESULTS_NEVER_COMPRESS = Set.of(
             "listConnections",
@@ -51,7 +54,7 @@ public class JobGeneratorMemoryCompressor implements ChatMemoryContentCompressor
     @Override
     public String compressConversationText(String text) {
         if (text == null || text.isBlank()) {
-            return text;
+            return text == null ? "" : text;
         }
         return replaceYamlFences(replaceJsonBlocks(text));
     }
@@ -90,7 +93,7 @@ public class JobGeneratorMemoryCompressor implements ChatMemoryContentCompressor
     public String summarizeDraftStored(String yaml, boolean incomplete) {
         int lines = countLines(yaml);
         String tableHint = summarizeTables(yaml);
-        String suffix = tableHint.isBlank() ? "" : tableHint.replace("，约 ", ",");
+        String suffix = tableHint.isBlank() ? "" : tableHint.replace(TABLE_HINT_PREFIX, ",");
         if (incomplete) {
             return "<!-- dg-draft:" + lines + "行" + suffix + ",生成中 -->";
         }
@@ -101,7 +104,7 @@ public class JobGeneratorMemoryCompressor implements ChatMemoryContentCompressor
     public String summarizeReferenceJob(String fileName, String yaml) {
         int lines = countLines(yaml);
         String tableHint = summarizeTables(yaml);
-        String suffix = tableHint.isBlank() ? "" : tableHint.replace("，约 ", ",");
+        String suffix = tableHint.isBlank() ? "" : tableHint.replace(TABLE_HINT_PREFIX, ",");
         return "<!-- dg-ref:" + fileName + "," + lines + "行" + suffix + " -->";
     }
 
@@ -181,8 +184,8 @@ public class JobGeneratorMemoryCompressor implements ChatMemoryContentCompressor
         StringBuffer buffer = new StringBuffer();
         while (matcher.find()) {
             String fence = matcher.group();
-            String inner = fence.replaceAll("^```(?:yaml|yml)\\s*", "")
-                    .replaceAll("```\\s*$", "")
+            String inner = fence.replaceAll("(?i)^```(?:yaml|yml)\\s*", "")
+                    .replaceAll("(?i)```\\s*$", "")
                     .trim();
             matcher.appendReplacement(
                     buffer, Matcher.quoteReplacement(summarizeDraftStored(inner, false)));
@@ -214,6 +217,6 @@ public class JobGeneratorMemoryCompressor implements ChatMemoryContentCompressor
         if (count == 0) {
             return "";
         }
-        return "，约 " + count + " 张表";
+        return TABLE_HINT_PREFIX + count + " 张表";
     }
 }

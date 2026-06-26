@@ -107,7 +107,8 @@ class JobGeneratorMemoryCompressorTest {
                 "previewJobYaml", large, 32_768);
 
         assertThat(result).contains("previewJobYaml");
-        assertThat(result).doesNotContain("已省略");
+        assertThat(result).contains("预览明细未写入对话记忆");
+        assertThat(result).doesNotContain("请缩小查询范围");
     }
 
     @Test
@@ -174,5 +175,49 @@ class JobGeneratorMemoryCompressorTest {
     @Test
     void summarizeTables_returnsEmptyForBlankYaml() {
         assertThat(JobGeneratorMemoryCompressor.summarizeTables("  \n ")).isEmpty();
+    }
+
+    @Test
+    void compressConversationText_nullReturnsEmpty() {
+        String result = compressor.compressConversationText(null);
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void compressConversationText_blankReturnsSame() {
+        String result = compressor.compressConversationText("   ");
+        assertThat(result).isEqualTo("   ");
+    }
+
+    @Test
+    void compressConversationText_handlesUppercaseYamlFence() {
+        String text = """
+                ```YAML
+                writer:
+                  type: csv
+                tables:
+                  - name: t1
+                ```
+                """;
+
+        String result = compressor.compressConversationText(text);
+
+        assertThat(result).contains("dg-draft:");
+        assertThat(result).doesNotContain("YAML");
+        assertThat(result).doesNotContain("writer:");
+    }
+
+    @Test
+    void compactExisting_compactsWithoutException() {
+        SummarizingChatMemory memory = new SummarizingChatMemory(
+                "s1",
+                MessageWindowChatMemory.builder().id("s1").maxMessages(10).build(),
+                32_768,
+                compressor);
+
+        memory.add(AiMessage.from("safe message"));
+        // 压缩不会因正常输入而异常
+        memory.compactExisting();
+        assertThat(memory.messages()).hasSize(1);
     }
 }

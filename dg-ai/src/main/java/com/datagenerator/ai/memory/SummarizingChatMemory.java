@@ -47,13 +47,27 @@ public final class SummarizingChatMemory implements ChatMemory {
         delegate.clear();
     }
 
-    /** 重写已有消息，确保历史轮次中的大 YAML 也被压缩。 */
+    /** 重写已有消息，确保历史轮次中的大 YAML 也被压缩。
+     * <p>压缩失败时保留原消息列表，避免因单条消息压缩异常导致全部消息丢失。 */
     public void compactExisting() {
         List<ChatMessage> existing = new ArrayList<>(delegate.messages());
-        delegate.clear();
-        for (ChatMessage message : existing) {
-            delegate.add(compress(message));
+        if (existing.isEmpty()) {
+            return;
         }
+        List<ChatMessage> compacted = new ArrayList<>();
+        for (ChatMessage message : existing) {
+            try {
+                compacted.add(compress(message));
+            } catch (RuntimeException e) {
+                // 压缩失败时保留原消息，不清空 delegate
+                delegate.clear();
+                existing.forEach(delegate::add);
+                throw new IllegalStateException(
+                        "压缩对话记忆失败，已回滚至压缩前状态", e);
+            }
+        }
+        delegate.clear();
+        compacted.forEach(delegate::add);
     }
 
     private ChatMessage compress(ChatMessage message) {

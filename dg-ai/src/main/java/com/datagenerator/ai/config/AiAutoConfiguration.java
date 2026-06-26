@@ -24,22 +24,55 @@ import com.datagenerator.ai.tool.impl.JobGeneratorTools;
 import com.datagenerator.ai.tool.impl.web.DataGeneratorWebClient;
 import com.datagenerator.ai.tool.provider.JobGeneratorToolProvider;
 import com.datagenerator.ai.tool.registry.ToolRegistry;
+import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.context.annotation.Import;
+import org.springframework.http.client.SimpleClientHttpRequestFactory;
+import org.springframework.util.StringUtils;
+import org.springframework.web.client.RestTemplate;
 
 @Configuration
-@Import(DataGeneratorWebConfiguration.class)
 @ConditionalOnProperty(prefix = "ai", name = {"server", "enabled"}, havingValue = "true")
 public class AiAutoConfiguration {
+
+    public static final String REST_TEMPLATE_BEAN = "dataGeneratorRestTemplate";
+    private static final String BASE_URL_CONFIG = "ai.remote-services.data-generator-web.base-url";
 
     @Bean
     AgentSessionRegistry agentSessionRegistry() {
         return new AgentSessionRegistry();
+    }
+
+    @Bean(name = REST_TEMPLATE_BEAN)
+    RestTemplate dataGeneratorRestTemplate(AiProperties properties) {
+        Duration timeout = properties.getRequestTimeout();
+        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+        factory.setConnectTimeout(timeout);
+        factory.setReadTimeout(timeout);
+        return new RestTemplate(factory);
+    }
+
+    @Bean
+    DataGeneratorWebClient dataGeneratorWebClient(
+            @Qualifier(REST_TEMPLATE_BEAN) RestTemplate dataGeneratorRestTemplate, AiProperties properties) {
+        AiProperties.ServiceEndpoint endpoint = properties.getRemoteServices().getDataGeneratorWeb();
+        String baseUrl = endpoint.getBaseUrl();
+        if (!StringUtils.hasText(baseUrl)) {
+            throw new IllegalStateException("须配置 " + BASE_URL_CONFIG);
+        }
+        String authToken = endpoint.getServiceAuthToken();
+        if (!StringUtils.hasText(authToken)) {
+            throw new IllegalStateException(
+                    "须配置 ai.remote-services.data-generator-web.service-auth-token"
+                            + "（须与 dg-web data-generator.service-auth.token 一致）");
+        }
+        return new DataGeneratorWebClient(
+                dataGeneratorRestTemplate, baseUrl, authToken);
     }
 
     @Bean

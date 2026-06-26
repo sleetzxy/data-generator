@@ -381,10 +381,20 @@ public class AiProperties {
         }
     }
 
-    /** 各 Agent 的 Tool Set 绑定（{@code ai.agents.<id>.tool-set-id}） */
+    /** 各 Agent 的配置（{@code ai.agents.<id>.*}） */
     public static class AgentProperties {
 
+        /** Agent 绑定的 Tool Set ID（{@code ai.agents.<id>.tool-set-id}） */
         private String toolSetId;
+
+        /** 覆盖全局 {@code ai.chatMemoryMaxTokens}；{@code null} 时使用全局值 */
+        private Integer chatMemoryMaxTokens;
+
+        /** 覆盖全局 {@code ai.chatMemoryMaxMessages}；{@code null} 时使用全局值 */
+        private Integer chatMemoryMaxMessages;
+
+        /** 覆盖全局 {@code ai.chatMemoryToolResultMaxChars}；{@code null} 时使用全局值 */
+        private Integer chatMemoryToolResultMaxChars;
 
         public String getToolSetId() {
             return toolSetId;
@@ -392,6 +402,30 @@ public class AiProperties {
 
         public void setToolSetId(String toolSetId) {
             this.toolSetId = toolSetId;
+        }
+
+        public Integer getChatMemoryMaxTokens() {
+            return chatMemoryMaxTokens;
+        }
+
+        public void setChatMemoryMaxTokens(Integer chatMemoryMaxTokens) {
+            this.chatMemoryMaxTokens = chatMemoryMaxTokens;
+        }
+
+        public Integer getChatMemoryMaxMessages() {
+            return chatMemoryMaxMessages;
+        }
+
+        public void setChatMemoryMaxMessages(Integer chatMemoryMaxMessages) {
+            this.chatMemoryMaxMessages = chatMemoryMaxMessages;
+        }
+
+        public Integer getChatMemoryToolResultMaxChars() {
+            return chatMemoryToolResultMaxChars;
+        }
+
+        public void setChatMemoryToolResultMaxChars(Integer chatMemoryToolResultMaxChars) {
+            this.chatMemoryToolResultMaxChars = chatMemoryToolResultMaxChars;
         }
     }
 }

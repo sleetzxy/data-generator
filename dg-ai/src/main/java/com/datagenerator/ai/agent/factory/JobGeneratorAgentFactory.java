@@ -27,7 +27,7 @@ public final class JobGeneratorAgentFactory {
         return AiServices.builder(JobGeneratorAgent.class)
                 .streamingChatModel(chatModelFactory.getStreamingModel(context.provider()))
                 .tools(toolRegistry.require(context.toolSetId()).createExecutors(ioLogger))
-                .chatMemoryProvider(id -> chatMemoryStore.getOrCreate((String) id))
+                .chatMemoryProvider(id -> chatMemoryStore.getOrCreate(context.agentId(), (String) id))
                 .systemMessageProvider(id -> promptProvider.resolveSystemPrompt(context.agentId()))
                 .build();
     }
