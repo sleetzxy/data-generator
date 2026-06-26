@@ -38,6 +38,8 @@ Tool Set（job-generator-tools） ← JobGeneratorTools，多 Agent 可共用
 
 ## 架构
 
+### 顶层组件
+
 ```mermaid
 flowchart LR
     Client["HTTP 客户端 / dg-web FAB"]
@@ -50,11 +52,88 @@ flowchart LR
     AI -->|"Tool 回调<br/>X-DG-Service-Auth"| Backend
 ```
 
-**职责边界：**
+### 代码调用链路
 
-- **dg-ai**：会话、多轮对话记忆、Prompt、Agent 推理、结构化 YAML 草稿合并与续写、SSE 推送
-- **HTTP 客户端**：`GET /agents` → `POST /sessions { agentId }` → 同一会话内多轮 `POST /messages`
-- **下游 REST API**：Tool 实际调用的业务接口；由 `ai.remote-services.*` 配置
+```mermaid
+sequenceDiagram
+    participant Client as HTTP 客户端
+    participant Controller as AgentController
+    participant AppSvc as AgentSessionApplicationService
+    participant ConvWF as AgentConversationWorkflow
+    participant ExecWF as AgentExecutionWorkflow
+    participant Orch as AgentOrchestrator
+    participant Runtime as AgentRuntime<br/>(JobGeneratorAgentRuntime)
+    participant AiSvc as AiServices<br/>(LangChain4j)
+    participant LLM as LLM Provider
+    participant Tool as JobGeneratorTools
+    participant WebClient as DataGeneratorWebClient
+    participant dgWeb as dg-web REST API
+    participant Memory as ChatMemoryStore<br/>(InMemoryChatMemoryStore)
+
+    Note over Client,Memory: === 会话创建 ===
+    Client->>Controller: POST /sessions {agentId}
+    Controller->>AppSvc: createSession(request)
+    AppSvc->>Orch: resolveToolSetIdForAgent(agentId)
+    AppSvc->>AppSvc: new AgentSession(sessionId, agentId, ...)
+    AppSvc-->>Client: 201 {sessionId, agentId, ...}
+
+    Note over Client,Memory: === 发送消息（SSE 流式） ===
+    Client->>Controller: POST /sessions/{id}/messages {content}
+    Controller->>AppSvc: sendMessage(sessionId, content, sseEmitter)
+    AppSvc->>ConvWF: sendMessage(session, content, emitter)
+    ConvWF->>ExecWF: execute(session, agentId, content, emitter)
+    ExecWF->>Orch: createContext(session)
+    Orch-->>ExecWF: AgentExecutionContext
+    ExecWF->>Orch: requireRuntime(agentId)
+    Orch-->>ExecWF: AgentRuntime
+    ExecWF->>Runtime: chat(sessionId, userMessage, context)
+
+    Runtime->>AiSvc: AgentFactory.create(context)
+    AiSvc->>Memory: getOrCreate(agentId, sessionId)
+    Memory-->>AiSvc: ChatMemory (SummarizingChatMemory)
+    AiSvc->>LLM: 流式推理 (system prompt + memory + user message)
+
+    loop 流式 Token
+        LLM-->>AiSvc: token
+        AiSvc-->>Runtime: TokenStream
+        Runtime-->>ExecWF: onPartialResponse
+        ExecWF-->>Client: SSE event: token
+    end
+
+    opt Tool 调用
+        LLM->>AiSvc: toolExecutionRequest
+        AiSvc->>Tool: @Tool 方法调用
+        Tool->>WebClient: REST API 调用
+        WebClient->>dgWeb: X-DG-Service-Auth
+        dgWeb-->>WebClient: 响应
+        WebClient-->>Tool: 结果
+        Tool->>Tool: compressor.summarizeXxx() 压缩
+        Tool-->>AiSvc: ToolExecutionResult
+        AiSvc->>Memory: add(compressed result)
+        AiSvc->>LLM: 继续推理（含 Tool 结果）
+        AiSvc-->>Runtime: ToolExecutionResult
+        Runtime-->>ExecWF: onToolExecuted
+        ExecWF-->>Client: SSE event: tool
+    end
+
+    LLM-->>AiSvc: ChatResponse (finish)
+    AiSvc-->>Runtime: 完成
+    Runtime->>ExecWF: onComplete(session, response, emitter)
+    ExecWF->>ExecWF: DraftResultProcessor.process()
+    ExecWF->>Memory: compact(sessionId)
+    ExecWF-->>Client: SSE event: done
+```
+
+**调用链要点：**
+
+| 阶段 | 关键组件 | 说明 |
+|------|---------|------|
+| 会话 | `AgentSession` + `ChatMemoryStore` | 按 `sessionId` 隔离，同一用户多轮共享记忆 |
+| 路由 | `AgentOrchestrator` → `AgentRuntime` | 按 `agentId` 分发到对应 Runtime |
+| 推理 | `AiServices` → LLM | LangChain4j 托管流式对话 + Tool 调用循环 |
+| 记忆 | `SummarizingChatMemory` → `ChatMemoryContentCompressor` | 写入前压缩大段 YAML，压缩策略按 agentId 选择 |
+| Tool | `JobGeneratorTools` → `DataGeneratorWebClient` | 回调 dg-web，结果经压缩后写入记忆 |
+| 响应 | SSE `token` / `tool` / `done` | 流式推送到客户端 |
 
 **多轮对话：** 同一 `sessionId` 下 LangChain4j `ChatMemory` 累积历史；`AgentSession` 保留 `draftYaml` 等状态。会话 TTL 内有效；无消息历史 REST 接口。
 
