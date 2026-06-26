@@ -7,6 +7,7 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.datagenerator.ai.agent.runtime.JobGeneratorMemoryCompressor;
 import com.datagenerator.ai.application.session.AgentSession;
 import com.datagenerator.ai.application.session.AgentSessionRegistry;
 import com.datagenerator.ai.tool.impl.model.DgWebModels.JobDetail;
@@ -31,7 +32,7 @@ class JobGeneratorToolsTest {
     void setUp() {
         sessionRegistry = new AgentSessionRegistry();
         webClient = mock(DataGeneratorWebClient.class);
-        tools = new JobGeneratorTools(webClient, sessionRegistry);
+        tools = new JobGeneratorTools(webClient, sessionRegistry, new JobGeneratorMemoryCompressor());
     }
 
     @Test

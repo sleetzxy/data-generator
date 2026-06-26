@@ -4,6 +4,7 @@ import com.datagenerator.ai.agent.orchestrator.AgentOrchestrator;
 import com.datagenerator.ai.agent.runtime.AgentRuntime;
 import com.datagenerator.ai.agent.runtime.AgentRuntimeRegistry;
 import com.datagenerator.ai.agent.runtime.JobGeneratorAgentRuntime;
+import com.datagenerator.ai.agent.runtime.JobGeneratorMemoryCompressor;
 import com.datagenerator.ai.agent.runtime.StreamingHandleRegistry;
 import com.datagenerator.ai.application.AgentIoLogger;
 import com.datagenerator.ai.application.AgentSessionApplicationService;
@@ -11,6 +12,7 @@ import com.datagenerator.ai.application.session.AgentSessionRegistry;
 import com.datagenerator.ai.application.workflow.AgentConversationWorkflow;
 import com.datagenerator.ai.application.workflow.AgentExecutionWorkflow;
 import com.datagenerator.ai.application.workflow.AgentRoutingWorkflow;
+import com.datagenerator.ai.memory.ChatMemoryContentCompressor;
 import com.datagenerator.ai.memory.ChatMemoryStore;
 import com.datagenerator.ai.memory.InMemoryChatMemoryStore;
 import com.datagenerator.ai.model.adapter.ChatModelFactory;
@@ -56,9 +58,16 @@ public class AiAutoConfiguration {
     }
 
     @Bean
+    JobGeneratorMemoryCompressor jobGeneratorMemoryCompressor() {
+        return new JobGeneratorMemoryCompressor();
+    }
+
+    @Bean
     JobGeneratorTools jobGeneratorTools(
-            DataGeneratorWebClient dataGeneratorWebClient, AgentSessionRegistry sessionRegistry) {
-        return new JobGeneratorTools(dataGeneratorWebClient, sessionRegistry);
+            DataGeneratorWebClient dataGeneratorWebClient,
+            AgentSessionRegistry sessionRegistry,
+            JobGeneratorMemoryCompressor compressor) {
+        return new JobGeneratorTools(dataGeneratorWebClient, sessionRegistry, compressor);
     }
 
     @Bean
@@ -99,8 +108,8 @@ public class AiAutoConfiguration {
     }
 
     @Bean
-    ChatMemoryStore chatMemoryStore(AiProperties properties) {
-        return new InMemoryChatMemoryStore(properties);
+    ChatMemoryStore chatMemoryStore(AiProperties properties, ChatMemoryContentCompressor compressor) {
+        return new InMemoryChatMemoryStore(properties, compressor);
     }
 
     @Bean(name = "agentExecutor", destroyMethod = "shutdown")

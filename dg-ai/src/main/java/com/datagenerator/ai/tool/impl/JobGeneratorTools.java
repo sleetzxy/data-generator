@@ -1,8 +1,8 @@
 package com.datagenerator.ai.tool.impl;
 
+import com.datagenerator.ai.agent.runtime.JobGeneratorMemoryCompressor;
 import com.datagenerator.ai.application.session.AgentSession;
 import com.datagenerator.ai.application.session.AgentSessionRegistry;
-import com.datagenerator.ai.memory.ChatMemoryContentCompressor;
 import com.datagenerator.ai.tool.definition.JobGeneratorToolSet;
 import com.datagenerator.ai.tool.impl.model.DgWebModels.CreateJobRequest;
 import com.datagenerator.ai.tool.impl.model.DgWebModels.JobDetail;
@@ -19,10 +19,13 @@ public class JobGeneratorTools implements JobGeneratorToolSet {
 
     private final DataGeneratorWebClient webClient;
     private final AgentSessionRegistry sessionRegistry;
+    private final JobGeneratorMemoryCompressor compressor;
 
-    public JobGeneratorTools(DataGeneratorWebClient webClient, AgentSessionRegistry sessionRegistry) {
+    public JobGeneratorTools(DataGeneratorWebClient webClient, AgentSessionRegistry sessionRegistry,
+                             JobGeneratorMemoryCompressor compressor) {
         this.webClient = webClient;
         this.sessionRegistry = sessionRegistry;
+        this.compressor = compressor;
     }
 
     @Tool("列出可用的数据连接名称与类型，不含 url 和密码")
@@ -48,7 +51,7 @@ public class JobGeneratorTools implements JobGeneratorToolSet {
         }
         AgentSession session = requireSession(sessionId);
         session.putReferenceYaml(detail.fileName(), detail.yaml());
-        return ChatMemoryContentCompressor.summarizeReferenceJob(detail.fileName(), detail.yaml());
+        return compressor.summarizeReferenceJob(detail.fileName(), detail.yaml());
     }
 
     @Tool("将已有 Job 复制为本会话草稿（服务端读取完整 YAML，不占用对话 token）；sourceFileName 可为 fileName、id 或展示名；newId/newDisplayName 可选")
@@ -79,7 +82,7 @@ public class JobGeneratorTools implements JobGeneratorToolSet {
         session.setDraftIncomplete(false);
         ValidationResult validation = webClient.validateYaml(yaml);
         session.setDraftValidated(validation.valid());
-        return ChatMemoryContentCompressor.summarizeDraftStored(yaml, false);
+        return compressor.summarizeDraftStored(yaml, false);
     }
 
     @Tool("校验 Job YAML（仅适用于短 YAML，约 6KB 以内）；长 YAML 请先通过结构化 JSON 写入 draftYaml，再调用 validateDraftJobYaml")
@@ -140,12 +143,12 @@ public class JobGeneratorTools implements JobGeneratorToolSet {
     public String getSchema(@ToolMemoryId String sessionId, String name) {
         com.datagenerator.ai.tool.impl.model.DgWebModels.SchemaDetail detail = webClient.getSchema(name);
         sessionRegistry.find(sessionId).ifPresent(session -> session.putReferenceSchema(name, detail));
-        return ChatMemoryContentCompressor.summarizeSchema(name, detail);
+        return compressor.summarizeSchema(name, detail);
     }
 
     @Tool("预览 Job YAML 生成结果（不写库）；yaml 较长时请改用 previewDraftJobYaml")
     public String previewJobYaml(String yaml, int limitPerTable, List<String> tableNames) {
-        return ChatMemoryContentCompressor.summarizePreviewResult(
+        return compressor.summarizePreviewResult(
                 webClient.preview(yaml, limitPerTable, tableNames));
     }
 
@@ -154,7 +157,7 @@ public class JobGeneratorTools implements JobGeneratorToolSet {
             @ToolMemoryId String sessionId,
             int limitPerTable,
             List<String> tableNames) {
-        return ChatMemoryContentCompressor.summarizePreviewResult(
+        return compressor.summarizePreviewResult(
                 webClient.preview(requireDraftYaml(sessionId), limitPerTable, tableNames));
     }
 

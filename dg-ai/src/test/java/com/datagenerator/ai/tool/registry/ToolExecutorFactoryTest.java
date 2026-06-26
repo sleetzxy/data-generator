@@ -2,6 +2,7 @@ package com.datagenerator.ai.tool.registry;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.datagenerator.ai.agent.runtime.JobGeneratorMemoryCompressor;
 import com.datagenerator.ai.application.session.AgentSession;
 import com.datagenerator.ai.application.session.AgentSessionRegistry;
 import com.datagenerator.ai.tool.impl.JobGeneratorTools;
@@ -31,7 +32,7 @@ class ToolExecutorFactoryTest {
         DataGeneratorWebClient webClient = Mockito.mock(DataGeneratorWebClient.class);
         Mockito.when(webClient.findJob("demo"))
                 .thenReturn(new JobDetail("id", "Demo", "demo", "writer:\n  type: csv"));
-        JobGeneratorTools tools = new JobGeneratorTools(webClient, sessionRegistry);
+        JobGeneratorTools tools = new JobGeneratorTools(webClient, sessionRegistry, new JobGeneratorMemoryCompressor());
 
         Map<ToolSpecification, ToolExecutor> executors = ToolExecutorFactory.wrap(
                 tools,

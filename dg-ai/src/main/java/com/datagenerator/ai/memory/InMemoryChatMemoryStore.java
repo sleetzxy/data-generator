@@ -13,11 +13,13 @@ public class InMemoryChatMemoryStore implements ChatMemoryStore {
 
     private final AiProperties properties;
     private final TokenCountEstimator tokenCountEstimator;
+    private final ChatMemoryContentCompressor compressor;
     private final ConcurrentHashMap<String, MemoryEntry> memories = new ConcurrentHashMap<>();
 
-    public InMemoryChatMemoryStore(AiProperties properties) {
+    public InMemoryChatMemoryStore(AiProperties properties, ChatMemoryContentCompressor compressor) {
         this.properties = properties;
         this.tokenCountEstimator = new OpenAiTokenCountEstimator("gpt-4o");
+        this.compressor = compressor;
     }
 
     @Override
@@ -58,7 +60,7 @@ public class InMemoryChatMemoryStore implements ChatMemoryStore {
                     .build();
         }
         return new SummarizingChatMemory(
-                sessionId, delegate, properties.getChatMemoryToolResultMaxChars());
+                sessionId, delegate, properties.getChatMemoryToolResultMaxChars(), compressor);
     }
 
     @Override

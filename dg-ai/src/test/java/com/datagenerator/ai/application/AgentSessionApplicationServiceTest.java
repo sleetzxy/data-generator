@@ -31,6 +31,8 @@ import com.datagenerator.ai.prompt.templates.PromptTemplateLoader;
 import com.datagenerator.ai.exception.AiDisabledException;
 import com.datagenerator.ai.exception.SessionConflictException;
 import com.datagenerator.ai.agent.runtime.AgentExecutionContext;
+import com.datagenerator.ai.agent.runtime.JobGeneratorMemoryCompressor;
+import com.datagenerator.ai.memory.ChatMemoryContentCompressor;
 import com.datagenerator.ai.tool.impl.JobGeneratorTools;
 import com.datagenerator.ai.tool.impl.web.DataGeneratorWebClient;
 import com.datagenerator.ai.tool.provider.JobGeneratorToolProvider;
@@ -395,7 +397,7 @@ class AgentSessionApplicationServiceTest {
             AgentRuntime runtimeOverride) {
         DataGeneratorWebClient webClient = mock(DataGeneratorWebClient.class);
         JobGeneratorToolProvider toolProvider = new JobGeneratorToolProvider(
-                new JobGeneratorTools(webClient, sessionRegistry));
+                new JobGeneratorTools(webClient, sessionRegistry, new JobGeneratorMemoryCompressor()));
         ToolRegistry toolRegistry = new ToolRegistry(List.of(toolProvider));
         StreamingHandleRegistry streamingHandleRegistry = new StreamingHandleRegistry();
         JobGeneratorAgentRuntime jobRuntime =
@@ -408,7 +410,7 @@ class AgentSessionApplicationServiceTest {
         AgentRuntime runtime = runtimeOverride != null ? runtimeOverride : jobRuntime;
         AgentRuntimeRegistry runtimeRegistry = new AgentRuntimeRegistry(List.of(runtime));
         ChatModelFactory chatModelFactory = new ChatModelFactory(aiProperties);
-        InMemoryChatMemoryStore chatMemoryStore = new InMemoryChatMemoryStore(aiProperties);
+        InMemoryChatMemoryStore chatMemoryStore = new InMemoryChatMemoryStore(aiProperties, new JobGeneratorMemoryCompressor());
         PromptTemplateLoader templateLoader = new PromptTemplateLoader();
         TemplatePromptProvider promptProvider = new TemplatePromptProvider(templateLoader);
         AgentOrchestrator orchestrator = new AgentOrchestrator(

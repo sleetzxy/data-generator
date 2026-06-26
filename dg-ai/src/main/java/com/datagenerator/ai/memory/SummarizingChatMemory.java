@@ -10,17 +10,21 @@ import java.util.List;
 
 /**
  * 写入 ChatMemory 前压缩大段 YAML，完整内容存于会话草稿 / 参考缓存。
+ * <p>压缩策略由 {@link ChatMemoryContentCompressor} 提供，不同 Agent 可注入不同实现。
  */
 public final class SummarizingChatMemory implements ChatMemory {
 
     private final Object id;
     private final ChatMemory delegate;
     private final int toolResultMaxChars;
+    private final ChatMemoryContentCompressor compressor;
 
-    public SummarizingChatMemory(Object id, ChatMemory delegate, int toolResultMaxChars) {
+    public SummarizingChatMemory(Object id, ChatMemory delegate, int toolResultMaxChars,
+                                 ChatMemoryContentCompressor compressor) {
         this.id = id;
         this.delegate = delegate;
         this.toolResultMaxChars = toolResultMaxChars;
+        this.compressor = compressor;
     }
 
     @Override
@@ -58,7 +62,7 @@ public final class SummarizingChatMemory implements ChatMemory {
             if (text == null || text.isBlank()) {
                 return message;
             }
-            String compressed = ChatMemoryContentCompressor.compressConversationText(text);
+            String compressed = compressor.compressConversationText(text);
             if (compressed.equals(text)) {
                 return message;
             }
@@ -68,7 +72,7 @@ public final class SummarizingChatMemory implements ChatMemory {
             return AiMessage.from(compressed);
         }
         if (message instanceof UserMessage userMessage && userMessage.hasSingleText()) {
-            String compressed = ChatMemoryContentCompressor.compressConversationText(
+            String compressed = compressor.compressConversationText(
                     userMessage.singleText());
             if (compressed.equals(userMessage.singleText())) {
                 return message;
@@ -80,7 +84,7 @@ public final class SummarizingChatMemory implements ChatMemory {
             if (text == null) {
                 return message;
             }
-            String compressed = ChatMemoryContentCompressor.compressToolResult(
+            String compressed = compressor.compressToolResult(
                     toolResult.toolName(), text, toolResultMaxChars);
             if (compressed.equals(text)) {
                 return message;
