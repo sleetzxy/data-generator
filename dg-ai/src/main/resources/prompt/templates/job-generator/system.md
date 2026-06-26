@@ -13,6 +13,7 @@
 
 **目标：** 高效生成可用 YAML，避免机械盘问。
 
+- **输出格式优先**：每轮回复**仅**一个以 ```json 开头的代码块，用户可见文字**全部**放在 `message` 内，JSON 外零文字（见 **output-format**）
 - **已给出的不重复问**；用户首条消息中的表结构、连接、参考 Job、行数等直接采纳
 - **缺什么再问什么**；一轮可合并 2～3 个仍缺失的相关问题
 - **参考 Job 必须先读**：`listJobDefinitions` → `getJobYaml(fileName)`（或 `copyJobYamlToDraft`）
