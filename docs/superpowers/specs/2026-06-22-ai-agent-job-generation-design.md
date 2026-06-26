@@ -2,9 +2,11 @@
 
 **日期：** 2026-06-22  
 **状态：** 已实现（独立 HTTP 部署）  
-**版本：** 1.1
+**版本：** 1.2
 
 > **实现说明（2026-06）：** 首版即采用 **`dg-ai` 独立进程 + HTTP**（默认端口 8081），`dg-web` 通过 `AgentProxyController` 转发 `/api/v1/agent/**`，**无 Maven 依赖**。dg-ai Tool 经 `X-DG-Service-Auth` 回调 dg-web 既有 REST API（非独立 agent-tools 端点）。打包脚本 `package.ps1` 同时产出两个 jar；启停脚本支持 `start-all` / `start-ai`。
+>
+> **实现演进（2026-06-26）：** Agent + Tool Set 两层模型；`ai.agents.<id>` 仅配置 `tool-set-id`；已移除 Skill 层与 `GET /skills`；系统提示位于 `prompt/templates/{agentId}/`；创建会话必填 `agentId`。详见 [`dg-ai/README.md`](../../dg-ai/README.md)。
 
 ---
 
@@ -159,36 +161,44 @@ REST 契约在 `dg-ai` 的 `api`/`dto` 包中**只定义一份**，嵌入/远程
 
 ## 3. API 与会话
 
+> **与当前实现一致的部分**见 [`dg-ai/README.md`](../../../dg-ai/README.md)。以下为原始设计要点；**以代码与 dg-ai README 为准**的差异：`POST /sessions` 使用 **`agentId`（必填）** 而非客户端自选 `skillId`；`GET /sessions/{id}` 返回草稿快照而非消息历史；SSE 事件名为 `tool` / `validation_error` / `job_saved` 等（非 `tool_start` / `artifact`）。
+
 ### 3.1 端点（`dg-web` 暴露，`/api/v1/agent`）
 
 所有接口走现有 Session 登录鉴权。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `GET` | `/skills` | 可选 Skill 列表 |
-| `POST` | `/sessions` | 创建会话（skillId + 可选 provider） |
-| `GET` | `/sessions/{sessionId}` | 会话元数据 + 消息历史 |
-| `POST` | `/sessions/{sessionId}/messages` | 发送用户消息；**响应 SSE 流** |
-| `DELETE` | `/sessions/{sessionId}` | 结束会话 |
+| `GET` | `/agents` | 已注册 Agent 及绑定的 skillId / toolSetId |
+| `GET` | `/skills` | Skill 元数据列表 |
+| `GET` | `/providers` | 已配置 LLM Provider |
+| `POST` | `/sessions` | 创建会话（**agentId 必填**，provider 可选） |
+| `GET` | `/sessions/{sessionId}` | 会话元数据 + 草稿 YAML 状态 |
+| `POST` | `/sessions/{sessionId}/messages` | 发送用户消息；**响应 SSE 流**（同 sessionId 多轮累积 ChatMemory） |
+| `DELETE` | `/sessions/{sessionId}` | 结束会话并清除对话记忆 |
 
 ### 3.2 创建会话
 
 ```json
 POST /api/v1/agent/sessions
 {
-  "skillId": "generate-job",
+  "agentId": "job-generator",
   "provider": "deepseek"
 }
 → 201
 {
   "sessionId": "uuid",
+  "agentId": "job-generator",
   "skillId": "generate-job",
   "provider": "deepseek",
-  "createdAt": "..."
+  "createdAt": "...",
+  "draftYaml": null,
+  "draftIncomplete": false,
+  "draftValidated": false
 }
 ```
 
-`provider` 可选；缺省使用 `data-generator.ai.default-provider`。会话创建后 **不可切换 provider**。
+`provider` 可选；缺省使用 `ai.default-provider`。`skillId` / `toolSetId` 由 `ai.agents.<agentId>` 在服务端解析，会话创建后 **不可切换 agent / skill / provider**。
 
 ### 3.3 发送消息（SSE）
 
@@ -201,11 +211,11 @@ Accept: text/event-stream
 | event | data | 用途 |
 |-------|------|------|
 | `token` | `{"delta":"..."}` | 流式文本 |
-| `tool_start` | `{"name":"listConnections"}` | 可选：UI 展示工具调用 |
-| `tool_end` | `{"name":"...","ok":true}` | 工具完成 |
-| `artifact` | `{"type":"yaml","content":"..."}` | 校验通过的完整 YAML |
-| `done` | `{"messageId":"..."}` | 本轮结束 |
-| `error` | `{"code":"...","message":"..."}` | 错误 |
+| `tool` | `{"name":"...","status":"done"}` | Tool 调用完成 |
+| `job_saved` | `{"status":"ok"}` | 草稿已通过 Tool 写入控制台 |
+| `validation_error` | `{"errors":[...]}` | YAML 语义校验失败 |
+| `done` | `{"messageId","draftIncomplete","draftValidated","hasDraft"}` | 本轮结束 |
+| `error` | `{"code","message"}` | 错误 |
 
 ### 3.4 Skill 列表
 
@@ -227,10 +237,13 @@ Skill 元数据来自 `classpath:skills/*/SKILL.md` 的 YAML front matter（`nam
 | 字段 | 说明 |
 |------|------|
 | `sessionId` | UUID |
-| `skillId` | 绑定的 Skill |
+| `agentId` | 绑定的 Agent（创建时指定） |
+| `skillId` | 由 Agent 配置解析得到的 Skill |
+| `toolSetId` | 由 Agent 配置解析（内部使用，API 快照可选返回） |
 | `provider` | 本会话 LLM provider |
-| `messages` | LangChain4j `ChatMemory` |
-| `draftYaml` | 最近一次 `artifact` 内容（可选缓存） |
+| `ChatMemory` | 进程内多轮对话历史（按 sessionId） |
+| `draftYaml` | 会话草稿 YAML（结构化 JSON 合并 + 续写） |
+| `draftValidated` / `draftIncomplete` | 草稿校验与续写状态 |
 | `createdAt` / `lastActiveAt` | TTL 清理依据 |
 
 **P1 存储：进程内 + TTL**

@@ -33,8 +33,7 @@
         <jts.version>1.19.0</jts.version>
         <groovy.version>4.0.24</groovy.version>
         <sqlite-jdbc.version>3.46.1.0</sqlite-jdbc.version>
-        <langchain4j.version>1.0.0</langchain4j.version>
-        <langchain4j-ollama.version>1.0.0-beta5</langchain4j-ollama.version>
+        <langchain4j.version>1.8.0</langchain4j.version>
     </properties>
 
     <dependencyManagement>
@@ -74,7 +73,7 @@
             <dependency>
                 <groupId>dev.langchain4j</groupId>
                 <artifactId>langchain4j-ollama</artifactId>
-                <version>${langchain4j-ollama.version}</version>
+                <version>${langchain4j.version}</version>
             </dependency>
             <dependency>
                 <groupId>com.datagenerator</groupId>

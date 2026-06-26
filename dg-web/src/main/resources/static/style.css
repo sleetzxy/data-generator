@@ -1293,6 +1293,16 @@ th {
     align-items: center;
 }
 
+.ai-message-welcome {
+    align-self: stretch;
+    max-width: none;
+    background: #f8fafc;
+    color: var(--text-muted, #64748b);
+    border: 1px dashed var(--border);
+    font-size: 0.82rem;
+    line-height: 1.55;
+}
+
 .ai-typing-indicator {
     display: inline-flex;
     align-items: center;
@@ -1391,6 +1401,10 @@ th {
     gap: 0.5rem;
     min-width: 0;
     flex: 1;
+}
+
+.ai-composer-right-only {
+    margin-left: auto;
 }
 
 .ai-composer-right {

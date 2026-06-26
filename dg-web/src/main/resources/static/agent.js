@@ -1,13 +1,22 @@
 const AGENT_API = '/api/v1/agent';
 
-let aiProviderOptions = [];
-
 let aiEnabled = false;
 let aiSessionId = null;
+let aiAgentId = 'job-generator';
 let aiSending = false;
 let aiAssistantBubble = null;
-let aiSkills = [];
-let aiSelectedSkillId = null;
+/** 本轮对话是否已调用保存类 Tool */
+let aiDraftSavedInTurn = false;
+
+/** 对话面板欢迎说明（固定文案，描述智能体身份与能力） */
+const AGENT_WELCOME_TEXT = `我是 Data Generator 的 Job 配置助手，帮你在对话里编写、校验测试数据任务的 YAML。
+
+我可以帮你：
+· 生成 Job YAML（writer、tables、seeds、约束、多写等）
+· 读取已有 Job、连接与 Schema 作参考（不会臆造连接名）
+· 自动校验草稿；你说「保存到控制台」会写入 Job 定义
+
+直接描述目标表、参考 Job 或造数需求即可开始。`;
 
 const FAB_POSITION_KEY = 'dg-ai-fab-position';
 const FAB_DRAG_THRESHOLD_PX = 4;
@@ -27,9 +36,9 @@ async function initAgentUi() {
         return;
     }
 
+    await loadAgentDefaults();
+
     fab.classList.remove('hidden');
-    await loadProviders();
-    await loadSkills();
 
     initFabDrag(fab);
     fab.addEventListener('click', handleFabClick);
@@ -37,20 +46,16 @@ async function initAgentUi() {
     document.getElementById('ai-chat-form').addEventListener('submit', handleSend);
     document.getElementById('ai-end-session').addEventListener('click', handleEndSession);
 
-    const skillTrigger = document.getElementById('ai-skill-trigger');
-    skillTrigger.addEventListener('click', toggleSkillMenu);
-
     const input = document.getElementById('ai-input');
     input.addEventListener('input', updateSendButtonState);
     input.addEventListener('keydown', handleInputKeydown);
 
-    document.addEventListener('click', handleDocumentClick);
     updateNewChatButtonState();
 }
 
 async function probeAgentApi() {
     try {
-        const response = await fetch(`${AGENT_API}/skills`, { credentials: 'same-origin' });
+        const response = await fetch(`${AGENT_API}/agents`, { credentials: 'same-origin' });
         if (response.status === 401) {
             window.location.href = '/login.html';
             return false;
@@ -58,137 +63,6 @@ async function probeAgentApi() {
         return response.ok;
     } catch (_) {
         return false;
-    }
-}
-
-async function loadProviders() {
-    const select = document.getElementById('ai-provider-select');
-    try {
-        aiProviderOptions = await agentFetch('/providers') || [];
-        select.innerHTML = '';
-        if (aiProviderOptions.length === 0) {
-            select.innerHTML = '<option value="">未配置可用模型</option>';
-            select.disabled = true;
-            return;
-        }
-        select.disabled = false;
-        let defaultIndex = 0;
-        aiProviderOptions.forEach((provider, index) => {
-            if (provider.defaultProvider) {
-                defaultIndex = index;
-            }
-        });
-        aiProviderOptions.forEach((provider, index) => {
-            const option = document.createElement('option');
-            option.value = provider.id;
-            option.textContent = provider.label || provider.id;
-            if (index === defaultIndex) {
-                option.selected = true;
-            }
-            select.appendChild(option);
-        });
-    } catch (err) {
-        select.innerHTML = '<option value="">加载失败</option>';
-        select.disabled = true;
-        showAgentToast('加载模型列表失败: ' + err.message);
-    }
-}
-
-async function loadSkills() {
-    const menu = document.getElementById('ai-skill-menu');
-    try {
-        aiSkills = await agentFetch('/skills');
-        renderSkillMenu();
-        if (aiSkills.length > 0) {
-            selectSkill(aiSkills[0].id, false);
-        } else {
-            updateSkillLabel(null);
-        }
-    } catch (err) {
-        menu.innerHTML = '';
-        updateSkillLabel(null);
-        showAgentToast('加载 Skill 失败: ' + err.message);
-    }
-}
-
-function renderSkillMenu() {
-    const menu = document.getElementById('ai-skill-menu');
-    menu.innerHTML = '';
-    aiSkills.forEach(skill => {
-        const item = document.createElement('button');
-        item.type = 'button';
-        item.className = 'ai-skill-menu-item';
-        item.dataset.skillId = skill.id;
-        item.setAttribute('role', 'option');
-        item.innerHTML = `
-            <span class="ai-skill-menu-name">${escapeHtml(skill.name || skill.id)}</span>
-            ${skill.description ? `<span class="ai-skill-menu-desc">${escapeHtml(skill.description)}</span>` : ''}`;
-        item.addEventListener('click', () => {
-            selectSkill(skill.id, true);
-            closeSkillMenu();
-        });
-        menu.appendChild(item);
-    });
-    highlightSelectedSkillMenuItem();
-}
-
-function selectSkill(skillId, userInitiated) {
-    const skill = aiSkills.find(s => s.id === skillId);
-    if (!skill) {
-        return;
-    }
-    if (userInitiated && aiSessionId) {
-        showAgentToast('进行中的对话无法切换 Skill，请点击「新对话」');
-        return;
-    }
-    aiSelectedSkillId = skillId;
-    updateSkillLabel(skill);
-    highlightSelectedSkillMenuItem();
-}
-
-function updateSkillLabel(skill) {
-    const label = document.getElementById('ai-skill-label');
-    const trigger = document.getElementById('ai-skill-trigger');
-    if (!skill) {
-        label.textContent = '—';
-        label.title = '';
-        trigger.setAttribute('aria-label', '选择 Skill');
-        return;
-    }
-    const name = skill.name || skill.id;
-    label.textContent = name;
-    label.title = skill.description || name;
-    trigger.setAttribute('aria-label', `Skill：${name}，点击切换`);
-}
-
-function highlightSelectedSkillMenuItem() {
-    document.querySelectorAll('.ai-skill-menu-item').forEach(item => {
-        const selected = item.dataset.skillId === aiSelectedSkillId;
-        item.classList.toggle('selected', selected);
-        item.setAttribute('aria-selected', selected ? 'true' : 'false');
-    });
-}
-
-function toggleSkillMenu(event) {
-    event.stopPropagation();
-    if (document.getElementById('ai-skill-trigger').disabled) {
-        return;
-    }
-    const menu = document.getElementById('ai-skill-menu');
-    const trigger = document.getElementById('ai-skill-trigger');
-    const isHidden = menu.classList.toggle('hidden');
-    trigger.setAttribute('aria-expanded', isHidden ? 'false' : 'true');
-}
-
-function closeSkillMenu() {
-    document.getElementById('ai-skill-menu').classList.add('hidden');
-    document.getElementById('ai-skill-trigger').setAttribute('aria-expanded', 'false');
-}
-
-function handleDocumentClick(event) {
-    const picker = document.querySelector('.ai-skill-picker');
-    if (picker && !picker.contains(event.target)) {
-        closeSkillMenu();
     }
 }
 
@@ -321,12 +195,11 @@ function clampFabInViewport(fab) {
 async function openDrawer() {
     document.getElementById('ai-drawer').classList.remove('hidden');
     document.getElementById('ai-fab').classList.add('hidden');
-    setSessionControlsLocked(!!aiSessionId);
     updateNewChatButtonState();
+    showWelcomeIfEmpty();
 }
 
 function closeDrawer() {
-    closeSkillMenu();
     document.getElementById('ai-drawer').classList.add('hidden');
     const fab = document.getElementById('ai-fab');
     if (fab && aiEnabled) {
@@ -334,28 +207,25 @@ function closeDrawer() {
     }
 }
 
-async function ensureSession() {
-    if (!aiSelectedSkillId) {
-        throw new Error('请选择 Skill');
+async function loadAgentDefaults() {
+    try {
+        const agents = await agentFetch('/agents');
+        if (Array.isArray(agents) && agents.length > 0) {
+            aiAgentId = agents[0].id || aiAgentId;
+        }
+    } catch (_) {
+        /* 使用内置默认值 */
     }
-    const provider = document.getElementById('ai-provider-select').value;
+}
 
+async function ensureSession() {
     const response = await agentFetch('/sessions', {
         method: 'POST',
-        body: JSON.stringify({ skillId: aiSelectedSkillId, provider: provider || undefined })
+        body: JSON.stringify({ agentId: aiAgentId })
     });
 
     aiSessionId = response.sessionId;
-    setSessionControlsLocked(true);
     updateNewChatButtonState();
-}
-
-function setSessionControlsLocked(locked) {
-    document.getElementById('ai-skill-trigger').disabled = locked;
-    document.getElementById('ai-provider-select').disabled = locked;
-    if (locked) {
-        closeSkillMenu();
-    }
 }
 
 function handleInputKeydown(event) {
@@ -389,6 +259,7 @@ async function handleSend(event) {
 
     appendMessage('user', content);
     input.value = '';
+    aiDraftSavedInTurn = false;
     setSending(true);
 
     try {
@@ -431,9 +302,21 @@ function resetSession() {
     aiAssistantBubble = null;
     document.getElementById('ai-messages').innerHTML = '';
     document.getElementById('ai-input').value = '';
-    setSessionControlsLocked(false);
     setSending(false);
     updateNewChatButtonState();
+    showWelcomeIfEmpty();
+}
+
+function showWelcomeIfEmpty() {
+    const messages = document.getElementById('ai-messages');
+    if (!messages || messages.childElementCount > 0) {
+        return;
+    }
+    const bubble = document.createElement('div');
+    bubble.className = 'ai-message ai-message-welcome';
+    bubble.setAttribute('role', 'note');
+    bubble.textContent = AGENT_WELCOME_TEXT;
+    messages.appendChild(bubble);
 }
 
 function updateNewChatButtonState() {
@@ -496,7 +379,56 @@ function hideTypingIndicator(bubble) {
     }
 }
 
+
+function stripInternalAgentHints(text) {
+    if (!text) {
+        return text;
+    }
+    return text
+        .replace(/<!--\s*dg-(?:draft|ref):[^>]*-->/g, '')
+        .replace(/\[Job YAML 草稿已存入会话[\s\S]*?\]/g, '')
+        .replace(/\[参考 Job「[\s\S]*?\]/g, '')
+        .replace(/\n\[提示\][^\n]*/g, '');
+}
+
+function handleAgentJobSaved() {
+    aiDraftSavedInTurn = true;
+    if (typeof loadDefinitions === 'function') {
+        loadDefinitions({ fullRender: true });
+    }
+}
+
+async function openValidatedDraftModal() {
+    if (!aiSessionId) {
+        return;
+    }
+    try {
+        const response = await fetch(
+            `${AGENT_API}/sessions/${encodeURIComponent(aiSessionId)}/draft`,
+            { credentials: 'same-origin' }
+        );
+        if (!response.ok) {
+            return;
+        }
+        const body = await response.json();
+        const yaml = body.draftYaml;
+        if (!yaml || typeof yaml !== 'string' || !yaml.trim()) {
+            return;
+        }
+        if (typeof window.openDefinitionModalForAi === 'function') {
+            window.openDefinitionModalForAi(yaml);
+            appendToAssistantBubble('\n[提示] 草稿已校验通过，已打开 Job 编辑窗口，确认后可保存到控制台。');
+        }
+    } catch (_) {
+        /* ignore */
+    }
+}
+
 function appendToAssistantBubble(text) {
+    const cleaned = stripInternalAgentHints(text);
+    if (!cleaned) {
+        return;
+    }
     if (!aiAssistantBubble) {
         aiAssistantBubble = appendMessage('assistant', '');
     }
@@ -507,7 +439,7 @@ function appendToAssistantBubble(text) {
         content.className = 'ai-message-content';
         aiAssistantBubble.prepend(content);
     }
-    content.textContent += text;
+    content.textContent += cleaned;
     const messages = document.getElementById('ai-messages');
     messages.scrollTop = messages.scrollHeight;
 }
@@ -528,20 +460,23 @@ function handleSseEvent(eventName, data) {
             try {
                 const parsed = JSON.parse(data);
                 label = parsed.name ? `[调用 ${parsed.name}]\n` : data;
+                if (parsed.name === 'saveDraftJobDefinition' || parsed.name === 'createJobDefinition') {
+                    handleAgentJobSaved();
+                }
             } catch (_) { /* ignore */ }
             appendToAssistantBubble(label);
             break;
         }
-        case 'artifact': {
+        case 'job_saved':
+            handleAgentJobSaved();
+            break;
+        case 'validation_error': {
             try {
-                const artifact = JSON.parse(data);
-                if (artifact.content && typeof window.openDefinitionModalForAi === 'function') {
-                    window.openDefinitionModalForAi(artifact.content);
-                    showAgentToast('已生成 Job 配置，请在弹窗中核对并保存');
-                }
-            } catch (err) {
-                showAgentToast('解析 artifact 失败: ' + err.message);
-            }
+                const parsed = JSON.parse(data);
+                const errors = Array.isArray(parsed.errors) ? parsed.errors : [];
+                const message = errors.length > 0 ? errors.join('\n') : '未知校验错误';
+                appendToAssistantBubble('\n[校验失败] ' + message);
+            } catch (_) { /* ignore */ }
             break;
         }
         case 'error': {
@@ -557,6 +492,15 @@ function handleSseEvent(eventName, data) {
         }
         case 'done':
             hideTypingIndicator(aiAssistantBubble);
+            try {
+                const parsed = JSON.parse(data);
+                if (!aiDraftSavedInTurn && parsed.draftValidated && parsed.hasDraft) {
+                    openValidatedDraftModal();
+                } else if (parsed.draftIncomplete && parsed.hasDraft) {
+                    appendToAssistantBubble('\n[提示] YAML 草稿尚未完成，可继续说明需求或等待自动续写。');
+                }
+            } catch (_) { /* ignore */ }
+            aiDraftSavedInTurn = false;
             setSending(false);
             aiAssistantBubble = null;
             break;
@@ -675,12 +619,6 @@ async function agentFetch(path, options = {}) {
     }
     const data = await response.json();
     return data;
-}
-
-function escapeHtml(text) {
-    const div = document.createElement('div');
-    div.textContent = text;
-    return div.innerHTML;
 }
 
 function showAgentToast(message) {

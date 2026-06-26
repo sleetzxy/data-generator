@@ -13,6 +13,14 @@ public class AiProperties {
     private RemoteServices remoteServices = new RemoteServices();
     private String defaultProvider;
     private int chatMemoryMaxMessages = 40;
+    /** 对话记忆 token 上限；大于 0 时启用 TokenWindowChatMemory，否则回退到条数窗口 */
+    private int chatMemoryMaxTokens = 48_000;
+    /** Tool 结果写入 memory 前的最大字符数；列表/校验类 Tool 在白名单内不截断 */
+    private int chatMemoryToolResultMaxChars = 32_768;
+
+    /** @deprecated 使用 {@link #chatMemoryToolResultMaxChars} */
+    @Deprecated
+    private int chatMemoryInlineMaxChars = 32_768;
     /** 模型单次回复最大输出 token，Tool 调用参数过长时可适当增大 */
     private Integer maxOutputTokens = 8192;
     private Duration requestTimeout = Duration.ofSeconds(120);
@@ -21,6 +29,15 @@ public class AiProperties {
 
     /** Agent 异步执行线程池大小 (绑定配置键: ai.agent-thread-pool-size) */
     private int agentThreadPoolSize = 10;
+
+    /** Agent 输入/输出调试日志 */
+    private IoLoggingProperties ioLogging = new IoLoggingProperties();
+
+    /** 结构化 YAML 草稿自动续写阈值 */
+    private DraftContinueProperties draftContinue = new DraftContinueProperties();
+
+    /** 各 Agent 的 Tool Set 绑定 */
+    private Map<String, AgentProperties> agents = new HashMap<>();
 
     public boolean isEnabled() {
         return enabled;
@@ -62,6 +79,31 @@ public class AiProperties {
         this.chatMemoryMaxMessages = chatMemoryMaxMessages;
     }
 
+    public int getChatMemoryMaxTokens() {
+        return chatMemoryMaxTokens;
+    }
+
+    public void setChatMemoryMaxTokens(int chatMemoryMaxTokens) {
+        this.chatMemoryMaxTokens = chatMemoryMaxTokens;
+    }
+
+    public int getChatMemoryInlineMaxChars() {
+        return chatMemoryInlineMaxChars;
+    }
+
+    public void setChatMemoryInlineMaxChars(int chatMemoryInlineMaxChars) {
+        this.chatMemoryInlineMaxChars = chatMemoryInlineMaxChars;
+        this.chatMemoryToolResultMaxChars = chatMemoryInlineMaxChars;
+    }
+
+    public int getChatMemoryToolResultMaxChars() {
+        return chatMemoryToolResultMaxChars;
+    }
+
+    public void setChatMemoryToolResultMaxChars(int chatMemoryToolResultMaxChars) {
+        this.chatMemoryToolResultMaxChars = chatMemoryToolResultMaxChars;
+    }
+
     public Integer getMaxOutputTokens() {
         return maxOutputTokens;
     }
@@ -100,6 +142,30 @@ public class AiProperties {
 
     public void setAgentThreadPoolSize(int agentThreadPoolSize) {
         this.agentThreadPoolSize = agentThreadPoolSize;
+    }
+
+    public IoLoggingProperties getIoLogging() {
+        return ioLogging;
+    }
+
+    public void setIoLogging(IoLoggingProperties ioLogging) {
+        this.ioLogging = ioLogging != null ? ioLogging : new IoLoggingProperties();
+    }
+
+    public DraftContinueProperties getDraftContinue() {
+        return draftContinue;
+    }
+
+    public void setDraftContinue(DraftContinueProperties draftContinue) {
+        this.draftContinue = draftContinue != null ? draftContinue : new DraftContinueProperties();
+    }
+
+    public Map<String, AgentProperties> getAgents() {
+        return agents;
+    }
+
+    public void setAgents(Map<String, AgentProperties> agents) {
+        this.agents = agents != null ? agents : new HashMap<>();
     }
 
     /** Tool Port 回调的外部 HTTP 服务 */
@@ -217,6 +283,115 @@ public class AiProperties {
 
         public void setMaxOutputTokens(Integer maxOutputTokens) {
             this.maxOutputTokens = maxOutputTokens;
+        }
+    }
+
+    /** Agent 对话 I/O 日志配置（{@code ai.io-logging.*}） */
+    public static class IoLoggingProperties {
+
+        /** 是否打印模型输入/输出、Tool 调用、草稿合并决策 */
+        private boolean enabled = false;
+        /** 单段日志最大字符数；0 表示不截断 */
+        private int maxChars = 8_192;
+        /** 是否记录 Tool 返回体 */
+        private boolean logToolResults = true;
+        /** 是否记录推送给前端的 SSE token/提示 */
+        private boolean logSseEvents = true;
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public int getMaxChars() {
+            return maxChars;
+        }
+
+        public void setMaxChars(int maxChars) {
+            this.maxChars = maxChars;
+        }
+
+        public boolean isLogToolResults() {
+            return logToolResults;
+        }
+
+        public void setLogToolResults(boolean logToolResults) {
+            this.logToolResults = logToolResults;
+        }
+
+        public boolean isLogSseEvents() {
+            return logSseEvents;
+        }
+
+        public void setLogSseEvents(boolean logSseEvents) {
+            this.logSseEvents = logSseEvents;
+        }
+    }
+
+    /** 结构化 YAML 草稿自动续写（{@code ai.draft-continue.*}） */
+    public static class DraftContinueProperties {
+
+        private int maxTurnContinues = 3;
+        private int maxTablesAutoContinue = 40;
+        private int repairMaxChars = 8_000;
+        private int repairMaxTables = 25;
+        private int minDraftGrowthChars = 32;
+
+        public int getMaxTurnContinues() {
+            return maxTurnContinues;
+        }
+
+        public void setMaxTurnContinues(int maxTurnContinues) {
+            this.maxTurnContinues = maxTurnContinues;
+        }
+
+        public int getMaxTablesAutoContinue() {
+            return maxTablesAutoContinue;
+        }
+
+        public void setMaxTablesAutoContinue(int maxTablesAutoContinue) {
+            this.maxTablesAutoContinue = maxTablesAutoContinue;
+        }
+
+        public int getRepairMaxChars() {
+            return repairMaxChars;
+        }
+
+        public void setRepairMaxChars(int repairMaxChars) {
+            this.repairMaxChars = repairMaxChars;
+        }
+
+        public int getRepairMaxTables() {
+            return repairMaxTables;
+        }
+
+        public void setRepairMaxTables(int repairMaxTables) {
+            this.repairMaxTables = repairMaxTables;
+        }
+
+        public int getMinDraftGrowthChars() {
+            return minDraftGrowthChars;
+        }
+
+        public void setMinDraftGrowthChars(int minDraftGrowthChars) {
+            this.minDraftGrowthChars = minDraftGrowthChars;
+        }
+    }
+
+    /** 各 Agent 的 Tool Set 绑定（{@code ai.agents.<id>.tool-set-id}） */
+    public static class AgentProperties {
+
+        private String toolSetId;
+
+        public String getToolSetId() {
+            return toolSetId;
+        }
+
+        public void setToolSetId(String toolSetId) {
+            this.toolSetId = toolSetId;
         }
     }
 }

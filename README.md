@@ -31,7 +31,7 @@ graph LR
     end
 
     subgraph AI层
-        ai["dg-ai<br/>LangChain4j Agent · Skill · SSE"]
+        ai["dg-ai<br/>LangChain4j Agent · Tool Set · SSE"]
     end
 
     subgraph 核心引擎
@@ -116,7 +116,7 @@ flowchart TB
 **要点：**
 
 - **dg-web** 负责 HTTP 适配、认证、任务调度与持久化；不直接操作数据源；可选代理 `/api/v1/agent` 至 **dg-ai**
-- **dg-ai** 独立进程，提供多轮对话 Job 生成（LangChain4j + Skill）；通过服务间认证头回调 dg-web 的 REST API（连接列表、Job 校验等）
+- **dg-ai** 独立进程，提供多轮对话 Job 生成（LangChain4j Agent + Tool Set）；通过服务间认证头回调 dg-web 的 REST API（连接列表、Job 校验等）
 - **dg-core** 纯业务引擎，按 YAML 定义驱动生成流水线，通过 SPI 调用插件
 - **插件** 各自独立 AutoConfiguration 注册，按需引入 classpath；Reader 读参考数据，Writer 写生成结果；支持 Job 级 **`writers` 多写**（同一批数据同时写入 PG / ClickHouse / CSV 等多个目标）
 - **连接配置** 可在 `application.yml` 集中维护，也可在 Job YAML 中用顶层 **`connections` 块**或 reader/writer **内联连接**（见配置指南）
@@ -213,7 +213,7 @@ bin\windows\start-ai.bat      REM dg-ai
 控制台提供：
 
 - **任务管理** — Job 定义 CRUD、Cron 定时调度、提交运行、运行记录与日志（分页）；**自动刷新**（默认开启，运行中/日志弹窗 2 秒、空闲 5 秒，增量更新状态避免整表闪烁）
-- **AI 助手**（可选）— 右下角悬浮球 → 右侧抽屉多轮对话，选择 Skill 生成 Job YAML；校验通过后可自动打开「新建任务」并填入内容（需同时启动 dg-ai 并在 dg-web 启用 `data-generator.ai.enabled`）
+- **AI 助手**（可选）— 右下角悬浮球 → 右侧抽屉**多轮对话**（同一会话内上下文连续）；启动时从 `GET /api/v1/agent/agents` 选择 Agent（首版 `job-generator`），生成 Job YAML；校验通过后可自动打开「新建任务」并填入内容（需同时启动 dg-ai 并在 dg-web 启用 `data-generator.ai.enabled`）
 - **配置指南** — 内置 YAML 配置说明文档
 
 ### 运行测试
@@ -237,9 +237,13 @@ java -jar dg-ai/target/dg-ai-0.1.0-SNAPSHOT.jar
 
 **dg-ai**（`application.yml` / `application-local.yml`）需配置：
 
+- `ai.agents.<agentId>.tool-set-id` — Agent 与 Tool Set 绑定（首版 `job-generator` → `job-generator-tools`）
+- `ai.default-provider` — 默认 LLM（会话可覆盖 `provider`）
 - `ai.remote-services.data-generator-web.base-url` — 指向 dg-web（如 `http://localhost:8080`）
 - `ai.remote-services.data-generator-web.service-auth-token` — 与 dg-web 的 `data-generator.service-auth.token` 一致
 - `ai.providers.*.api-key` — LLM 密钥（或环境变量 `DEEPSEEK_API_KEY` 等）
+
+创建会话须传 **`agentId`**（无服务端默认 Agent）。详见 [`dg-ai/README.md`](dg-ai/README.md)。
 
 ### 启用 Web 控制台 FAB
 
@@ -257,7 +261,7 @@ data-generator:
 
 设置 `enabled=true`、两端 `service-auth.token` 一致、dg-ai 已启动且 LLM API Key 有效后，登录控制台即可见 FAB；校验通过的 YAML 会自动填入「新建任务」表单。
 
-Skill 资源位于 `dg-ai/src/main/resources/skills/`；修改 `.cursor/skills/` 下对应 Skill 后须同步到该目录再重新打包。设计规格见 `docs/superpowers/specs/2026-06-22-ai-agent-job-generation-design.md`。
+能力由 **Agent**（`prompt/templates/{agentId}/` 系统提示 + 编排）与 **Tool Set**（可调 Tool 集合）组成。修改工作流程请编辑 `prompt/templates/`。设计规格见 `docs/superpowers/specs/2026-06-22-ai-agent-job-generation-design.md`。
 
 ## 配置目录
 
@@ -496,7 +500,7 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}/record
 | 能力 | 说明 |
 |------|------|
 | Web 控制台 | 任务管理、Job 定义编辑、Cron 调度、运行记录与日志（分页）、配置指南；自动刷新与增量 DOM 更新 |
-| AI Agent | `dg-ai` 独立服务 + Web FAB 对话；Skill `generate-job` 多轮生成 YAML；服务间 `X-DG-Service-Auth` 回调 dg-web API |
+| AI Agent | `dg-ai` 独立服务 + Web FAB 多轮对话；Agent `job-generator`；创建会话必填 `agentId` |
 | 连接配置 | `application.yml` 命名连接；Job 顶层 `connections` 块；reader/writer 内联连接（可混用） |
 | 表单登录 | Spring Security Session 认证，`data-generator.auth.*` 可配置 |
 | 任务持久化 | SQLite 存储任务记录；运行日志写入 `log-dir` 文件，重启后可查历史 |
@@ -506,4 +510,4 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}/record
 
 ## 许可证
 
-内部项目，版本 `0.1.0-SNAPSHOT`。
+本项目已开源（版本 `0.1.0-SNAPSHOT`）。源码、Issue 与 Pull Request 见 [GitHub 仓库](https://github.com/sleetzxy/data-generator)。

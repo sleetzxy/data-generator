@@ -5,6 +5,9 @@
 spring:
   config:
     import: optional:classpath:application-local.yml
+  mvc:
+    async:
+      request-timeout: -1
 
 server:
   port: 8081
@@ -15,14 +18,37 @@ ai:
   remote-services:
     data-generator-web:
       base-url: http://localhost:8080
-      service-auth-token: ai-tokens
+      service-auth-token: ${DG_SERVICE_AUTH_TOKEN:ai-tokens}
   default-provider: deepseek
-  request-timeout: 120s
+  # Agent SSE 异步执行线程池大小
+  agent-thread-pool-size: 10
+  agents:
+    job-generator:
+      tool-set-id: job-generator-tools
+  request-timeout: 300s
+  # 模型单次输出 token 上限；DeepSeek deepseek-chat 最大 8192。超长 YAML 请依赖结构化 JSON 分片 + 自动续写
   max-output-tokens: 8192
+  # 对话记忆 token 上限（输入上下文预算）；大于 0 启用 TokenWindowChatMemory
+  chat-memory-max-tokens: 48000
+  # Tool 结果写入 memory 前的最大字符数（列表/校验类 Tool 不截断）
+  chat-memory-tool-result-max-chars: 32768
   chat-memory-max-messages: 40
+  # Agent 输入/输出调试日志（模型 prompt、回复、Tool 调用、草稿合并、SSE 提示）
+  io-logging:
+    enabled: true
+    max-chars: 8192
+    log-tool-results: true
+    log-sse-events: true
   session:
     ttl: 2h
     max-sessions: 100
+  # 结构化 YAML 草稿自动续写阈值
+  draft-continue:
+    max-turn-continues: 3
+    max-tables-auto-continue: 40
+    repair-max-chars: 8000
+    repair-max-tables: 25
+    min-draft-growth-chars: 32
   providers:
     deepseek:
       type: open-ai-compatible

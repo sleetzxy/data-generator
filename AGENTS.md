@@ -66,7 +66,7 @@ data-generator/
 │   ├── dg-plugin-postgresql/
 │   ├── dg-plugin-clickhouse/
 │   └── dg-plugin-csv/
-├── dg-ai/                     # AI Agent 独立 HTTP 服务（LangChain4j、Skill、REST）
+├── dg-ai/                     # AI Agent 独立 HTTP 服务（LangChain4j、Agent/Tool Set、REST）
 └── dg-web/                    # Web 应用（Spring Boot 启动、REST API、Web 控制台）
     └── com.datagenerator.web    # controller / service / dto / config / storage
 ```
@@ -91,7 +91,7 @@ dg-web → dg-ai（仅 HTTP，无 Maven 依赖）
 dg-web → dg-plugin-* → dg-spi
 ```
 
-**AI 部署：** `dg-ai` 独立进程暴露 `/api/v1/agent`；`dg-web` 通过 `data-generator.ai.remote-base-url` HTTP 代理对话。dg-ai Tool 经 **`X-DG-Service-Auth`** 回调 dg-web 既有 REST API（`/api/v1/config/connections`、`/api/v1/job-definitions?validateOnly=true` 等），两端 `data-generator.service-auth.token` / `ai.remote-services.data-generator-web.service-auth-token` 须一致。
+**AI 部署：** `dg-ai` 独立进程暴露 `/api/v1/agent`；`dg-web` HTTP 代理对话。客户端创建会话须传 **`agentId`**（`ai.agents.<id>` 配置 `tool-set-id`）。dg-ai Tool 经 **`X-DG-Service-Auth`** 回调 dg-web REST API。
 
 **分层约束：**
 
@@ -205,7 +205,7 @@ java -jar dg-ai/target/dg-ai-0.1.0-SNAPSHOT.jar
 | P2 | histogram/normal 分布、异步 202、Aviator、JTS within |
 | P3 | Job 级 seeds、Groovy、repair/warn 约束、DELETE 取消任务、**writers 多写**（PG/CK/CSV 等同批 fan-out） |
 | Web/运维 | Web 控制台、Cron 调度、表单登录（`data-generator.auth.*`）、SQLite 任务记录 + 文件运行日志、Job 定义 CRUD |
-| AI | `dg-ai` 独立服务、Web FAB 多轮对话、`generate-job` Skill、YAML 校验与自动填表 |
+| AI | `dg-ai` 独立服务、Web FAB 多轮对话、Agent + Tool Set、`prompt/templates/{agentId}/` |
 
 详见 `README.md`。
 
@@ -220,7 +220,7 @@ java -jar dg-ai/target/dg-ai-0.1.0-SNAPSHOT.jar
 | 修改生成/约束逻辑 | 改 `dg-core`；补单元测试 |
 | 修改任务持久化 | 改 `dg-web/.../storage/`（`JobRepository`、`JobLogFileRepository`）；任务记录见 job-log-sqlite spec，运行日志见 `storage.log-dir` |
 | 修改认证/登录 | 改 `SecurityConfig` + `DataGeneratorProperties.AuthProperties`；静态页 `static/login.html` |
-| 修改 AI Agent | 改 `dg-ai`（Skill、`JobGeneratorTools`、会话服务）；Skill 同步至 `dg-ai/src/main/resources/skills/`；dg-web 仅改 `proxy/` 与 `data-generator.ai.*` |
+| 修改 AI Agent | 改 `dg-ai`（`prompt/templates/{agentId}/`、`JobGeneratorTools`、workflow/agent 层、`ai.agents`）；dg-web 改 `static/agent.js` 与 `proxy/` |
 | 修改部署/启停脚本 | 改 `scripts/linux`、`scripts/windows`；打包逻辑在 `scripts/package.ps1`（Maven 须带 `-am`，含 dg-ai jar） |
 | 排查调用链 | `codegraph_trace` → `codegraph_explore` |
 
@@ -238,10 +238,11 @@ java -jar dg-ai/target/dg-ai-0.1.0-SNAPSHOT.jar
 | `docs/superpowers/specs/2026-06-05-job-log-sqlite-design.md` | 任务 SQLite 持久化设计（任务记录；运行日志已改为 `storage.log-dir` 文件） |
 | `docs/superpowers/plans/2026-06-05-job-log-sqlite.md` | 任务 SQLite 持久化实现计划 |
 | `docs/superpowers/specs/2026-06-07-job-level-seeds-design.md` | Job 级 seeds 设计规格 |
+| `dg-ai/README.md` | dg-ai 模块说明（Agent/Tool Set、API、配置） |
 | `docs/superpowers/specs/2026-06-22-ai-agent-job-generation-design.md` | AI Agent Job 生成设计规格 |
 | `docs/superpowers/plans/2026-06-22-ai-agent-job-generation.md` | AI Agent 实现计划 |
 | `dg-web/src/main/resources/static/docs/config-guide.md` | Web 控制台配置指南（用户文档） |
-| `dg-ai/src/main/resources/skills/` | AI Skill 运行时资源（须与 `.cursor/skills/` 同步） |
+| `dg-ai/src/main/resources/prompt/templates/{agentId}/` | Agent 运行时系统提示（如 `job-generator/`） |
 
 ---
 

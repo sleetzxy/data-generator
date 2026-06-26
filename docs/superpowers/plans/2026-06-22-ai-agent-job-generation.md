@@ -8,6 +8,8 @@
 
 **实现状态：** 核心链路已实现（独立部署、FAB、SSE、Skill、Tool 回调、打包脚本）。原计划的同 JVM embedded / Port Adapter 方案已替换为 HTTP 抽象。
 
+**后续演进（2026-06-26）：** Agent + Tool Set 两层；`POST /sessions` 必填 `agentId`；已移除 Skill 层与 `GET /skills`；详见 [`dg-ai/README.md`](../../../dg-ai/README.md)。
+
 **Tech Stack:** Java 21, Spring Boot 3.3, LangChain4j 1.0.0（**编程式 API，不用 spring-boot-starter** 以避免与 SB 3.3 版本冲突）, SnakeYAML, JUnit 5, Mockito, AssertJ
 
 **Spec:** `docs/superpowers/specs/2026-06-22-ai-agent-job-generation-design.md`

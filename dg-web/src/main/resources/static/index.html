@@ -161,22 +161,7 @@
                 <textarea id="ai-input" rows="1" spellcheck="false"
                           placeholder="想到什么就随时发…"></textarea>
                 <div class="ai-composer-toolbar">
-                    <div class="ai-composer-left">
-                        <div class="ai-skill-picker">
-                            <button type="button" id="ai-skill-trigger" class="ai-circle-btn"
-                                    aria-label="选择 Skill" aria-haspopup="listbox" aria-expanded="false">
-                                <span class="ai-circle-btn-icon" aria-hidden="true">+</span>
-                            </button>
-                            <div id="ai-skill-menu" class="ai-skill-menu hidden" role="listbox"
-                                 aria-label="Skill 列表"></div>
-                        </div>
-                        <span id="ai-skill-label" class="ai-skill-label hidden" title="当前 Skill">—</span>
-                    </div>
-                    <div class="ai-composer-right">
-                        <div class="ai-model-wrap">
-                            <select id="ai-provider-select" class="ai-model-select"
-                                    aria-label="选择模型"></select>
-                        </div>
+                    <div class="ai-composer-right ai-composer-right-only">
                         <button type="submit" id="ai-send-btn" class="ai-send-btn" aria-label="发送" disabled>
                             <svg class="ai-send-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                                 <path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"

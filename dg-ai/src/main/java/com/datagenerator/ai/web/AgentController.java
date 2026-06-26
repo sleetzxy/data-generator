@@ -1,46 +1,57 @@
 package com.datagenerator.ai.web;
 
-import com.datagenerator.ai.service.AgentSessionService;
-import com.datagenerator.ai.dto.CreateSessionRequest;
-import com.datagenerator.ai.dto.ProviderInfo;
-import com.datagenerator.ai.dto.SendMessageRequest;
-import com.datagenerator.ai.dto.SessionResponse;
-import com.datagenerator.ai.dto.SkillInfo;
+
+
+import com.datagenerator.ai.application.AgentSessionApplicationService;
+
+import com.datagenerator.ai.web.dto.request.ChatRequest;
+
+import com.datagenerator.ai.web.dto.request.CreateSessionRequest;
+
+import com.datagenerator.ai.web.dto.response.AgentInfo;
+import com.datagenerator.ai.web.dto.response.ProviderInfo;
+
+import com.datagenerator.ai.web.dto.response.DraftResponse;
+import com.datagenerator.ai.web.dto.response.SessionResponse;
 import java.util.List;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.springframework.validation.annotation.Validated;
 import jakarta.validation.Valid;
 import java.util.concurrent.Executor;
 
 @Validated
 @RestController
 @RequestMapping("/api/v1/agent")
-@ConditionalOnProperty(prefix = "ai", name = "server", havingValue = "true")
+@ConditionalOnProperty(prefix = "ai", name = {"server", "enabled"}, havingValue = "true")
 public class AgentController {
 
-    private final AgentSessionService agentSessionService;
+    private final AgentSessionApplicationService agentSessionService;
     private final Executor agentExecutor;
 
-    public AgentController(AgentSessionService agentSessionService, Executor agentExecutor) {
+    public AgentController(
+            AgentSessionApplicationService agentSessionService,
+            @Qualifier("agentExecutor") Executor agentExecutor) {
         this.agentSessionService = agentSessionService;
         this.agentExecutor = agentExecutor;
     }
 
-    @GetMapping("/skills")
-    public List<SkillInfo> listSkills() {
-        return agentSessionService.listSkills();
+    @GetMapping("/agents")
+    public List<AgentInfo> listAgents() {
+        return agentSessionService.listAgents();
     }
 
     @GetMapping("/providers")
@@ -51,12 +62,19 @@ public class AgentController {
     @PostMapping("/sessions")
     public ResponseEntity<SessionResponse> createSession(@Valid @RequestBody CreateSessionRequest request) {
         return ResponseEntity.status(HttpStatus.CREATED)
-                .body(agentSessionService.createSession(request));
+                .body(WebDtoMapper.toSessionResponse(agentSessionService.createSession(request)));
     }
 
     @GetMapping("/sessions/{sessionId}")
-    public SessionResponse getSession(@PathVariable String sessionId) {
-        return agentSessionService.getSession(sessionId);
+    public SessionResponse getSession(
+            @PathVariable String sessionId,
+            @RequestParam(defaultValue = "false") boolean includeDraft) {
+        return WebDtoMapper.toSessionResponse(agentSessionService.getSession(sessionId, includeDraft));
+    }
+
+    @GetMapping("/sessions/{sessionId}/draft")
+    public DraftResponse getSessionDraft(@PathVariable String sessionId) {
+        return new DraftResponse(agentSessionService.getSessionDraftYaml(sessionId));
     }
 
     @DeleteMapping("/sessions/{sessionId}")
@@ -68,9 +86,10 @@ public class AgentController {
     @PostMapping(value = "/sessions/{sessionId}/messages", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter sendMessage(
             @PathVariable String sessionId,
-            @Valid @RequestBody SendMessageRequest request) {
-        SseEmitter emitter = AgentSseSupport.openStream(agentSessionService);
+            @Valid @RequestBody ChatRequest request) {
+        SseEmitter emitter = AgentSseSupport.openStream(agentSessionService, sessionId);
         AgentSseSupport.sendMessageAsync(agentSessionService, emitter, sessionId, request.getContent(), agentExecutor);
         return emitter;
     }
 }
+

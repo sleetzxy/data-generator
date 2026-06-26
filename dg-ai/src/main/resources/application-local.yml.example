@@ -4,10 +4,20 @@
 #
 # application.yml 会通过 spring.config.import 自动加载 application-local.yml（若存在）。
 # 也可改用环境变量 DEEPSEEK_API_KEY，无需创建本文件。
+#
+# Agent / Tool Set 绑定见 application.yml 的 ai.agents（创建会话须传 agentId）。
+# 服务间认证 token 须与 dg-web data-generator.service-auth.token 一致，可通过环境变量 DG_SERVICE_AUTH_TOKEN 覆盖。
 
 ai:
+  remote-services:
+    data-generator-web:
+      service-auth-token: your-shared-service-auth-token
   providers:
     deepseek:
       api-key: sk-your-deepseek-api-key
       # 复杂 Job 生成时可增大，减少 Tool 参数 JSON 被截断
       max-output-tokens: 8192
+  # 本地排查续写/YAML 问题时建议开启
+  io-logging:
+    enabled: true
+    max-chars: 8192

@@ -1,20 +1,27 @@
 package com.datagenerator.ai.config;
 
-import com.datagenerator.ai.port.ConnectionCatalogPort;
-import com.datagenerator.ai.port.JobDefinitionPort;
-import com.datagenerator.ai.port.JobExecutionPort;
-import com.datagenerator.ai.port.JobPreviewPort;
-import com.datagenerator.ai.port.SchemaCatalogPort;
-import com.datagenerator.ai.service.AgentSessionService;
-import com.datagenerator.ai.session.AgentSessionRegistry;
-import com.datagenerator.ai.session.ChatMemoryStore;
-import com.datagenerator.ai.session.InMemoryChatMemoryStore;
-import com.datagenerator.ai.skill.SkillCatalog;
-import com.datagenerator.ai.skill.SkillRegistry;
-import com.datagenerator.ai.skill.runtime.SkillRuntime;
-import com.datagenerator.ai.skill.runtime.SkillRuntimeRegistry;
-import com.datagenerator.ai.skill.runtime.generatejob.GenerateJobSkillRuntime;
-import com.datagenerator.ai.tool.generatejob.JobGeneratorTools;
+import com.datagenerator.ai.agent.orchestrator.AgentOrchestrator;
+import com.datagenerator.ai.agent.runtime.AgentRuntime;
+import com.datagenerator.ai.agent.runtime.AgentRuntimeRegistry;
+import com.datagenerator.ai.agent.runtime.JobGeneratorAgentRuntime;
+import com.datagenerator.ai.agent.runtime.StreamingHandleRegistry;
+import com.datagenerator.ai.application.AgentIoLogger;
+import com.datagenerator.ai.application.AgentSessionApplicationService;
+import com.datagenerator.ai.application.session.AgentSessionRegistry;
+import com.datagenerator.ai.application.workflow.AgentConversationWorkflow;
+import com.datagenerator.ai.application.workflow.AgentExecutionWorkflow;
+import com.datagenerator.ai.application.workflow.AgentRoutingWorkflow;
+import com.datagenerator.ai.memory.ChatMemoryStore;
+import com.datagenerator.ai.memory.InMemoryChatMemoryStore;
+import com.datagenerator.ai.model.adapter.ChatModelFactory;
+import com.datagenerator.ai.prompt.provider.PromptProvider;
+import com.datagenerator.ai.prompt.provider.TemplatePromptProvider;
+import com.datagenerator.ai.prompt.templates.PromptTemplateLoader;
+import com.datagenerator.ai.tool.definition.ToolProvider;
+import com.datagenerator.ai.tool.impl.JobGeneratorTools;
+import com.datagenerator.ai.tool.impl.web.DataGeneratorWebClient;
+import com.datagenerator.ai.tool.provider.JobGeneratorToolProvider;
+import com.datagenerator.ai.tool.registry.ToolRegistry;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -24,7 +31,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
 
 @Configuration
-@Import(DataGeneratorWebPortConfiguration.class)
+@Import(DataGeneratorWebConfiguration.class)
 @ConditionalOnProperty(prefix = "ai", name = {"server", "enabled"}, havingValue = "true")
 public class AiAutoConfiguration {
 
@@ -34,15 +41,13 @@ public class AiAutoConfiguration {
     }
 
     @Bean
-    SkillRegistry skillRegistry() {
-        SkillRegistry registry = new SkillRegistry();
-        registry.loadFromClasspath();
-        return registry;
+    PromptTemplateLoader promptTemplateLoader() {
+        return new PromptTemplateLoader();
     }
 
     @Bean
-    SkillCatalog skillCatalog(SkillRegistry skillRegistry) {
-        return skillRegistry;
+    PromptProvider promptProvider(PromptTemplateLoader promptTemplateLoader) {
+        return new TemplatePromptProvider(promptTemplateLoader);
     }
 
     @Bean
@@ -52,31 +57,45 @@ public class AiAutoConfiguration {
 
     @Bean
     JobGeneratorTools jobGeneratorTools(
-            ConnectionCatalogPort connectionCatalogPort,
-            JobDefinitionPort jobDefinitionPort,
-            SchemaCatalogPort schemaCatalogPort,
-            JobPreviewPort jobPreviewPort,
-            JobExecutionPort jobExecutionPort,
-            AgentSessionRegistry sessionRegistry) {
-        return new JobGeneratorTools(
-                connectionCatalogPort,
-                jobDefinitionPort,
-                schemaCatalogPort,
-                jobPreviewPort,
-                jobExecutionPort,
-                sessionRegistry);
+            DataGeneratorWebClient dataGeneratorWebClient, AgentSessionRegistry sessionRegistry) {
+        return new JobGeneratorTools(dataGeneratorWebClient, sessionRegistry);
     }
 
     @Bean
-    GenerateJobSkillRuntime generateJobSkillRuntime(
-            JobGeneratorTools jobGeneratorTools,
-            JobDefinitionPort jobDefinitionPort) {
-        return new GenerateJobSkillRuntime(jobGeneratorTools, jobDefinitionPort);
+    JobGeneratorToolProvider jobGeneratorToolProvider(JobGeneratorTools jobGeneratorTools) {
+        return new JobGeneratorToolProvider(jobGeneratorTools);
     }
 
     @Bean
-    SkillRuntimeRegistry skillRuntimeRegistry(List<SkillRuntime> runtimes) {
-        return new SkillRuntimeRegistry(runtimes);
+    ToolRegistry toolRegistry(List<ToolProvider> toolProviders) {
+        return new ToolRegistry(toolProviders);
+    }
+
+    @Bean
+    AgentIoLogger agentIoLogger(AiProperties properties) {
+        return new AgentIoLogger(properties);
+    }
+
+    @Bean
+    StreamingHandleRegistry streamingHandleRegistry() {
+        return new StreamingHandleRegistry();
+    }
+
+    @Bean
+    JobGeneratorAgentRuntime jobGeneratorAgentRuntime(
+            ToolRegistry toolRegistry,
+            DataGeneratorWebClient dataGeneratorWebClient,
+            AgentIoLogger agentIoLogger,
+            AiProperties properties,
+            StreamingHandleRegistry streamingHandleRegistry) {
+        return new JobGeneratorAgentRuntime(
+                toolRegistry, dataGeneratorWebClient, agentIoLogger, properties.getDraftContinue(),
+                streamingHandleRegistry);
+    }
+
+    @Bean
+    AgentRuntimeRegistry agentRuntimeRegistry(List<AgentRuntime> runtimes) {
+        return new AgentRuntimeRegistry(runtimes);
     }
 
     @Bean
@@ -91,19 +110,60 @@ public class AiAutoConfiguration {
     }
 
     @Bean
-    AgentSessionService agentSessionService(
-            AiProperties properties,
-            SkillCatalog skillCatalog,
-            SkillRuntimeRegistry skillRuntimeRegistry,
+    AgentOrchestrator agentOrchestrator(
+            AgentRuntimeRegistry agentRuntimeRegistry,
+            ToolRegistry toolRegistry,
             ChatModelFactory chatModelFactory,
             ChatMemoryStore chatMemoryStore,
-            AgentSessionRegistry sessionRegistry) {
-        return new AgentSessionService(
-                properties,
-                skillCatalog,
-                skillRuntimeRegistry,
+            PromptProvider promptProvider,
+            AiProperties aiProperties) {
+        return new AgentOrchestrator(
+                agentRuntimeRegistry,
+                toolRegistry,
                 chatModelFactory,
                 chatMemoryStore,
-                sessionRegistry);
+                promptProvider,
+                aiProperties);
+    }
+
+    @Bean
+    AgentRoutingWorkflow agentRoutingWorkflow(AgentRuntimeRegistry agentRuntimeRegistry) {
+        return new AgentRoutingWorkflow(agentRuntimeRegistry);
+    }
+
+    @Bean
+    AgentExecutionWorkflow agentExecutionWorkflow(
+            AgentOrchestrator agentOrchestrator,
+            ChatMemoryStore chatMemoryStore,
+            AgentIoLogger agentIoLogger,
+            PromptTemplateLoader promptTemplateLoader,
+            StreamingHandleRegistry streamingHandleRegistry) {
+        return new AgentExecutionWorkflow(
+                agentOrchestrator, chatMemoryStore, agentIoLogger, promptTemplateLoader, streamingHandleRegistry);
+    }
+
+    @Bean
+    AgentConversationWorkflow agentConversationWorkflow(
+            AgentRoutingWorkflow agentRoutingWorkflow, AgentExecutionWorkflow agentExecutionWorkflow) {
+        return new AgentConversationWorkflow(agentRoutingWorkflow, agentExecutionWorkflow);
+    }
+
+    @Bean
+    AgentSessionApplicationService agentSessionApplicationService(
+            AiProperties properties,
+            AgentOrchestrator orchestrator,
+            ChatModelFactory chatModelFactory,
+            ChatMemoryStore chatMemoryStore,
+            AgentSessionRegistry sessionRegistry,
+            AgentRoutingWorkflow agentRoutingWorkflow,
+            AgentConversationWorkflow agentConversationWorkflow) {
+        return new AgentSessionApplicationService(
+                properties,
+                orchestrator,
+                chatModelFactory,
+                chatMemoryStore,
+                sessionRegistry,
+                agentRoutingWorkflow,
+                agentConversationWorkflow);
     }
 }

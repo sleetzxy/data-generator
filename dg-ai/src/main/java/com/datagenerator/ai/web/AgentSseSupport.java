@@ -1,8 +1,8 @@
 package com.datagenerator.ai.web;
 
-import com.datagenerator.ai.service.AgentSessionService;
-import com.datagenerator.ai.service.SseEventFactory;
-import com.datagenerator.ai.dto.SseEvent;
+import com.datagenerator.ai.application.AgentSessionApplicationService;
+import com.datagenerator.ai.application.SseEventFactory;
+import com.datagenerator.ai.web.dto.common.SseEvent;
 import java.io.IOException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,17 +17,25 @@ public final class AgentSseSupport {
     }
 
     private static final ConcurrentMap<SseEmitter, AtomicBoolean> COMPLETED = new ConcurrentHashMap<>();
+    private static final ConcurrentMap<SseEmitter, String> EMITTER_SESSIONS = new ConcurrentHashMap<>();
 
-    public static SseEmitter openStream(AgentSessionService agentSessionService) {
+    public static SseEmitter openStream(
+            AgentSessionApplicationService agentSessionService, String sessionId) {
         SseEmitter emitter = new SseEmitter(agentSessionService.getStreamTimeout().toMillis());
+        EMITTER_SESSIONS.put(emitter, sessionId);
 
-        // 注册回调以确保 COMPLETED 状态与 SseEmitter 生命周期保持一致
+        Runnable onDisconnect = () -> {
+            EMITTER_SESSIONS.remove(emitter);
+            agentSessionService.abortActiveTurn(sessionId);
+        };
+
         emitter.onCompletion(() -> {
             try {
                 AtomicBoolean flag = COMPLETED.computeIfAbsent(emitter, e -> new AtomicBoolean(true));
                 flag.set(true);
             } finally {
                 COMPLETED.remove(emitter);
+                onDisconnect.run();
             }
         });
 
@@ -35,13 +43,13 @@ public final class AgentSseSupport {
             try {
                 AtomicBoolean flag = COMPLETED.computeIfAbsent(emitter, e -> new AtomicBoolean(true));
                 flag.set(true);
-                // 尝试完成流，如果已完成则忽略异常
                 try {
                     emitter.complete();
                 } catch (Exception ignored) {
                 }
             } finally {
                 COMPLETED.remove(emitter);
+                onDisconnect.run();
             }
         });
 
@@ -55,6 +63,7 @@ public final class AgentSseSupport {
                 }
             } finally {
                 COMPLETED.remove(emitter);
+                onDisconnect.run();
             }
         });
 
@@ -65,70 +74,23 @@ public final class AgentSseSupport {
      * 兼容旧调用，使公共线程池执行异步任务。
      */
     public static void sendMessageAsync(
-            AgentSessionService agentSessionService,
+            AgentSessionApplicationService agentSessionService,
             SseEmitter emitter,
             String sessionId,
             String content) {
-
-        // 在 emitter 生命周期结束时，尝试取消后端会话以释放资源
-        emitter.onCompletion(() -> {
-            try {
-                agentSessionService.deleteSession(sessionId);
-            } catch (Exception ignored) {
-            }
-        });
-        emitter.onTimeout(() -> {
-            try {
-                agentSessionService.deleteSession(sessionId);
-            } catch (Exception ignored) {
-            }
-        });
-        emitter.onError(throwable -> {
-            try {
-                agentSessionService.deleteSession(sessionId);
-            } catch (Exception ignored) {
-            }
-        });
-
-        CompletableFuture.runAsync(() -> {
-            try {
-                agentSessionService.sendMessage(
-                        sessionId, content, event -> forwardEvent(emitter, event));
-            } catch (Exception exception) {
-                emitErrorAndClose(emitter, exception);
-            }
-        });
+        sendMessageAsync(agentSessionService, emitter, sessionId, content, Runnable::run);
     }
 
     /**
      * 使用注入的 Executor 执行异步任务，避免使用公共线程池。
+     * 会话生命周期由 TTL 与显式 DELETE 管理，SSE 关闭时不删除会话。
      */
     public static void sendMessageAsync(
-            AgentSessionService agentSessionService,
+            AgentSessionApplicationService agentSessionService,
             SseEmitter emitter,
             String sessionId,
             String content,
             Executor executor) {
-
-        // 在 emitter 生命周期结束时，尝试取消后端会话以释放资源
-        emitter.onCompletion(() -> {
-            try {
-                agentSessionService.deleteSession(sessionId);
-            } catch (Exception ignored) {
-            }
-        });
-        emitter.onTimeout(() -> {
-            try {
-                agentSessionService.deleteSession(sessionId);
-            } catch (Exception ignored) {
-            }
-        });
-        emitter.onError(throwable -> {
-            try {
-                agentSessionService.deleteSession(sessionId);
-            } catch (Exception ignored) {
-            }
-        });
 
         CompletableFuture.runAsync(() -> {
             try {
@@ -143,24 +105,23 @@ public final class AgentSseSupport {
     public static void forwardEvent(SseEmitter emitter, SseEvent event) {
         AtomicBoolean doneFlag = COMPLETED.computeIfAbsent(emitter, e -> new AtomicBoolean(false));
         if (doneFlag.get()) {
-            return; // already completed or errored
+            return;
         }
         try {
             try {
                 emitter.send(SseEmitter.event().name(event.getEvent()).data(event.getData()));
             } catch (IllegalStateException ise) {
-                // SseEmitter 已被外部完成（比如客户端断开），将其标记为已完成并清理状态，避免继续发送
                 doneFlag.set(true);
                 COMPLETED.remove(emitter);
                 return;
             }
-            // 不再在 "done" 事件时关闭连接 — done 仅表示一次响应完成，连接应保持打开以支持后续追问
-            if ("error".equals(event.getEvent())) {
+            if ("done".equals(event.getEvent()) || "error".equals(event.getEvent())) {
                 if (doneFlag.compareAndSet(false, true)) {
                     try {
                         emitter.complete();
                     } finally {
                         COMPLETED.remove(emitter);
+                        EMITTER_SESSIONS.remove(emitter);
                     }
                 }
             }
@@ -175,7 +136,6 @@ public final class AgentSseSupport {
             try {
                 emitter.completeWithError(exception);
             } catch (Exception ignored) {
-                // ignore
             }
             return;
         }
@@ -184,7 +144,6 @@ public final class AgentSseSupport {
             if (message == null || message.isBlank()) {
                 message = exception.getClass().getSimpleName();
             }
-            // send single error event then complete
             if (doneFlag.compareAndSet(false, true)) {
                 try {
                     forwardEvent(emitter, SseEventFactory.error("AGENT_ERROR", message));
@@ -192,17 +151,16 @@ public final class AgentSseSupport {
                     try {
                         emitter.completeWithError(exception);
                     } catch (Exception ignored2) {
-                        // ignore
                     }
                 } finally {
                     COMPLETED.remove(emitter);
+                    EMITTER_SESSIONS.remove(emitter);
                 }
             }
         } catch (Exception ignored) {
             try {
                 emitter.completeWithError(exception);
             } catch (Exception ignored2) {
-                // ignore
             }
         }
     }
