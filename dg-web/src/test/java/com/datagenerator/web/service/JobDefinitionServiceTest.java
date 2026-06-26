@@ -148,6 +148,33 @@ class JobDefinitionServiceTest {
     }
 
     @Test
+    void list_nestedBuiltinJob_excludedFromList() throws Exception {
+        Files.createDirectories(primaryDir.resolve("jobs/nested"));
+        Files.writeString(
+                primaryDir.resolve("jobs/top.yaml"),
+                """
+                id: top
+                name: 顶层任务
+                tables:
+                  - name: t1
+                    count: 1
+                """);
+        Files.writeString(
+                primaryDir.resolve("jobs/nested/hidden.yaml"),
+                """
+                id: hidden
+                name: 子目录任务
+                tables:
+                  - name: t1
+                    count: 1
+                """);
+
+        assertThat(service.list())
+                .extracting("fileName", "id")
+                .containsExactly(org.assertj.core.api.Assertions.tuple("top", "top"));
+    }
+
+    @Test
     void list_updateDoesNotChangeCustomSortOrder() throws Exception {
         Files.createDirectories(primaryDir.resolve("jobs"));
         Files.writeString(

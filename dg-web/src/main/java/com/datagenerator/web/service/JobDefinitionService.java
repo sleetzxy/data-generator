@@ -65,7 +65,7 @@ public class JobDefinitionService {
 
     public List<JobDefinitionResponse> list() {
         List<JobDefinitionResponse> results = new ArrayList<>();
-        for (String relativePath : pathResolver.listYamlRelativePaths(JOBS_DIR)) {
+        for (String relativePath : listIncludedJobRelativePaths()) {
             String fileName = toDefinitionName(relativePath);
             String configPath = toConfigPath(relativePath);
             JobDefinition job = configLoader.loadJob(configPath);
@@ -339,7 +339,7 @@ public class JobDefinitionService {
     }
 
     private boolean idExists(String id) {
-        for (String relativePath : pathResolver.listYamlRelativePaths(JOBS_DIR)) {
+        for (String relativePath : listIncludedJobRelativePaths()) {
             JobDefinition existing = configLoader.loadJob(toConfigPath(relativePath));
             if (id.equals(existing.getId())) {
                 return true;
@@ -364,7 +364,7 @@ public class JobDefinitionService {
     }
 
     private void validateIdUnique(String id, String excludeConfigPath) {
-        for (String relativePath : pathResolver.listYamlRelativePaths(JOBS_DIR)) {
+        for (String relativePath : listIncludedJobRelativePaths()) {
             String configPath = toConfigPath(relativePath);
             if (configPath.equals(excludeConfigPath)) {
                 continue;
@@ -391,6 +391,21 @@ public class JobDefinitionService {
 
     private boolean isBuiltin(String configPath) {
         return pathResolver.existsOnClasspath(configPath);
+    }
+
+    private List<String> listIncludedJobRelativePaths() {
+        List<String> included = new ArrayList<>();
+        for (String relativePath : pathResolver.listYamlRelativePaths(JOBS_DIR)) {
+            if (isListedJobPath(relativePath, toConfigPath(relativePath))) {
+                included.add(relativePath);
+            }
+        }
+        return included;
+    }
+
+    /** 内置任务仅扫描 jobs 目录直属 YAML，忽略子目录。 */
+    private boolean isListedJobPath(String relativePath, String configPath) {
+        return !relativePath.contains("/") || !isBuiltin(configPath);
     }
 
     private String readContent(String configPath) {
