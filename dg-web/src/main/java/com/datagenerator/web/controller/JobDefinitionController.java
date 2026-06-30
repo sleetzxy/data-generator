@@ -16,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -48,7 +49,12 @@ public class JobDefinitionController {
     }
 
     @PostMapping
-    public ResponseEntity<JobDefinitionResponse> create(@RequestBody JobDefinitionRequest request) {
+    public ResponseEntity<?> create(
+            @RequestBody JobDefinitionRequest request,
+            @RequestParam(name = "validateOnly", defaultValue = "false") boolean validateOnly) {
+        if (validateOnly) {
+            return ResponseEntity.ok(jobDefinitionService.validateYaml(request.getContent()));
+        }
         return ResponseEntity.status(HttpStatus.CREATED).body(jobDefinitionService.create(request));
     }
 

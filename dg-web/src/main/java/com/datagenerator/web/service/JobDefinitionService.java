@@ -3,6 +3,7 @@ package com.datagenerator.web.service;
 import com.datagenerator.web.dto.JobDefinitionRequest;
 import com.datagenerator.web.dto.JobDefinitionResponse;
 import com.datagenerator.web.dto.JobScheduleRequest;
+import com.datagenerator.web.dto.JobYamlValidationResponse;
 import com.datagenerator.web.storage.JobScheduleRepository;
 import com.datagenerator.core.schema.ConfigLoadException;
 import com.datagenerator.core.schema.ConfigPathResolver;
@@ -23,6 +24,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -52,9 +54,18 @@ public class JobDefinitionService {
         this.scheduleRepository = scheduleRepository;
     }
 
+    public JobYamlValidationResponse validateYaml(String yaml) {
+        try {
+            configLoader.loadJobFromContent(yaml);
+            return JobYamlValidationResponse.ok();
+        } catch (ConfigLoadException exception) {
+            return JobYamlValidationResponse.fail(List.of(exception.getMessage()));
+        }
+    }
+
     public List<JobDefinitionResponse> list() {
         List<JobDefinitionResponse> results = new ArrayList<>();
-        for (String relativePath : pathResolver.listYamlRelativePaths(JOBS_DIR)) {
+        for (String relativePath : listIncludedJobRelativePaths()) {
             String fileName = toDefinitionName(relativePath);
             String configPath = toConfigPath(relativePath);
             JobDefinition job = configLoader.loadJob(configPath);
@@ -107,6 +118,7 @@ public class JobDefinitionService {
         String content = injectDisplayName(contentWithId, displayName);
         validateContent(content, null);
         writeContent(configPath, content);
+        scheduleRepository.ensureCreatedAt(configPath, Instant.now().toString());
         try {
             applySchedule(configPath, normalizedSchedule);
             JobDefinition job = configLoader.loadJob(configPath);
@@ -179,17 +191,31 @@ public class JobDefinitionService {
         if (builtin) {
             return null;
         }
+        Optional<String> stored = scheduleRepository.findCreatedAt(configPath);
+        if (stored.isPresent()) {
+            return stored.get();
+        }
         Path overlayFile = pathResolver.resolveOverlay(configPath);
         if (overlayFile == null || !Files.isRegularFile(overlayFile)) {
             return null;
         }
+        Instant created = readFileCreationTime(overlayFile);
+        if (created == null) {
+            return null;
+        }
+        String createdAt = created.toString();
+        scheduleRepository.ensureCreatedAt(configPath, createdAt);
+        return createdAt;
+    }
+
+    private Instant readFileCreationTime(Path file) {
         try {
-            BasicFileAttributes attributes = Files.readAttributes(overlayFile, BasicFileAttributes.class);
+            BasicFileAttributes attributes = Files.readAttributes(file, BasicFileAttributes.class);
             Instant created = attributes.creationTime().toInstant();
             if (created.equals(Instant.EPOCH)) {
-                created = attributes.lastModifiedTime().toInstant();
+                return null;
             }
-            return created.toString();
+            return created;
         } catch (IOException exception) {
             return null;
         }
@@ -313,7 +339,7 @@ public class JobDefinitionService {
     }
 
     private boolean idExists(String id) {
-        for (String relativePath : pathResolver.listYamlRelativePaths(JOBS_DIR)) {
+        for (String relativePath : listIncludedJobRelativePaths()) {
             JobDefinition existing = configLoader.loadJob(toConfigPath(relativePath));
             if (id.equals(existing.getId())) {
                 return true;
@@ -338,7 +364,7 @@ public class JobDefinitionService {
     }
 
     private void validateIdUnique(String id, String excludeConfigPath) {
-        for (String relativePath : pathResolver.listYamlRelativePaths(JOBS_DIR)) {
+        for (String relativePath : listIncludedJobRelativePaths()) {
             String configPath = toConfigPath(relativePath);
             if (configPath.equals(excludeConfigPath)) {
                 continue;
@@ -365,6 +391,21 @@ public class JobDefinitionService {
 
     private boolean isBuiltin(String configPath) {
         return pathResolver.existsOnClasspath(configPath);
+    }
+
+    private List<String> listIncludedJobRelativePaths() {
+        List<String> included = new ArrayList<>();
+        for (String relativePath : pathResolver.listYamlRelativePaths(JOBS_DIR)) {
+            if (isListedJobPath(relativePath, toConfigPath(relativePath))) {
+                included.add(relativePath);
+            }
+        }
+        return included;
+    }
+
+    /** 内置任务仅扫描 jobs 目录直属 YAML，忽略子目录。 */
+    private boolean isListedJobPath(String relativePath, String configPath) {
+        return !relativePath.contains("/") || !isBuiltin(configPath);
     }
 
     private String readContent(String configPath) {

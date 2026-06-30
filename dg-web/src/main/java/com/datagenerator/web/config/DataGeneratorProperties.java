@@ -14,6 +14,8 @@ public class DataGeneratorProperties {
     private JobProperties job = new JobProperties();
     private StorageProperties storage = new StorageProperties();
     private AuthProperties auth = new AuthProperties();
+    private AiProperties ai = new AiProperties();
+    private ServiceAuthProperties serviceAuth = new ServiceAuthProperties();
 
     public String getConfigDir() {
         return configDir;
@@ -61,6 +63,67 @@ public class DataGeneratorProperties {
 
     public void setAuth(AuthProperties auth) {
         this.auth = auth;
+    }
+
+    public AiProperties getAi() {
+        return ai;
+    }
+
+    public void setAi(AiProperties ai) {
+        this.ai = ai;
+    }
+
+    public ServiceAuthProperties getServiceAuth() {
+        return serviceAuth;
+    }
+
+    public void setServiceAuth(ServiceAuthProperties serviceAuth) {
+        this.serviceAuth = serviceAuth;
+    }
+
+    public static class ServiceAuthProperties {
+
+        /** 服务间调用共享密钥，dg-ai 通过 X-DG-Service-Auth 请求头携带 */
+        private String token;
+
+        public String getToken() {
+            return token;
+        }
+
+        public void setToken(String token) {
+            this.token = token;
+        }
+    }
+
+    public static class AiProperties {
+
+        private boolean enabled = false;
+        private String remoteBaseUrl;
+        private java.time.Duration requestTimeout = java.time.Duration.ofSeconds(120);
+
+        public boolean isEnabled() {
+            return enabled;
+        }
+
+        public void setEnabled(boolean enabled) {
+            this.enabled = enabled;
+        }
+
+        public String getRemoteBaseUrl() {
+            return remoteBaseUrl;
+        }
+
+        public void setRemoteBaseUrl(String remoteBaseUrl) {
+            this.remoteBaseUrl = remoteBaseUrl;
+        }
+
+        public java.time.Duration getRequestTimeout() {
+            return requestTimeout;
+        }
+
+        public void setRequestTimeout(java.time.Duration requestTimeout) {
+            this.requestTimeout = requestTimeout;
+        }
     }
 
     public static class AuthProperties {
@@ -121,6 +184,8 @@ public class DataGeneratorProperties {
         private int syncThreshold = 5000;
         private int batchSize = 1000;
         private int threadPoolSize = 4;
+        /** 造数并行度；0 表示沿用 threadPoolSize */
+        private int generationParallelism = 0;
 
         public int getSyncThreshold() {
             return syncThreshold;
@@ -144,6 +209,14 @@ public class DataGeneratorProperties {
 
         public void setThreadPoolSize(int threadPoolSize) {
             this.threadPoolSize = threadPoolSize;
+        }
+
+        public int getGenerationParallelism() {
+            return generationParallelism;
+        }
+
+        public void setGenerationParallelism(int generationParallelism) {
+            this.generationParallelism = generationParallelism;
         }
     }
 }

@@ -22,6 +22,7 @@ import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.config.WriterConfigResolver;
 import com.datagenerator.core.constraint.ConstraintLoader;
 import com.datagenerator.core.engine.GenerationOptions;
+import com.datagenerator.core.engine.JobCancelledException;
 import com.datagenerator.core.engine.JobExecutionListener;
 import com.datagenerator.core.engine.JobOrchestrator;
 import com.datagenerator.core.engine.JobResult;
@@ -31,7 +32,10 @@ import com.datagenerator.core.schema.FieldDefinition;
 import com.datagenerator.core.schema.JobDefinition;
 import com.datagenerator.core.schema.OverridePathResolver;
 import com.datagenerator.core.schema.SchemaDefinition;
+import com.datagenerator.core.schema.SeedDefinition;
 import com.datagenerator.core.schema.TableTask;
+import com.datagenerator.spi.model.ReaderConfig;
+import com.datagenerator.spi.model.WriterConfig;
 import com.datagenerator.core.schema.YamlConfigLoader;
 import com.datagenerator.web.storage.JobRepository;
 import org.slf4j.Logger;
@@ -221,17 +225,25 @@ public class JobService {
         }
         String jobConfig = response.getJobConfig();
         cancellationRegistry.markCancelled(jobId);
-        if (asyncJobExecutor.cancel(jobId)) {
+        boolean asyncCancelled = asyncJobExecutor.cancel(jobId);
+        boolean interrupted = cancellationRegistry.interruptRunning(jobId);
+        if (asyncCancelled || interrupted) {
+            if (!asyncCancelled) {
+                JobResponse current = jobRepository.findById(jobId).orElseThrow();
+                if (!isTerminalStatus(current.getStatus())) {
+                    current.setStatus(JobStatus.CANCELLED);
+                    jobRepository.update(current);
+                    jobLogStore.warn(jobId, "任务已被用户取消");
+                }
+            }
             scheduleExecutor.onJobTerminal(jobConfig);
             return;
         }
-        if (cancellationRegistry.interruptRunning(jobId)) {
-            JobResponse current = jobRepository.findById(jobId).orElseThrow();
-            if (!isTerminalStatus(current.getStatus())) {
-                current.setStatus(JobStatus.CANCELLED);
-                jobRepository.update(current);
-                jobLogStore.warn(jobId, "任务已被用户取消");
-            }
+        JobResponse current = jobRepository.findById(jobId).orElseThrow();
+        if (current.getStatus() == JobStatus.PENDING || current.getStatus() == JobStatus.RUNNING) {
+            current.setStatus(JobStatus.CANCELLED);
+            jobRepository.update(current);
+            jobLogStore.warn(jobId, "任务已被用户取消");
             scheduleExecutor.onJobTerminal(jobConfig);
             return;
         }
@@ -312,7 +324,9 @@ public class JobService {
             logJobContext(jobId, job, runtimeWriters, options);
             JobExecutionListener progressListener = createProgressListener(
                     jobId, jobConfig, submittedAt, totalTables, totalRows, runningDetails);
-            JobResult result = jobOrchestrator.run(job, runtimeWriters, options, progressListener);
+            GenerationOptions executionOptions =
+                    options.withCancellationChecker(() -> isJobCancelledInMemory(jobId));
+            JobResult result = jobOrchestrator.run(job, runtimeWriters, executionOptions, progressListener);
             for (TableResult tableResult : result.details()) {
                 jobLogStore.info(
                         jobId,
@@ -340,6 +354,15 @@ public class JobService {
                     "任务完成，耗时 " + response.getDuration()
                             + "，共写入 " + result.writtenRows() + " 行");
             return response;
+        } catch (JobCancelledException cancelled) {
+            JobResponse latest = jobRepository.findById(jobId).orElseThrow(
+                    () -> new IllegalStateException("Job not found: " + jobId));
+            if (!isTerminalStatus(latest.getStatus())) {
+                latest.setStatus(JobStatus.CANCELLED);
+                jobRepository.update(latest);
+                jobLogStore.warn(jobId, "任务已被用户取消");
+            }
+            return latest;
         } catch (Exception exception) {
             if (isJobCancelled(jobId)) {
                 throw exception;
@@ -644,15 +667,27 @@ public class JobService {
             JobDefinition job,
             List<Map<String, Object>> runtimeWriters,
             GenerationOptions options) {
+        ConnectionRegistry effectiveRegistry = connectionRegistry.withOverlay(job.getConnections());
         List<Map<String, Object>> defaultWriters =
                 WriterConfigResolver.resolveDefaultWriters(job, runtimeWriters);
-        jobLogStore.info(jobId, "Writer 配置: " + summarizeWriters(defaultWriters));
+        jobLogStore.info(jobId, "Writer 配置: " + summarizeResolvedWriters(defaultWriters, effectiveRegistry));
         jobLogStore.info(
                 jobId,
                 "生成选项: batchSize=" + options.batchSize()
                         + ", maxRetries=" + options.maxRetries()
-                        + ", onConstraintFail=" + options.onConstraintFail());
+                        + ", onConstraintFail=" + options.onConstraintFail()
+                        + ", generationParallelism=" + options.generationParallelism()
+                        + " (并行阈值=" + GenerationOptions.PARALLEL_ROW_THRESHOLD + " 行)");
         jobLogStore.info(jobId, "Job seeds 数量: " + job.getSeeds().size());
+        for (SeedDefinition seed : job.getSeeds()) {
+            if (seed.getReader().isEmpty()) {
+                continue;
+            }
+            jobLogStore.info(
+                    jobId,
+                    "Seed [" + seed.getName() + "] reader: "
+                            + summarizeReaderConfig(effectiveRegistry.resolveReader(seed.getReader())));
+        }
         for (TableTask table : job.getTables()) {
             String schemaRef = table.getSchemaDefinition() != null
                     ? "inline"
@@ -662,44 +697,60 @@ public class JobService {
                     "表 [" + table.getName() + "] count=" + table.getCount()
                             + ", schema=" + schemaRef
                             + ", depends_on=" + table.getDependsOn()
-                            + ", writer=" + summarizeWriters(
-                                    WriterConfigResolver.resolveTableWriters(table, defaultWriters)));
+                            + ", writer=" + summarizeResolvedWriters(
+                                    WriterConfigResolver.resolveTableWriters(table, defaultWriters),
+                                    effectiveRegistry));
         }
     }
 
-    private static String summarizeWriters(List<Map<String, Object>> writers) {
+    private static String summarizeResolvedWriters(
+            List<Map<String, Object>> writers, ConnectionRegistry registry) {
         if (writers == null || writers.isEmpty()) {
             return "[]";
         }
         if (writers.size() == 1) {
-            return summarizeMap(writers.getFirst());
+            return summarizeWriterConfig(registry.resolveWriter(writers.getFirst()));
         }
         StringBuilder builder = new StringBuilder("[");
         for (int index = 0; index < writers.size(); index++) {
             if (index > 0) {
                 builder.append(", ");
             }
-            builder.append(summarizeMap(writers.get(index)));
+            builder.append(summarizeWriterConfig(registry.resolveWriter(writers.get(index))));
         }
         builder.append(']');
         return builder.toString();
     }
 
-    private static String summarizeMap(Map<String, Object> values) {
-        if (values == null || values.isEmpty()) {
-            return "{}";
+    private static String summarizeWriterConfig(WriterConfig config) {
+        List<String> fields = new ArrayList<>();
+        addConfigField(fields, "type", config.type());
+        addConfigField(fields, "connection", config.connection());
+        addConfigField(fields, "mode", config.mode());
+        addConfigField(fields, "table", config.table());
+        addConfigField(fields, "path", config.path());
+        addConfigField(fields, "url", config.url());
+        addConfigField(fields, "username", config.username());
+        addConfigField(fields, "password", config.password());
+        return "{" + String.join(", ", fields) + "}";
+    }
+
+    private static String summarizeReaderConfig(ReaderConfig config) {
+        List<String> fields = new ArrayList<>();
+        addConfigField(fields, "type", config.type());
+        addConfigField(fields, "connection", config.connection());
+        addConfigField(fields, "path", config.path());
+        addConfigField(fields, "url", config.url());
+        addConfigField(fields, "username", config.username());
+        addConfigField(fields, "password", config.password());
+        return "{" + String.join(", ", fields) + "}";
+    }
+
+    private static void addConfigField(List<String> fields, String key, String value) {
+        if (value == null || value.isBlank()) {
+            return;
         }
-        StringBuilder builder = new StringBuilder("{");
-        boolean first = true;
-        for (Map.Entry<String, Object> entry : values.entrySet()) {
-            if (!first) {
-                builder.append(", ");
-            }
-            builder.append(entry.getKey()).append('=').append(entry.getValue());
-            first = false;
-        }
-        builder.append('}');
-        return builder.toString();
+        fields.add(key + '=' + value);
     }
 
     private JobResponse toJobResponse(
@@ -770,7 +821,16 @@ public class JobService {
                 onConstraintFail = options.getOnConstraintFail();
             }
         }
-        return new GenerationOptions(batchSize, maxRetries, onConstraintFail, runtimeSettings.threadPoolSize());
+        return new GenerationOptions(batchSize, maxRetries, onConstraintFail, resolveGenerationParallelism(options));
+    }
+
+    private int resolveGenerationParallelism(JobOptions options) {
+        if (options != null
+                && options.getGenerationParallelism() != null
+                && options.getGenerationParallelism() > 0) {
+            return options.getGenerationParallelism();
+        }
+        return runtimeSettings.effectiveGenerationParallelism();
     }
 
     private int resolveSyncThreshold(JobOptions options) {
@@ -812,8 +872,15 @@ public class JobService {
         return new JobProgress(0, 0, 0, 0, 0);
     }
 
+    /**
+     * 热路径取消探测：仅查内存标记，避免每行触发 SQLite 查询。
+     */
+    private boolean isJobCancelledInMemory(String jobId) {
+        return cancellationRegistry.isCancelled(jobId) || asyncJobExecutor.isCancelled(jobId);
+    }
+
     private boolean isJobCancelled(String jobId) {
-        if (cancellationRegistry.isCancelled(jobId) || asyncJobExecutor.isCancelled(jobId)) {
+        if (isJobCancelledInMemory(jobId)) {
             return true;
         }
         return jobRepository.findById(jobId)

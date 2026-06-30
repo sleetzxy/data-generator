@@ -63,7 +63,7 @@ public final class JobServiceTestSupport {
                 mock(PreviewJobOrchestratorFactory.class),
                 configLoader,
                 mock(ConstraintLoader.class),
-                mock(ConnectionRegistry.class),
+                new ConnectionRegistry(),
                 runtimeSettings,
                 context.jobRepository(),
                 context.jobLogStore(),
