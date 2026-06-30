@@ -1,0 +1,46 @@
+# dg-ai 独立 HTTP 服务示例配置
+# 启动：java -jar dg-ai-*.jar
+# 敏感项（LLM api-key 等）请写入 application-local.yml，见 application-local.yml.example
+
+spring:
+  config:
+    import: optional:classpath:application-local.yml
+  mvc:
+    async:
+      request-timeout: -1
+
+server:
+  port: 8081
+
+ai:
+  enabled: true
+  server: true
+  remote-services:
+    data-generator-web:
+      base-url: http://localhost:8080
+      service-auth-token: ${DG_SERVICE_AUTH_TOKEN:ai-tokens}
+  # Agent SSE 异步执行线程池大小
+  agent-thread-pool-size: 10
+  agents:
+    job-generator:
+      provider: deepseek
+  request-timeout: 300s
+  # Agent 输入/输出调试日志（模型 prompt、回复、Tool 调用、草稿合并、SSE 提示）
+  io-logging:
+    enabled: true
+    max-chars: 8192
+    log-tool-results: true
+    log-sse-events: true
+  session:
+    ttl: 2h
+    max-sessions: 100
+  providers:
+    deepseek:
+      type: open-ai-compatible
+      base-url: https://api.deepseek.com/v1
+      api-key: ${DEEPSEEK_API_KEY:}
+      model: deepseek-chat
+      # 模型单次输出 token 上限；仅支持 provider 级配置
+      max-output-tokens: 8192
+      # 仅支持 provider 级温度配置（不再支持全局 temperature）
+      temperature: 0.2
