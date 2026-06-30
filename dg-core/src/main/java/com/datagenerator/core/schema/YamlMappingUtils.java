@@ -38,6 +38,16 @@ final class YamlMappingUtils {
         return result;
     }
 
+    static Map<String, Map<String, Object>> asNamedConnectionMap(Object value) {
+        if (value == null) {
+            return Map.of();
+        }
+        Map<String, Object> root = asMap(value);
+        Map<String, Map<String, Object>> connections = new HashMap<>();
+        root.forEach((name, config) -> connections.put(name, asMap(config)));
+        return connections;
+    }
+
     static String asString(Object value) {
         return value == null ? null : String.valueOf(value);
     }

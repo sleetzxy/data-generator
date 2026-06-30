@@ -4,7 +4,8 @@ public record GenerationOptions(
         int batchSize,
         int maxRetries,
         String onConstraintFail,
-        int generationParallelism) {
+        int generationParallelism,
+        CancellationChecker cancellationChecker) {
 
     public static final int DEFAULT_MAX_RETRIES = 3;
     public static final String DEFAULT_ON_FAIL = "reject";
@@ -24,6 +25,13 @@ public record GenerationOptions(
         if (generationParallelism <= 0) {
             generationParallelism = DEFAULT_GENERATION_PARALLELISM;
         }
+        if (cancellationChecker == null) {
+            cancellationChecker = CancellationChecker.NEVER;
+        }
+    }
+
+    public GenerationOptions(int batchSize, int maxRetries, String onConstraintFail, int generationParallelism) {
+        this(batchSize, maxRetries, onConstraintFail, generationParallelism, CancellationChecker.NEVER);
     }
 
     public GenerationOptions(int batchSize, int maxRetries, String onConstraintFail) {
@@ -34,11 +42,16 @@ public record GenerationOptions(
         this(batchSize, maxRetries, DEFAULT_ON_FAIL, DEFAULT_GENERATION_PARALLELISM);
     }
 
+    public GenerationOptions withCancellationChecker(CancellationChecker checker) {
+        return new GenerationOptions(batchSize, maxRetries, onConstraintFail, generationParallelism, checker);
+    }
+
     public static GenerationOptions defaults() {
         return new GenerationOptions(
                 GenerationPipeline.DEFAULT_BATCH_SIZE,
                 DEFAULT_MAX_RETRIES,
                 DEFAULT_ON_FAIL,
-                DEFAULT_GENERATION_PARALLELISM);
+                DEFAULT_GENERATION_PARALLELISM,
+                CancellationChecker.NEVER);
     }
 }

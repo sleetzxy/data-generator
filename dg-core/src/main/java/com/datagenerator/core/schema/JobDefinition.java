@@ -15,6 +15,7 @@ public class JobDefinition {
     private List<ConstraintDefinition> inlineConstraints = new ArrayList<>();
     private Map<String, Object> writer = new HashMap<>();
     private List<Map<String, Object>> writers = new ArrayList<>();
+    private Map<String, Map<String, Object>> connections = new HashMap<>();
     private List<SeedDefinition> seeds = new ArrayList<>();
     private List<TableTask> tables = new ArrayList<>();
     private ScheduleDefinition schedule;
@@ -74,6 +75,21 @@ public class JobDefinition {
             copies.add(writerMap == null ? new HashMap<>() : new HashMap<>(writerMap));
         }
         this.writers = copies;
+    }
+
+    public Map<String, Map<String, Object>> getConnections() {
+        return Collections.unmodifiableMap(connections);
+    }
+
+    public void setConnections(Map<String, Map<String, Object>> connections) {
+        if (connections == null || connections.isEmpty()) {
+            this.connections = new HashMap<>();
+            return;
+        }
+        Map<String, Map<String, Object>> copies = new HashMap<>();
+        connections.forEach((name, config) ->
+                copies.put(name, config == null ? new HashMap<>() : new HashMap<>(config)));
+        this.connections = copies;
     }
 
     public List<SeedDefinition> getSeeds() {
