@@ -21,6 +21,9 @@ public class PostgreSqlWriter implements DataWriter {
 
     private WriterConfig config;
     private Connection connection;
+    private PreparedStatement insertStatement;
+    private String insertTableName;
+    private List<String> insertColumns;
 
     @Override
     public String type() {
@@ -32,7 +35,9 @@ public class PostgreSqlWriter implements DataWriter {
         this.config = config;
         try {
             this.connection = DriverManager.getConnection(
-                    config.url(), config.username(), config.password());
+                    PostgreSqlConnectionUrls.withWriterDefaults(config.url()),
+                    config.username(),
+                    config.password());
             this.connection.setAutoCommit(false);
         } catch (SQLException e) {
             throw new RuntimeException("Failed to open PostgreSQL connection", e);
@@ -51,19 +56,19 @@ public class PostgreSqlWriter implements DataWriter {
 
         String tableName = batch.tableName() != null ? batch.tableName() : config.table();
         List<String> columns = new ArrayList<>(rows.getFirst().getFields().keySet());
-        String sql = buildInsertSql(tableName, columns);
 
-        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+        try {
+            ensureInsertStatement(tableName, columns);
             for (DataRow row : rows) {
                 for (int index = 0; index < columns.size(); index++) {
                     String columnName = columns.get(index);
                     Object value = PostgreSqlParameterBinder.prepareValue(columnName, row.get(columnName));
-                    statement.setObject(index + 1, value);
+                    insertStatement.setObject(index + 1, value);
                 }
-                statement.addBatch();
+                insertStatement.addBatch();
             }
-            int[] results = statement.executeBatch();
-            connection.commit();
+            int[] results = insertStatement.executeBatch();
+            insertStatement.clearBatch();
             return new WriteResult(countSuccessful(results), countFailed(results));
         } catch (SQLException e) {
             rollbackQuietly();
@@ -84,13 +89,44 @@ public class PostgreSqlWriter implements DataWriter {
 
     @Override
     public void close() {
+        closeInsertStatementQuietly();
         if (connection != null) {
             try {
+                if (!connection.getAutoCommit()) {
+                    connection.commit();
+                }
                 connection.close();
             } catch (SQLException e) {
                 throw new RuntimeException("Failed to close PostgreSQL connection", e);
             } finally {
                 connection = null;
+            }
+        }
+    }
+
+    private void ensureInsertStatement(String tableName, List<String> columns) throws SQLException {
+        if (insertStatement != null
+                && tableName.equals(insertTableName)
+                && columns.equals(insertColumns)) {
+            return;
+        }
+        closeInsertStatementQuietly();
+        insertTableName = tableName;
+        insertColumns = List.copyOf(columns);
+        String sql = buildInsertSql(tableName, insertColumns);
+        insertStatement = connection.prepareStatement(sql);
+    }
+
+    private void closeInsertStatementQuietly() {
+        if (insertStatement != null) {
+            try {
+                insertStatement.close();
+            } catch (SQLException ignored) {
+                // best-effort close
+            } finally {
+                insertStatement = null;
+                insertTableName = null;
+                insertColumns = null;
             }
         }
     }

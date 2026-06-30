@@ -41,6 +41,17 @@ class PostgreSqlParameterBinderTest {
     }
 
     @Test
+    void prepareValue_geomColumn_convertsEwktToPgGeometry() throws Exception {
+        Object value = PostgreSqlParameterBinder.prepareValue(
+                "geom", "SRID=4326;POINT(104.14712790724 30.6009669765876)");
+
+        assertThat(value).isInstanceOf(org.postgresql.util.PGobject.class);
+        org.postgresql.util.PGobject geometry = (org.postgresql.util.PGobject) value;
+        assertThat(geometry.getType()).isEqualTo("geometry");
+        assertThat(geometry.getValue()).isEqualTo("SRID=4326;POINT(104.14712790724 30.6009669765876)");
+    }
+
+    @Test
     void prepareValue_geomwktColumn_keepsWktAsString() {
         Object value = PostgreSqlParameterBinder.prepareValue(
                 "geomwkt", "POINT(113.35665228525738 22.94114817393566)");
