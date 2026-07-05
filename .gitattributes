@@ -1,0 +1,6 @@
+# Shell 脚本在仓库中保持 LF，避免 Linux 部署时行尾损坏
+*.sh text eol=lf
+
+# Windows 批处理保持 CRLF
+*.bat text eol=crlf
+*.ps1 text eol=crlf

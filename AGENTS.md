@@ -64,6 +64,7 @@ data-generator/
 │   ├── dg-plugin-postgresql/
 │   ├── dg-plugin-clickhouse/
 │   └── dg-plugin-csv/
+├── dg-ai/                     # AI Agent 独立 HTTP 服务（AgentScope HarnessAgent）
 └── dg-web/                    # Web 应用（Spring Boot 启动、REST API、Web 控制台）
     └── com.datagenerator.web    # controller / service / dto / config / storage
 ```
@@ -74,16 +75,32 @@ data-generator/
 |---|---|
 | `config/` | `DataGeneratorProperties`、`SecurityConfig`、`DataGeneratorAutoConfiguration` |
 | `storage/` | SQLite 任务持久化（`JobRepository`、`JobLogFileRepository`、`JobStartupRecovery`） |
-| `controller/` | REST 端点 |
+| `controller/` | REST 端点（含 `ConfigController` 连接列表） |
+| `security/` | `ServiceAuthFilter` — 校验 `X-DG-Service-Auth` 服务间调用 |
 | `service/` | 业务编排（`JobService`、`JobDefinitionService`、`JobLogStore` 等） |
 | `dto/` | API 请求/响应模型 |
+
+`dg-ai` 包结构要点：
+
+| 包 | 职责 |
+|---|---|
+| `config/` | `AiAutoConfiguration`（HarnessAgent/Model/Toolkit/StateStore 装配）、`AiProperties` |
+| `controller/` | `ChatController` — POST `/api/v1/agent/chat/{chatId}` SSE 端点 |
+| `service/` | `AgentService` — HarnessAgent streamEvents → SSE 事件适配（token/verbose 双模式） |
+| `tool/` | `ConfigTools`（配置 CRUD/Schema/Connection/校验保存）、`KnowledgeTools`（文档按需检索） |
+| `client/` | `DgWebClient` — RestTemplate HTTP 客户端，携带 `X-DG-Service-Auth` 回调 dg-web |
+| `prompt/` | `SystemPrompt` — 统一 System Prompt（领域知识 + 工作流程 + 行为规范） |
+| `dto/` | `ChatRequest`、`ApiResponse`、`ProviderInfo` |
+| `exception/` | `AiExceptionHandler` — @RestControllerAdvice 全局异常处理 |
 
 **依赖方向：**
 
 ```
 dg-web → dg-core → dg-spi
 dg-web → dg-plugin-* → dg-spi
+dg-ai → dg-web (HTTP 回调 + X-DG-Service-Auth)
 ```
+
 
 **分层约束：**
 
@@ -93,6 +110,7 @@ dg-web → dg-plugin-* → dg-spi
 | `dg-core` | 业务引擎，无 Web | 暴露 REST、依赖具体插件实现 |
 | `dg-plugin-*` | 单一数据源 Reader/Writer | 依赖 core；各自独立 AutoConfiguration |
 | `dg-web` | 启动、REST + DTO + 服务编排、Web UI、配置装配、插件 classpath | 直接返回 core 内部模型；core 业务逻辑 |
+| `dg-ai` | 独立 HTTP 服务、Agent ReAct 循环、SSE 流式输出、Tool 回调 dg-web | 依赖 dg-core/dg-plugin；内嵌 agent 业务逻辑 |
 
 ---
 
@@ -150,12 +168,16 @@ dg-web → dg-plugin-* → dg-spi
 # 全量测试
 mvn clean test
 
-# 打包
-mvn -pl dg-web package -DskipTests
+# 打包 Web（-am 同时构建 dg-core 与插件，避免 fat jar 内嵌过期的本地仓库依赖）
+mvn clean package -pl dg-web -am -DskipTests
 
-# 启动（任意目录均可，默认从 classpath 读取 configs/）
+
+# 启动 Web（任意目录均可，默认从 classpath 读取 configs/）
 java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
+
 ```
+
+**部署打包**（Windows 开发机）：`.\scripts\package.ps1` 生成 `build/dist/data-generator-<version>.zip`，内含 `bin/linux`、`bin/windows` 启停脚本与 `lib/` jar。详见 `README.md`「部署打包」一节。
 
 **完成任何实现或修复后**，必须运行相关测试并确认通过，再向用户报告成功。
 
@@ -203,6 +225,8 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 | 修改生成/约束逻辑 | 改 `dg-core`；补单元测试 |
 | 修改任务持久化 | 改 `dg-web/.../storage/`（`JobRepository`、`JobLogFileRepository`）；任务记录见 job-log-sqlite spec，运行日志见 `storage.log-dir` |
 | 修改认证/登录 | 改 `SecurityConfig` + `DataGeneratorProperties.AuthProperties`；静态页 `static/login.html` |
+| 修改部署/启停脚本 | 改 `scripts/linux`、`scripts/windows`；打包逻辑在 `scripts/package.ps1`（Maven 须带 `-am`） |
+| 修改 AI Agent | 改 `dg-ai`（Tool、SystemPrompt、AiAutoConfiguration）；如需新 Tool，实现并注册到 Toolkit |
 | 排查调用链 | `codegraph_trace` → `codegraph_explore` |
 
 ---
@@ -219,6 +243,7 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 | `docs/superpowers/specs/2026-06-05-job-log-sqlite-design.md` | 任务 SQLite 持久化设计（任务记录；运行日志已改为 `storage.log-dir` 文件） |
 | `docs/superpowers/plans/2026-06-05-job-log-sqlite.md` | 任务 SQLite 持久化实现计划 |
 | `docs/superpowers/specs/2026-06-07-job-level-seeds-design.md` | Job 级 seeds 设计规格 |
+| `dg-ai/README.md` | dg-ai 模块说明（架构、配置、API、Tool Set） |
 | `dg-web/src/main/resources/static/docs/config-guide.md` | Web 控制台配置指南（用户文档） |
 
 ---
