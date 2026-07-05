@@ -4,10 +4,15 @@
 #
 # application.yml 会通过 spring.config.import 自动加载 application-local.yml（若存在）。
 
+server:
+  port: 8080
+
 data-generator:
   auth:
     username: admin
     password: your-secure-password
+  service-auth:
+    token: ai-tokens
   connections:
     dev-safety:
       type: postgresql

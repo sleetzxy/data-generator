@@ -48,7 +48,7 @@ tables:
 | **表任务** | 每张表生成多少行、依赖关系 | `tables[]` |
 | **Schema** | 字段列表及每列如何生成 | `tables[].schema` |
 | **约束** | 生成结果的校验规则 | `schema.constraints` 或 `tables[].constraints` |
-| **连接** | 数据库地址、CSV 目录 | `application.yml`（不在 Job 里写密码） |
+| **连接** | 数据库地址、CSV 目录 | `application.yml`；或 Job 顶层 `connections` 块 / reader·writer 内联（见 [配置连接](#配置连接)） |
 | **定时调度** | Cron 自动执行 | 内置 Job：YAML `schedule`；自定义 Job：控制台弹窗（存 SQLite） |
 
 推荐将 Schema **内联**在 Job 中（字段多、业务绑定时更清晰）；多个 Job 共用同一 Schema 时可拆到 `schemas/*.yaml` 并用路径引用。
@@ -160,7 +160,7 @@ tables:                   # 至少一张表
 
 ## 配置连接
 
-连接信息放在 **`application.yml`**，Job 里只写连接**名称**，避免把密码写进业务配置。
+推荐将连接信息放在 **`application.yml`**，Job 里通过连接**名称**引用，避免把密码写进业务配置。
 
 ```yaml
 data-generator:
@@ -185,7 +185,94 @@ data-generator:
 | `username` / `password` | 数据库 | 凭证 |
 | `path` | CSV | 文件输出目录 |
 
-修改连接后需**重启服务**；Job YAML 无需改动。
+修改 `application.yml` 中的连接后需**重启服务**。
+
+### Job 内联连接（可选）
+
+`writer` / `writers` / `seeds[].reader` 也支持在 Job YAML 中**直接写连接**，无需在 `application.yml` 注册名称。两种方式可混用。
+
+**方式一：连接字段平铺在 reader / writer 上**
+
+```yaml
+writers:
+  - type: postgresql
+    url: jdbc:postgresql://host:5432/MY_DB
+    username: postgres
+    password: secret
+    mode: insert
+
+seeds:
+  - name: road_sample
+    reader:
+      type: postgresql
+      url: jdbc:postgresql://host:5432/ROAD_DB
+      username: postgres
+      password: secret
+      query: SELECT 1
+```
+
+**方式二：`connection` 写为内联对象**
+
+```yaml
+writers:
+  - type: clickhouse
+    connection:
+      url: jdbc:clickhouse://host:8123/default
+      username: default
+      password: ""
+    mode: insert
+```
+
+**方式三：命名连接 + 局部覆盖**（仍引用 `application.yml`，但可覆盖 `url` / `username` 等）
+
+```yaml
+writer:
+  type: postgresql
+  connection: dev-safety
+  url: jdbc:postgresql://other-host:5432/OTHER_DB   # 覆盖注册表中的 url
+  mode: insert
+```
+
+字段优先级（高 → 低）：reader/writer 上的直接字段 > 内联 `connection` 对象 > `application.yml` 命名连接。
+
+> 内联连接适合临时环境或一次性任务；生产环境仍建议集中维护 `application.yml`，便于轮换凭证且不把密码写入 Job 文件。
+
+### Job 级 connections 块（可选）
+
+在 Job 顶层声明命名连接，供本 Job 内 `writer` / `writers` / `seeds[].reader` 通过**字符串** `connection` 引用。运行时与 `application.yml` 中的连接**合并**，同名以 Job 内定义为准（覆盖 url、username 等）。
+
+```yaml
+connections:
+  my-pg:
+    type: postgresql
+    url: jdbc:postgresql://job-host:5432/jobdb
+    username: jobuser
+    password: jobpass
+
+writer:
+  type: postgresql
+  connection: my-pg          # 引用上方 connections.my-pg
+  mode: insert
+
+seeds:
+  - name: sample
+    reader:
+      type: postgresql
+      connection: my-pg
+      query: SELECT 1 AS id
+
+tables:
+  - name: items
+    count: 10
+    schema:
+      table: items
+      fields:
+        - name: id
+          type: BIGINT
+          generator: { strategy: sequence, start: 1 }
+```
+
+适合将连接与 Job 定义打包分发（仍注意凭证安全）；若仅覆盖全局连接的个别字段，也可在 reader/writer 上写 `connection: dev-pg` 并附加 `url:` 等字段（见方式三）。
 
 ---
 
@@ -880,6 +967,7 @@ tables:
 | `job.sync-threshold` | 5000 | 超过则异步 |
 | `job.batch-size` | 1000 | 写入批次；进度/日志按批更新（SQLite 持久化有节流，表完成时强制落盘） |
 | `job.thread-pool-size` | 4 | 异步任务线程池；单表行数 ≥5000 时并行生成行数据 |
+| `job.generation-parallelism` | 0 | 造数并行度；`0` 表示沿用 `thread-pool-size`；API 提交 Job 时可在 `options.generationParallelism` 覆盖 |
 | `storage.sqlite-path` | `./data/dg-jobs.db` | 任务记录 SQLite 库 |
 | `storage.log-dir` | `./data/job-logs` | 运行日志文件目录（每任务一个 `{jobId}.log`） |
 
@@ -888,7 +976,7 @@ tables:
 ## 常见问题
 
 **Q：保存后运行报错「Unknown connection」**  
-A：检查 `writer.connection` / `writers[].connection` / `seeds[].reader.connection` 是否在 `application.yml` 的 `connections` 中定义，且服务已重启。
+A：当 `connection` 为**字符串**时，须在 `application.yml` 的 `connections` 中定义同名连接并重启服务，或在 Job 顶层 [`connections` 块](#job-级-connections-块可选)中声明；若使用 [Job 内联连接](#job-内联连接可选)（直接写 `url`/`username`/`password` 或将 `connection` 写为对象），则无需在 `application.yml` 注册。
 
 **Q：多写（writers）时各库数据是否一致？**  
 A：一致。引擎只生成一次数据，同一批次会写入 `writers` 中的每个目标；各库表结构、类型映射差异可能导致存储表现略有不同，但源行字段值相同。若某一目标写入失败，其他目标可能已有数据，请查看任务日志与各库实际行数。
@@ -909,7 +997,7 @@ A：确认顶层 `seeds[].name` 与字段 `generator.source` 一致；`strategy:
 A：目标列不允许 `null`，但 generator（常见于 `seed`）产出了 `null`。在字段 generator 上加 `default`（如 `default: ''`）即可，无需改用 `expression` 手写兜底逻辑。
 
 **Q：多表 Job 第二表很慢或内存占用高**  
-A：确认已配置 `depends_on` 与 `reference align: index`；引擎会对 FK 校验建索引，并在上游表完成后仅保留下游所需列。单表 ≥5000 行时可调大 `job.thread-pool-size` 提升并行度。
+A：确认已配置 `depends_on` 与 `reference align: index`；引擎会对 FK 校验建索引，并在上游表完成后仅保留下游所需列。单表 ≥5000 行时可调大 `job.thread-pool-size` 或 `job.generation-parallelism` 提升并行度。
 
 **Q：link 关联 seed 采样失败**  
 A：检查从属 seed 的 query 是否使用 `:link_id` 占位符，且关联查询能返回恰好一行。

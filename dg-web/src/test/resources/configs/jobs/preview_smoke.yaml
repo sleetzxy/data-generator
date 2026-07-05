@@ -1,0 +1,15 @@
+id: preview_smoke
+name: 预览冒烟
+writer:
+  type: csv
+  connection: local-csv
+  mode: insert
+tables:
+  - name: customers
+    count: 10
+    schema:
+      table: customers
+      fields:
+        - name: id
+          type: BIGINT
+          generator: { strategy: sequence, start: 1, step: 1 }

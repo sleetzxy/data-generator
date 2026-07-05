@@ -488,13 +488,13 @@ function renderDefinitionsTable() {
         return `
             <tr data-definition-path="${escapeAttr(item.path)}">
                 <td><code>${escapeHtml(item.id || '-')}</code></td>
-                <td>${escapeHtml(displayName)}</td>
+                <td title="${escapeAttr(displayName)}">${escapeHtml(displayName)}</td>
                 <td>${isBuiltin
                     ? '<span class="badge builtin">内置</span>'
                     : '<span class="badge custom">自定义</span>'}</td>
                 <td>${renderScheduleCron(item.schedule)}</td>
                 <td class="definition-status">${statusBadge(latestRun?.status)}</td>
-                <td class="actions">${renderActionsCell(item, rowIndex, displayName, fileName, item.path, activeRun, isBuiltin, scheduleEnabled)}</td>
+                <td class="actions-cell"><div class="actions">${renderActionsCell(item, rowIndex, displayName, fileName, item.path, activeRun, isBuiltin, scheduleEnabled)}</div></td>
             </tr>`;
     }).join('');
 
@@ -711,7 +711,7 @@ function renderPreviewTableBody(table) {
     if (!rows.length) {
         return html + '<p class="preview-empty">该表无预览数据</p>';
     }
-    html += '<div class="table-wrap preview-table-wrap"><table><thead><tr>';
+    html += '<div class="table-wrap preview-table-wrap scrollbar-overlay"><table><thead><tr>';
     for (const col of columns) {
         html += `<th>${escapeHtml(col)}</th>`;
     }
@@ -752,6 +752,7 @@ function renderPreviewTables() {
 
     if (tables.length === 1) {
         panel.innerHTML = `<section class="preview-table-section">${renderPreviewTableBody(tables[0])}</section>`;
+        window.initOverlayScrollbars?.(panel);
         return;
     }
 
@@ -770,6 +771,7 @@ function renderPreviewTables() {
     });
     html += '</div></div>';
     panel.innerHTML = html;
+    window.initOverlayScrollbars?.(panel);
 }
 
 function formatPreviewCell(value) {
@@ -1002,8 +1004,9 @@ async function loadRunLogDetailContent(jobId) {
         logModalContext.logDetailLines[jobId] = logs;
         panel.innerHTML = `
             ${buildLogDetailSummaryHtml(job, progress)}
-            <pre class="log-view">${renderLogLines(logs)}</pre>
+            <pre class="log-view scrollbar-overlay">${renderLogLines(logs)}</pre>
         `;
+        window.initOverlayScrollbars?.(panel);
 
         if (run && run.status !== job.status) {
             run.status = job.status;
@@ -1038,8 +1041,9 @@ async function refreshLogDetailContent(jobId, previousLogScrollState) {
         } else {
             panel.innerHTML = `
                 ${buildLogDetailSummaryHtml(job, progress)}
-                <pre class="log-view">${renderLogLines(logs)}</pre>
+                <pre class="log-view scrollbar-overlay">${renderLogLines(logs)}</pre>
             `;
+            window.initOverlayScrollbars?.(panel);
         }
 
         const targetLogView = panel.querySelector('.log-view');
@@ -1167,3 +1171,8 @@ document.addEventListener('visibilitychange', () => {
         startAutoRefresh();
     }
 });
+
+function openDefinitionModalForAi(yaml) {
+    openDefinitionModal(null, yaml, false, null, null);
+}
+window.openDefinitionModalForAi = openDefinitionModalForAi;

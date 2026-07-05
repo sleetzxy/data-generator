@@ -36,6 +36,13 @@ data-generator:
     sync-threshold: 5000
     batch-size: 1000
     thread-pool-size: 4
+    generation-parallelism: 0
   storage:
     sqlite-path: ./data/dg-jobs.db
     log-dir: ./data/job-logs
+  ai:
+    enabled: true
+    remote-base-url: http://localhost:8081
+    request-timeout: 120s
+  service-auth:
+    token: ${DG_SERVICE_AUTH_TOKEN:ai-tokens}

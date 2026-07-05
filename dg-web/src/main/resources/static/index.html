@@ -6,7 +6,7 @@
     <title>Data Generator 控制台</title>
     <link rel="stylesheet" href="/style.css">
 </head>
-<body>
+<body class="tasks-page">
 <header class="header">
     <div class="header-inner header-with-nav">
         <div>
@@ -33,8 +33,8 @@
                 <span>自动刷新</span>
             </label>
         </div>
-        <div class="table-wrap">
-            <table>
+        <div class="table-wrap definitions-table-wrap scrollbar-overlay">
+            <table class="definitions-table">
                 <thead>
                 <tr>
                     <th>ID</th>
@@ -59,7 +59,7 @@
             <h2 id="modal-title">编辑任务</h2>
             <button id="modal-close" class="icon-btn" aria-label="关闭">&times;</button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body scrollbar-overlay">
             <label id="name-field" class="field">
                 <span>任务名称</span>
                 <input type="text" id="definition-name" placeholder="例如 我的测试任务">
@@ -102,7 +102,7 @@
             <h2 id="preview-title">数据预览</h2>
             <button id="preview-close" class="icon-btn" aria-label="关闭">&times;</button>
         </div>
-        <div class="modal-body preview-modal-body">
+        <div class="modal-body preview-modal-body scrollbar-overlay">
             <div id="preview-content" class="preview-content"></div>
             <div id="preview-pagination" class="pagination hidden"></div>
         </div>
@@ -116,7 +116,7 @@
             <h2 id="log-title">运行记录</h2>
             <button id="log-close" class="icon-btn" aria-label="关闭">&times;</button>
         </div>
-        <div class="modal-body">
+        <div class="modal-body scrollbar-overlay">
             <div class="table-wrap">
                 <table>
                     <thead>
@@ -138,7 +138,53 @@
 
 <div id="toast" class="toast hidden"></div>
 
+<button id="ai-fab" class="ai-fab hidden" type="button"
+        aria-label="AI Agent，可拖动">
+    <svg class="ai-fab-icon" viewBox="0 0 24 24" aria-hidden="true">
+        <path fill="currentColor" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09z" opacity="0.95"/>
+        <path fill="currentColor" d="M18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456z"/>
+        <path fill="currentColor" d="M16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423z"/>
+    </svg>
+</button>
+<aside id="ai-drawer" class="ai-drawer hidden" aria-label="AI Agent">
+    <header class="ai-drawer-header">
+        <h2>AI Agent</h2>
+        <div class="ai-drawer-header-actions">
+            <button id="ai-end-session" type="button" class="ai-header-link">新对话</button>
+            <button id="ai-drawer-close" class="icon-btn" type="button" aria-label="关闭">&times;</button>
+        </div>
+    </header>
+    <div class="ai-drawer-body">
+        <div id="ai-messages" class="ai-messages scrollbar-overlay"></div>
+        <div class="ai-composer">
+            <form id="ai-chat-form" class="ai-composer-form">
+                <textarea id="ai-input" rows="1" spellcheck="false"
+                          placeholder="想到什么就随时发…"></textarea>
+                <div class="ai-composer-toolbar">
+                    <div class="ai-composer-left">
+                        <label class="ai-think-toggle" title="开启后显示推理过程">
+                            <input type="checkbox" id="ai-think-toggle">
+                            <span class="ai-think-slider"></span>
+                            <span class="ai-think-label">深度思考</span>
+                        </label>
+                    </div>
+                    <div class="ai-composer-right ai-composer-right-only">
+                        <button type="submit" id="ai-send-btn" class="ai-send-btn" aria-label="发送" disabled>
+                            <svg class="ai-send-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                                <path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                      stroke-linejoin="round" d="M12 19V5M12 5l-5 5M12 5l5 5"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </form>
+        </div>
+    </div>
+</aside>
+
 <script src="/csrf.js"></script>
+<script src="/scrollbar.js"></script>
 <script src="/app.js"></script>
+<script src="/agent.js"></script>
 </body>
 </html>

@@ -21,8 +21,8 @@ public class JobScheduleRepository {
 
     public void upsert(String configPath, boolean enabled, String cron, String updatedAt) {
         jdbcTemplate.update("""
-                INSERT INTO job_schedules (config_path, enabled, cron, updated_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO job_schedules (config_path, enabled, cron, updated_at, created_at)
+                VALUES (?, ?, ?, ?, ?)
                 ON CONFLICT(config_path) DO UPDATE SET
                     enabled = excluded.enabled,
                     cron = excluded.cron,
@@ -31,7 +31,33 @@ public class JobScheduleRepository {
                 configPath,
                 enabled ? 1 : 0,
                 cron,
+                updatedAt,
                 updatedAt);
+    }
+
+    /** 记录任务创建时间；已有行时仅补填缺失的 created_at，不覆盖已有值。 */
+    public void ensureCreatedAt(String configPath, String createdAt) {
+        jdbcTemplate.update("""
+                INSERT INTO job_schedules (config_path, enabled, cron, updated_at, created_at)
+                VALUES (?, 0, NULL, ?, ?)
+                ON CONFLICT(config_path) DO UPDATE SET
+                    created_at = COALESCE(job_schedules.created_at, excluded.created_at)
+                """,
+                configPath,
+                createdAt,
+                createdAt);
+    }
+
+    public Optional<String> findCreatedAt(String configPath) {
+        List<String> results = jdbcTemplate.query(
+                "SELECT created_at FROM job_schedules WHERE config_path = ?",
+                (rs, rowNum) -> rs.getString("created_at"),
+                configPath);
+        if (results.isEmpty()) {
+            return Optional.empty();
+        }
+        String createdAt = results.get(0);
+        return createdAt == null || createdAt.isBlank() ? Optional.empty() : Optional.of(createdAt);
     }
 
     public Optional<JobScheduleRecord> findByConfigPath(String configPath) {

@@ -43,7 +43,11 @@ public class DataGeneratorAutoConfiguration {
     @Bean
     JobRuntimeSettings jobRuntimeSettings(DataGeneratorProperties properties) {
         DataGeneratorProperties.JobProperties job = properties.getJob();
-        return new JobRuntimeSettings(job.getSyncThreshold(), job.getBatchSize(), job.getThreadPoolSize());
+        return new JobRuntimeSettings(
+                job.getSyncThreshold(),
+                job.getBatchSize(),
+                job.getThreadPoolSize(),
+                job.getGenerationParallelism());
     }
 
     @Bean

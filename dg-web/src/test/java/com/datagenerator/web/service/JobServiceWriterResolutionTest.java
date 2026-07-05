@@ -31,7 +31,7 @@ class JobServiceWriterResolutionTest {
                 mock(PreviewJobOrchestratorFactory.class),
                 mock(YamlConfigLoader.class),
                 mock(ConstraintLoader.class),
-                mock(ConnectionRegistry.class),
+                new ConnectionRegistry(),
                 runtimeSettings,
                 context.jobRepository(),
                 context.jobLogStore(),
