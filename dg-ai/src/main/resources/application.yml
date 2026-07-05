@@ -1,0 +1,34 @@
+server:
+  port: ${AI_SERVER_PORT:8081}
+
+spring:
+  config:
+    import: optional:classpath:application-local.yml
+ai:
+  enabled: true
+
+  model:
+    provider: openai-compatible
+    base-url: ${AI_MODEL_BASE_URL:http://localhost:11434/v1}
+    api-key: ${AI_MODEL_API_KEY:ollama}
+    model-name: ${AI_MODEL_NAME:qwen2.5:7b}
+    temperature: 0.3
+    max-tokens: 4096
+    timeout: 120s
+
+  agent:
+    name: "Data Generator 配置顾问"
+    max-iterations: 30
+
+  session:
+    store: file
+    file:
+      path: ./data/agent-sessions
+    ttl: 24h
+
+  workspace:
+    root: ./data/agent-workspaces
+
+  dg-web:
+    base-url: ${DG_WEB_URL:http://localhost:8080}
+    auth-token: ${DG_SERVICE_AUTH:}
