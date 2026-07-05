@@ -27,7 +27,35 @@ public class YamlConfigLoader {
     }
 
     public JobDefinition loadJob(String path) {
-        Map<String, Object> root = loadYamlMap(path);
+        return loadJobFromRoot(loadYamlMap(path));
+    }
+
+    public JobDefinition loadJobFromContent(String yamlContent) {
+        if (yamlContent == null || yamlContent.isBlank()) {
+            throw new ConfigLoadException("Empty YAML content");
+        }
+        try {
+            Object loaded = yaml.load(yamlContent);
+            if (loaded == null) {
+                throw new ConfigLoadException("Empty YAML content");
+            }
+            JobDefinition job = loadJobFromRoot(YamlMappingUtils.asMap(loaded));
+            validateJobHasTables(job);
+            return job;
+        } catch (ConfigLoadException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new ConfigLoadException("Failed to parse YAML content", exception);
+        }
+    }
+
+    private void validateJobHasTables(JobDefinition job) {
+        if (job.getTables() == null || job.getTables().isEmpty()) {
+            throw new ConfigLoadException("Job must define at least one table in 'tables'");
+        }
+    }
+
+    private JobDefinition loadJobFromRoot(Map<String, Object> root) {
         JobDefinition job = new JobDefinition();
         String name = YamlMappingUtils.asString(root.get("name"));
         if (name == null || name.isBlank()) {
@@ -48,6 +76,7 @@ public class YamlConfigLoader {
         }
         job.setWriter(YamlMappingUtils.asMap(root.get("writer")));
         job.setWriters(YamlMappingUtils.asMapList(root.get("writers")));
+        job.setConnections(YamlMappingUtils.asNamedConnectionMap(root.get("connections")));
         WriterConfigResolver.validateJobWriters(job);
 
         List<SeedDefinition> seeds = new ArrayList<>();

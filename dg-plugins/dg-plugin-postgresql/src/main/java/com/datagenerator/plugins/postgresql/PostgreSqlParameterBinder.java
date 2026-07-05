@@ -43,6 +43,9 @@ final class PostgreSqlParameterBinder {
         if (isGeometryColumn(columnName) && looksLikeWkt(trimmed)) {
             return toGeometry(trimmed);
         }
+        if (isGeometryColumn(columnName) && looksLikeEwkt(trimmed)) {
+            return toGeometry(trimmed);
+        }
         if (looksLikeDateTime(trimmed)) {
             return parseDateTime(trimmed);
         }
@@ -51,6 +54,14 @@ final class PostgreSqlParameterBinder {
 
     private static boolean isGeometryColumn(String columnName) {
         return columnName != null && "geom".equalsIgnoreCase(columnName);
+    }
+
+    private static boolean looksLikeEwkt(String text) {
+        if (!text.regionMatches(true, 0, "SRID=", 0, 5)) {
+            return false;
+        }
+        int semi = text.indexOf(';');
+        return semi > 0 && semi + 1 < text.length() && looksLikeWkt(text.substring(semi + 1).trim());
     }
 
     private static boolean looksLikeWkt(String text) {

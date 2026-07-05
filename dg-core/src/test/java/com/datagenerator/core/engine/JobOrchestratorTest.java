@@ -112,6 +112,68 @@ class JobOrchestratorTest {
         assertThat(result.failedRows()).isZero();
     }
 
+    @Test
+    void jobOrchestrator_jobLevelConnections_resolvesNamedWriter() {
+        CapturingWriter capturingWriter = new CapturingWriter();
+        PluginRegistry pluginRegistry = new PluginRegistry();
+        pluginRegistry.registerWriter("postgresql", capturingWriter);
+        YamlConfigLoader configLoader =
+                new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()));
+        ConnectionRegistry globalRegistry = new ConnectionRegistry(Map.of(
+                "my-pg", Map.of(
+                        "type", "postgresql",
+                        "url", "jdbc:postgresql://global:5432/globaldb",
+                        "username", "global",
+                        "password", "global-pass")));
+        JobOrchestrator jobOrchestrator = new JobOrchestrator(
+                configLoader,
+                new ConstraintLoader(configLoader),
+                new TableGenerator(pluginRegistry, configLoader),
+                pluginRegistry,
+                globalRegistry);
+
+        var job = configLoader.loadJob("fixtures/jobs/job_level_connections.yaml");
+
+        JobResult result = jobOrchestrator.run(job, List.of(), GenerationOptions.defaults());
+
+        assertThat(result.writtenRows()).isEqualTo(1);
+        assertThat(capturingWriter.config().url()).isEqualTo("jdbc:postgresql://job-host:5432/jobdb");
+        assertThat(capturingWriter.config().username()).isEqualTo("jobuser");
+        assertThat(capturingWriter.config().password()).isEqualTo("jobpass");
+    }
+
+    static final class CapturingWriter implements DataWriter {
+
+        private WriterConfig config;
+
+        @Override
+        public String type() {
+            return "postgresql";
+        }
+
+        @Override
+        public void init(WriterConfig config) {
+            this.config = config;
+        }
+
+        @Override
+        public WriteResult write(Batch batch) {
+            return new WriteResult(batch.rows().size(), 0);
+        }
+
+        @Override
+        public void flush() {
+        }
+
+        @Override
+        public void close() {
+        }
+
+        WriterConfig config() {
+            return config;
+        }
+    }
+
     static final class CollectingWriter implements DataWriter {
 
         private final List<Map.Entry<String, DataRow>> rows = new ArrayList<>();

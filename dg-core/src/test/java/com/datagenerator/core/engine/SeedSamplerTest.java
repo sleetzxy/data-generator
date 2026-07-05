@@ -88,6 +88,31 @@ class SeedSamplerTest {
     }
 
     @Test
+    void sample_linkedReaderMultipleRows_usesFirstRow() {
+        DataReader reader = queryReader(request -> {
+            if (request.query().contains("WHERE id =")) {
+                return Stream.of(
+                        new DataRow(Map.of("id", 10L, "line_no", 3)),
+                        new DataRow(Map.of("id", 10L, "line_no", 9)));
+            }
+            return Stream.of(new DataRow(Map.of("id", 10L, "name", "Bob")));
+        });
+
+        SeedDefinition header = readerSeed("header", "SELECT id, name FROM orders LIMIT 1");
+        SeedDefinition detail = linkedReaderSeed("detail", "header", "SELECT id, line_no FROM lines WHERE id = :link_id");
+
+        SchemaDefinition schema = schemaWithSeedFields(Map.of("line_no", "detail"));
+        SeedSampler sampler = new SeedSampler(
+                new ReferenceDataLoader(Map.of("postgresql", reader)),
+                null,
+                SeedDependencySorter.sort(List.of(header, detail)));
+
+        Map<String, DataRow> samples = sampler.sample(schema);
+
+        assertThat(samples.get("detail").get("line_no")).isEqualTo(3);
+    }
+
+    @Test
     void sample_rootReaderZeroRows_usesEmptySeed() {
         DataReader reader = queryReader(request -> Stream.empty());
         SeedDefinition header = readerSeed("header", "SELECT id FROM orders LIMIT 1");
