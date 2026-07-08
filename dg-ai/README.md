@@ -1,8 +1,8 @@
 # dg-ai — Data Generator AI Agent 服务
 
-基于 **AgentScope HarnessAgent** 的独立 HTTP 服务，提供多轮对话式 Job 配置生成能力。通过 SSE 与 Web 控制台交互，并借助 Tool Set 回调 dg-web 的 REST API 实现环境探查、配置校验与持久化。
+基于 **AgentScope HarnessAgent** 的独立 HTTP 服务，提供多轮对话式 Job 配置生成能力。集成 **RAG 知识库**（文档上传、向量索引与语义检索）、**配置草稿管理**（分片持久化与增量合并），通过 SSE 与 Web 控制台交互，并借助 Tool Set 回调 dg-web 的 REST API 实现环境探查、配置校验与持久化。
 
-**技术栈：** Java 21 · Spring Boot 3.3 · AgentScope HarnessAgent · Reactor SSE · RestTemplate（HTTP 客户端）
+**技术栈：** Java 21 · Spring Boot 3.3 · AgentScope HarnessAgent + RAG · Reactor SSE · RestTemplate（HTTP 客户端）· Knife4j（API 文档）
 
 ## AgentScope HarnessAgent 框架特性
 
@@ -67,11 +67,15 @@ graph TB
 
     subgraph dg-ai["dg-ai (:8081)"]
         CTRL["ChatController<br/>POST /chat/{chatId} SSE"]
+        KCTRL["KnowledgeController<br/>知识库管理 API"]
         ASVC["AgentService<br/>事件适配"]
         HA["HarnessAgent<br/>ReAct 循环"]
         TK["Toolkit"]
         CT["ConfigTools<br/>CRUD · Schema · 校验"]
-        KT["KnowledgeTools<br/>文档搜索"]
+        KT["KnowledgeTools<br/>文档语义检索"]
+        CDM["ConfigDraftManager<br/>草稿分片 · 增量合并"]
+        EMB["SimpleEmbeddingModel<br/>Ollama / SiliconFlow"]
+        KCS["KnowledgeChunkService<br/>文档切分 · 索引"]
         DWC["DgWebClient<br/>RestTemplate + 服务认证"]
     end
 
@@ -81,14 +85,19 @@ graph TB
 
     FE -->|"SSE (代理)"| PROXY
     PROXY -->|"SSE"| CTRL
+    PROXY -->|"REST"| KCTRL
     CTRL --> ASVC
     ASVC --> HA
     HA <-->|"推理"| MODEL
     HA --> TK
     TK --> CT
     TK --> KT
+    TK --> CDM
     CT --> DWC
     KT --> DWC
+    KT --> EMB
+    KCTRL --> EMB
+    KCTRL --> KCS
     DWC -->|"X-DG-Service-Auth"| AUTH
     AUTH --> SVC
 ```
@@ -177,15 +186,20 @@ dg-ai/
 └── src/main/java/com/datagenerator/ai/
     ├── AiApplication.java              # Spring Boot 启动入口
     ├── config/
-    │   ├── AiAutoConfiguration.java    # HarnessAgent、Model、Toolkit、StateStore 装配
+    │   ├── AiAutoConfiguration.java    # HarnessAgent、Model、Toolkit、StateStore、Embedding 装配
     │   └── AiProperties.java           # @ConfigurationProperties(prefix = "ai")
     ├── controller/
-    │   └── ChatController.java         # POST /api/v1/agent/chat/{chatId} (SSE)
+    │   ├── ChatController.java         # POST /api/v1/agent/chat/{chatId} (SSE)
+    │   └── KnowledgeController.java    # 知识库管理 API（上传/索引/状态）
     ├── service/
-    │   └── AgentService.java           # HarnessAgent streamEvents → SSE 事件适配
+    │   ├── AgentService.java           # HarnessAgent streamEvents → SSE 事件适配
+    │   └── KnowledgeChunkService.java  # 文档按 ## 切分、文件读写、索引维护
+    ├── embedding/
+    │   └── SimpleEmbeddingModel.java   # OpenAI-compatible Embedding（Ollama/SiliconFlow）
     ├── tool/
     │   ├── ConfigTools.java            # 配置 CRUD、Schema/Connection 查询、校验保存
-    │   └── KnowledgeTools.java         # 配置文档按需检索（searchDocs / getDocSection）
+    │   ├── KnowledgeTools.java         # 配置文档语义检索（从向量库搜索）
+    │   └── ConfigDraftManager.java     # 配置草稿管理（分片持久化、增量 YAML 合并）
     ├── client/
     │   └── DgWebClient.java            # dg-web REST 客户端（RestTemplate + 服务认证头）
     ├── prompt/
@@ -303,6 +317,14 @@ ai:
   workspace:                             # Agent 工作空间
     root: ./data/agent-workspaces
 
+  embedding:                             # 向量化配置（知识库 RAG）
+    provider: ollama                     # ollama / openai-compatible
+    base-url: ${AI_EMBEDDING_BASE_URL:http://localhost:11434/v1}
+    model-name: ${AI_EMBEDDING_MODEL:bge-m3}
+    dimensions: 1024
+    storage-path: ./data/knowledge-chunks  # 文档切分存储路径
+    api-key: ${AI_EMBEDDING_API_KEY:}
+
   dg-web:                                # dg-web 回调配置
     base-url: ${DG_WEB_URL:http://localhost:8080}   # dg-web 地址
     auth-token: ${DG_SERVICE_AUTH:}                 # 服务间认证 token
@@ -364,6 +386,28 @@ curl -X POST http://localhost:8081/api/v1/agent/chat/{chatId}?mode=token \
 | `token`（默认） | 输出 text、tool_start、tool_end、done、error |
 | `verbose` | 额外输出 thinking、observation、log（调试用） |
 
+### 知识库管理
+
+| 端点 | 方法 | 说明 |
+|---|---|---|
+| `/api/v1/agent/knowledge/upload` | POST | 上传 .md 文档，按 `##` 二级标题自动切分为 chunk |
+| `/api/v1/agent/knowledge/index` | POST | 将已切分的 chunk 向量化后写入内存向量库 |
+| `/api/v1/agent/knowledge/status` | GET | 查询索引状态（chunk 数量、模型、维度） |
+
+```bash
+# 上传配置文档并构建索引
+curl -X POST http://localhost:8081/api/v1/agent/knowledge/upload \
+  -F "file=@config-guide.md"
+
+curl -X POST http://localhost:8081/api/v1/agent/knowledge/index
+
+# 之后 Agent 即可通过 KnowledgeTools.searchDocs 进行语义检索
+```
+
+### API 文档（Knife4j）
+
+启动后访问 `http://localhost:8081/doc.html` 查看 Swagger API 文档。
+
 ## Tool Set
 
 HarnessAgent 在 ReAct 循环中按需调用以下 Tool。
@@ -384,10 +428,27 @@ HarnessAgent 在 ReAct 循环中按需调用以下 Tool。
 
 ### KnowledgeTools — 知识检索工具
 
+基于 AgentScope RAG 扩展，将配置文档向量化后存入内存向量库，支持语义检索。
+
 | Tool | 说明 |
 |---|---|
-| `searchDocs(query)` | 按关键词搜索 Data Generator 配置文档，返回相关章节全文 |
+| `searchDocs(query)` | 语义搜索 Data Generator 配置文档，返回相关章节全文 |
 | `getDocSection(title)` | 获取配置文档指定章节完整内容 |
+
+**前置条件：** 需先通过 `KnowledgeController` 上传文档并构建向量索引，或复用已构建的索引缓存。
+
+### ConfigDraftManager — 配置草稿管理
+
+复杂 Job（多表、多字段）可能超出单次 LLM 输出的 token 限制。ConfigDraftManager 提供分片持久化 + 增量合并能力：
+
+| 操作 | 说明 |
+|---|---|
+| 创建草稿 | 新建 `drafts/{draftId}/` 目录，写入 `header.yaml` |
+| 添加/更新表 | 逐表写入 `table_{name}/_meta.yaml` + `_fields.yaml` |
+| 合并组装 | 将所有分片文件合并为完整 YAML 字符串 |
+| 草稿查询 | 列出草稿清单，便于 Agent 多轮对话中引用 |
+
+**优势：** Agent 可分步创建多表配置，每步只需处理一个表的结构，避免 token 超限；草稿持久化到 workspace 文件系统，跨轮对话可恢复。
 
 **降级策略：** 当 `ai.dg-web.base-url` 未配置时，Tool 调用返回离线提示而非报错，Agent 可在独立模式下运行（只是无法访问 dg-web 数据）。
 

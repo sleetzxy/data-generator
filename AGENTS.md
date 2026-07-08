@@ -84,10 +84,11 @@ data-generator/
 
 | 包 | 职责 |
 |---|---|
-| `config/` | `AiAutoConfiguration`（HarnessAgent/Model/Toolkit/StateStore 装配）、`AiProperties` |
-| `controller/` | `ChatController` — POST `/api/v1/agent/chat/{chatId}` SSE 端点 |
-| `service/` | `AgentService` — HarnessAgent streamEvents → SSE 事件适配（token/verbose 双模式） |
-| `tool/` | `ConfigTools`（配置 CRUD/Schema/Connection/校验保存）、`KnowledgeTools`（文档按需检索） |
+| `config/` | `AiAutoConfiguration`（HarnessAgent/Model/Toolkit/StateStore/Embedding 装配）、`AiProperties` |
+| `controller/` | `ChatController` — POST `/api/v1/agent/chat/{chatId}` SSE 端点；`KnowledgeController` — 知识库上传/索引/状态 API |
+| `service/` | `AgentService` — HarnessAgent streamEvents → SSE 事件适配（token/verbose 双模式）；`KnowledgeChunkService` — 文档按 `##` 切分与索引维护 |
+| `embedding/` | `SimpleEmbeddingModel` — OpenAI-compatible Embedding（Ollama/SiliconFlow） |
+| `tool/` | `ConfigTools`（配置 CRUD/Schema/Connection/校验保存）、`KnowledgeTools`（向量语义检索）、`ConfigDraftManager`（配置草稿分片与 YAML 合并） |
 | `client/` | `DgWebClient` — RestTemplate HTTP 客户端，携带 `X-DG-Service-Auth` 回调 dg-web |
 | `prompt/` | `SystemPrompt` — 统一 System Prompt（领域知识 + 工作流程 + 行为规范） |
 | `dto/` | `ChatRequest`、`ApiResponse`、`ProviderInfo` |
@@ -237,13 +238,18 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 |---|---|
 | `README.md` | 快速开始与能力说明 |
 | `AGENTS.md` | 本文档 — 代理行为与合规要求 |
-| `.cursor/rules/*.mdc` | 项目级编码与工具规则 |
+| `CLAUDE.md` | Claude Code 开发指南（与 AGENTS.md 同源，以 CLAUDE.md 为准） |
+| `.cursor/rules/*.mdc` | 项目级编码与工具规则（原始版本，保留参考） |
 | `docs/superpowers/specs/` | 产品设计规格 |
 | `docs/superpowers/plans/` | 实现计划 |
+| `docs/superpowers/specs/2026-06-05-data-generator-design.md` | 整体产品设计规格 |
+| `docs/superpowers/plans/2026-06-05-data-generator.md` | 整体实现计划 |
 | `docs/superpowers/specs/2026-06-05-job-log-sqlite-design.md` | 任务 SQLite 持久化设计（任务记录；运行日志已改为 `storage.log-dir` 文件） |
 | `docs/superpowers/plans/2026-06-05-job-log-sqlite.md` | 任务 SQLite 持久化实现计划 |
+| `docs/superpowers/specs/2026-06-06-job-schedule-design.md` | Job 定时调度设计规格 |
+| `docs/superpowers/plans/2026-06-06-job-schedule.md` | Job 定时调度实现计划 |
 | `docs/superpowers/specs/2026-06-07-job-level-seeds-design.md` | Job 级 seeds 设计规格 |
-| `dg-ai/README.md` | dg-ai 模块说明（架构、配置、API、Tool Set） |
+| `dg-ai/README.md` | dg-ai 模块说明（架构、配置、API、Tool Set、RAG 知识库） |
 | `dg-web/src/main/resources/static/docs/config-guide.md` | Web 控制台配置指南（用户文档） |
 
 ---

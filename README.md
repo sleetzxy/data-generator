@@ -213,8 +213,8 @@ bin\windows\start-ai.bat      REM dg-ai
 控制台提供：
 
 - **任务管理** — Job 定义 CRUD、Cron 定时调度、提交运行、运行记录与日志（分页）；**自动刷新**（默认开启，运行中/日志弹窗 2 秒、空闲 5 秒，增量更新状态避免整表闪烁）
-- **AI 助手**（可选）— 右下角悬浮球 → 右侧抽屉**多轮对话**（同一会话内上下文连续）；启动时从 `GET /api/v1/agent/agents` 选择 Agent（首版 `job-generator`），生成 Job YAML；校验通过后可自动打开「新建任务」并填入内容（需同时启动 dg-ai 并在 dg-web 启用 `data-generator.ai.enabled`）
-- **配置指南** — 内置 YAML 配置说明文档
+- **AI 助手**（可选）— 右下角悬浮球（机器人图标）→ 右侧抽屉**多轮对话**（同一会话内上下文连续）；支持**深度思考**模式查看 Agent 推理过程；生成 Job YAML 校验通过后可自动填入「新建任务」表单（需同时启动 dg-ai 并在 dg-web 启用 `data-generator.ai.enabled`）
+- **配置指南** — 内置 YAML 配置说明文档（可作为 RAG 知识库数据源上传至 dg-ai）
 
 ### 运行测试
 
@@ -228,6 +228,12 @@ mvn clean test
 
 AI 能力由 **`dg-ai` 独立 HTTP 服务**提供。浏览器经 dg-web 的 `/api/v1/agent/**` 代理与 dg-ai 对话（SSE 流式）；dg-ai 的 Tool 通过 **`X-DG-Service-Auth` 请求头**回调 dg-web 既有 REST API（如 `/api/v1/config/connections`、`/api/v1/job-definitions?validateOnly=true`），无需单独暴露 agent-tools 端点。
 
+**核心能力：**
+- **多轮对话生成** — AgentScope HarnessAgent + ReAct 循环，LLM 自主决策调用 Tool 完成 Job 创建
+- **RAG 知识库** — 上传 Markdown 文档 → 按标题切分 → 向量索引 → 语义检索，Agent 可按需查阅配置文档
+- **配置草稿管理** — 复杂多表 Job 分片持久化 + 增量 YAML 合并，突破单次 LLM token 限制
+- **SSE 流式输出** — 支持 token（生产）与 verbose（调试）双模式，前端实时渲染文本与思考过程
+
 ### 启动 dg-ai
 
 ```bash
@@ -237,8 +243,8 @@ java -jar dg-ai/target/dg-ai-0.1.0-SNAPSHOT.jar
 
 **dg-ai**（`application.yml` / `application-local.yml`）需配置：
 
-- `ai.model.provider` — LLM Provider（`openai-compatible` / `ollama`）
-- `ai.model.api-key` — LLM 密钥（或环境变量 `AI_MODEL_API_KEY`）
+- `ai.model.*` — LLM Provider（`openai-compatible` / `ollama`）、密钥、模型名
+- `ai.embedding.*` — 向量化模型（知识库 RAG，默认 Ollama `bge-m3`）
 - `ai.dg-web.base-url` — 指向 dg-web（如 `http://localhost:8080`）
 - `ai.dg-web.auth-token` — 与 dg-web 的 `data-generator.service-auth.token` 一致
 
