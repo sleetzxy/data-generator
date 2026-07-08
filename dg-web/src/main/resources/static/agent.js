@@ -60,12 +60,8 @@ async function initAgentUi() {
 
 async function probeAgentApi() {
     try {
-        const response = await fetch(`${AGENT_API}/chat/open`, { method: 'POST', credentials: 'same-origin' });
-        if (response.status === 401) {
-            window.location.href = '/login.html';
-            return false;
-        }
-        return response.ok;
+        const response = await agentFetch('/chat/open', { method: 'POST' });
+        return response != null;
     } catch (_) {
         return false;
     }
