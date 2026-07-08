@@ -13,7 +13,7 @@ ai:
     api-key: ${AI_MODEL_API_KEY:ollama}
     model-name: ${AI_MODEL_NAME:qwen2.5:7b}
     temperature: 0.3
-    max-tokens: 4096
+    max-tokens: 8192
     timeout: 120s
 
   agent:
@@ -29,6 +29,29 @@ ai:
   workspace:
     root: ./data/agent-workspaces
 
+  memory:
+    flush-mode: throttled
+    flush-min-gap: 5m
+
+  embedding:
+    provider: ${AI_EMBEDDING_PROVIDER:ollama}
+    base-url: ${AI_EMBEDDING_BASE_URL:http://localhost:11434}
+    api-key: ${AI_EMBEDDING_API_KEY:}
+    model-name: ${AI_EMBEDDING_MODEL:nomic-embed-text}
+    dimensions: 768
+    storage-path: ${AI_KNOWLEDGE_STORAGE_PATH:./data/knowledge-chunks}
+
   dg-web:
     base-url: ${DG_WEB_URL:http://localhost:8080}
     auth-token: ${DG_SERVICE_AUTH:}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+knife4j:
+  enable: true
+  setting:
+    language: zh-CN

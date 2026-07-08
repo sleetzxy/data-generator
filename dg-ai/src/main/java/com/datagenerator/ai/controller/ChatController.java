@@ -26,9 +26,11 @@ public class ChatController {
     private static final Logger log = LoggerFactory.getLogger(ChatController.class);
 
     private final AgentService agentService;
+    private final ObjectMapper mapper;
 
-    public ChatController(AgentService agentService) {
+    public ChatController(AgentService agentService, ObjectMapper mapper) {
         this.agentService = agentService;
+        this.mapper = mapper;
     }
 
     @PostMapping("/chat/open")
@@ -54,11 +56,11 @@ public class ChatController {
         return agentService.chat(chatId, mode, request.content());
     }
 
-    private static ServerSentEvent<String> errorEvent(String message) {
+    private ServerSentEvent<String> errorEvent(String message) {
         try {
             return ServerSentEvent.<String>builder()
                     .event("error")
-                    .data(new ObjectMapper().writeValueAsString(Map.of("message", message)))
+                    .data(mapper.writeValueAsString(Map.of("message", message)))
                     .build();
         } catch (Exception e) {
             return ServerSentEvent.<String>builder()

@@ -480,8 +480,13 @@ function appendToAssistantBubble(text) {
         aiAssistantBubble.prepend(content);
     }
     content.textContent += cleaned;
-    const messages = document.getElementById('ai-messages');
-    messages.scrollTop = messages.scrollHeight;
+    // 延迟到浏览器 reflow 后再滚动，确保 scrollHeight 已更新
+    requestAnimationFrame(() => {
+        const messages = document.getElementById('ai-messages');
+        if (messages) {
+            messages.scrollTop = messages.scrollHeight;
+        }
+    });
 }
 
 function handleSseEvent(eventName, data) {
@@ -529,18 +534,26 @@ function handleSseEvent(eventName, data) {
                     if (!aiThinkBlock) {
                         aiThinkBlock = createThinkBlock();
                         if (aiAssistantBubble) {
+                            // 移除 is-waiting 让气泡恢复 block 布局，
+                            // 避免 flex row 导致思考块与 typing 指示器水平排列重叠
+                            aiAssistantBubble.classList.remove('is-waiting');
                             aiAssistantBubble.insertBefore(aiThinkBlock, aiAssistantBubble.firstChild);
                         }
                     }
                     const content = aiThinkBlock.querySelector('.ai-think-content');
                     if (content) {
                         content.textContent += parsed.delta;
-                        // 思考内容区自动滚到底部
-                        content.scrollTop = content.scrollHeight;
                     }
-                    // 消息区跟随滚动
-                    const messages = document.getElementById('ai-messages');
-                    messages.scrollTop = messages.scrollHeight;
+                    // 延迟到浏览器 reflow 后再滚动，确保 scrollHeight 已更新
+                    requestAnimationFrame(() => {
+                        if (content) {
+                            content.scrollTop = content.scrollHeight;
+                        }
+                        const messages = document.getElementById('ai-messages');
+                        if (messages) {
+                            messages.scrollTop = messages.scrollHeight;
+                        }
+                    });
                 }
             } catch (_) { /* ignore */ }
             break;

@@ -1292,7 +1292,8 @@ th {
     min-width: 3.5rem;
     min-height: 2rem;
     display: flex;
-    align-items: center;
+    flex-direction: column;
+    align-items: flex-start;
 }
 
 .ai-message-welcome {
@@ -1438,9 +1439,11 @@ th {
     line-height: 1.5;
     white-space: pre-wrap;
     word-break: break-word;
-    max-height: 140px;
+    max-height: 280px;
     overflow-y: auto;
     border-top: 1px solid #e2e8f0;
+    /* 确保滚动到底部时内容可见 */
+    scroll-behavior: auto;
 }
 
 /* 折叠状态 */

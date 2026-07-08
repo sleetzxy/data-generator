@@ -448,7 +448,7 @@ public class JobDefinitionService {
         while (normalized.startsWith("/")) {
             normalized = normalized.substring(1);
         }
-        if (normalized.startsWith(JOBS_DIR + "/")) {
+            if (normalized.startsWith(JOBS_DIR + "/")) {
             normalized = normalized.substring(JOBS_DIR.length() + 1);
         }
         if (normalized.endsWith(".yaml") || normalized.endsWith(".yml")) {

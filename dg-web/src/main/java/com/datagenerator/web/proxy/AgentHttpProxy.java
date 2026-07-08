@@ -101,7 +101,10 @@ public class AgentHttpProxy {
     }
 
     private boolean isSseStream(HttpServletRequest request) {
-        if (request.getRequestURI() != null && request.getRequestURI().endsWith("/messages")) {
+        // chat SSE 端点
+        if (request.getRequestURI() != null
+                && (request.getRequestURI().endsWith("/messages")
+                    || request.getRequestURI().contains("/chat/"))) {
             return true;
         }
         String accept = request.getHeader("Accept");

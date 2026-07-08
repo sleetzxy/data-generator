@@ -2,7 +2,6 @@ package com.datagenerator.ai.client;
 
 import com.datagenerator.ai.config.AiProperties;
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -17,6 +16,7 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.web.util.UriComponentsBuilder;
 
 /**
@@ -29,13 +29,14 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class DgWebClient {
 
     private static final Logger log = LoggerFactory.getLogger(DgWebClient.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper();
 
     private final RestTemplate restTemplate;
     private final String baseUrl;
 
     public DgWebClient(AiProperties aiProperties) {
-        this.baseUrl = aiProperties.getDgWeb().baseUrl();
+        // 去除结尾斜杠，避免后续字符串拼接产生双斜杠 URL
+        String raw = aiProperties.getDgWeb().baseUrl();
+        this.baseUrl = raw != null && raw.endsWith("/") ? raw.substring(0, raw.length() - 1) : raw;
         String authToken = aiProperties.getDgWeb().authToken();
         this.restTemplate = new RestTemplate();
 
@@ -92,16 +93,19 @@ public class DgWebClient {
                     getText(body, "name"),
                     getText(body, "fileName"),
                     getText(body, "content"));
+        } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
+            // 404 在 saveConfigDraft 中是正常流程：配置尚不存在 → 新建而非更新
+            log.debug("getConfig({}) 配置不存在，将作为新建处理", fileName);
+            return null;
         } catch (Exception e) {
-            log.warn("获取配置失败: {}", fileName);
+            log.warn("获取配置失败: {}", fileName, e);
             return null;
         }
     }
 
-    /** 新建配置并持久化 */
-    public ConfigDetail createConfig(String fileName, String displayName, String yaml) {
+    /** 新建配置并持久化。文件名由服务端根据 YAML id 自动生成。 */
+    public ConfigDetail createConfig(String displayName, String yaml) {
         Map<String, Object> request = new LinkedHashMap<>();
-        request.put("name", fileName);
         request.put("displayName", displayName);
         request.put("content", yaml);
 
@@ -226,7 +230,7 @@ public class DgWebClient {
             }
             return new SchemaDetail(fields);
         } catch (Exception e) {
-            log.warn("获取 Schema 失败: {}", name);
+            log.warn("获取 Schema 失败: {}", name, e);
             return null;
         }
     }
@@ -290,69 +294,6 @@ public class DgWebClient {
 
     /** 数据连接详情 */
     public record ConnectionDetail(String name, String type, String url, String username, String password) {}
-
-    /** 文档章节 */
-    public record DocSection(String title, String anchor, int startLine, int endLine) {}
-
-    // ==================== Docs / 文档 ====================
-
-    /** 获取配置文档全文 */
-    public String getDocFull() {
-        try {
-            ResponseEntity<String> resp = restTemplate.getForEntity(
-                    baseUrl + "/api/v1/docs/config-guide", String.class);
-            if (!resp.getStatusCode().is2xxSuccessful()) {
-                log.warn("getDocFull 返回非 2xx: {}", resp.getStatusCode());
-                return null;
-            }
-            return resp.getBody();
-        } catch (Exception e) {
-            log.warn("获取文档全文失败", e);
-            return null;
-        }
-    }
-
-    /** 获取文档章节索引 */
-    @SuppressWarnings("unchecked")
-    public List<DocSection> getDocSections() {
-        try {
-            ResponseEntity<List<Map<String, Object>>> resp = (ResponseEntity) restTemplate.getForEntity(
-                    baseUrl + "/api/v1/docs/config-guide/sections", (Class) List.class);
-            List<DocSection> result = new ArrayList<>();
-            if (resp.getBody() != null) {
-                for (Object item : resp.getBody()) {
-                    Map<String, Object> map = (Map<String, Object>) item;
-                    result.add(new DocSection(
-                            (String) map.get("title"),
-                            (String) map.get("anchor"),
-                            map.get("startLine") instanceof Integer si ? si : 0,
-                            map.get("endLine") instanceof Integer ei ? ei : 0));
-                }
-            }
-            return result;
-        } catch (Exception e) {
-            log.warn("获取文档章节失败", e);
-            return List.of();
-        }
-    }
-
-    /** 按关键词搜索文档相关章节 */
-    public String searchDocs(String query) {
-        try {
-            String url = UriComponentsBuilder.fromHttpUrl(baseUrl + "/api/v1/docs/config-guide")
-                    .queryParam("q", query)
-                    .toUriString();
-            ResponseEntity<String> resp = restTemplate.getForEntity(url, String.class);
-            if (!resp.getStatusCode().is2xxSuccessful()) {
-                log.warn("searchDocs 返回非 2xx: {}", resp.getStatusCode());
-                return null;
-            }
-            return resp.getBody();
-        } catch (Exception e) {
-            log.warn("搜索文档失败: {}", query, e);
-            return null;
-        }
-    }
 
     // ==================== 内部工具 ====================
 

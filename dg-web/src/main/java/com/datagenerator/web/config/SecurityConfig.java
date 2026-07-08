@@ -102,8 +102,6 @@ public class SecurityConfig {
 
                                 "/api/v1/schemas/**",
 
-                                "/api/v1/docs/**",
-
                                 "/api/v1/config/connections")
 
                         .permitAll()
