@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import reactor.core.publisher.Flux;
 
@@ -42,7 +41,6 @@ public class ChatController {
     @PostMapping(value = "/chat/{chatId}", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public Flux<ServerSentEvent<String>> chat(
             @PathVariable String chatId,
-            @RequestParam(defaultValue = "token") String mode,
             @RequestBody ChatRequest request) {
 
         if (chatId == null || chatId.isBlank()) {
@@ -52,8 +50,8 @@ public class ChatController {
             return Flux.just(errorEvent("消息内容不能为空"));
         }
 
-        log.info("对话开始: chatId={}, mode={}", chatId, mode);
-        return agentService.chat(chatId, mode, request.content());
+        log.info("对话开始: chatId={}", chatId);
+        return agentService.chat(chatId, request.content());
     }
 
     private ServerSentEvent<String> errorEvent(String message) {

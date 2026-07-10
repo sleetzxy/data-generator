@@ -25,10 +25,9 @@ import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
 
 /**
- * Agent 执行服务，将 HarnessAgent 的 streamEvents API 适配为 SSE 双模式输出。
+ * Agent 执行服务，将 HarnessAgent 的 streamEvents API 适配为 SSE 输出。
  *
- * <p>token 模式：text、tool_start、tool_end、done、error
- * <br>verbose 模式：以上所有 + thinking、observation
+ * <p>所有事件无条件发送：text、thinking、tool_start、tool_end、observation、done、error。
  */
 @Service
 public class AgentService {
@@ -65,12 +64,10 @@ public class AgentService {
      * <br>空闲超时 180s：若模型调用挂起无任何事件，自动终止并发送 error，防止代理和浏览器一直阻塞。</p>
      *
      * @param chatId  会话标识，同时作为 userId 和 sessionId
-     * @param mode    模式（token / verbose）
      * @param content 用户消息文本
      * @return SSE 事件流
      */
-    public Flux<ServerSentEvent<String>> chat(String chatId, String mode, String content) {
-        boolean verbose = "verbose".equalsIgnoreCase(mode);
+    public Flux<ServerSentEvent<String>> chat(String chatId, String content) {
 
         UserMessage userMsg = new UserMessage(chatId, content);
         RuntimeContext ctx = RuntimeContext.builder()
@@ -87,7 +84,7 @@ public class AgentService {
                     }
                 })
                 .doOnCancel(() -> log.warn("Agent SSE 流被取消: chatId={}", chatId))
-                .flatMapSequential(event -> toSseEvents(event, verbose))
+                .flatMapSequential(event -> toSseEvents(event))
                 .timeout(IDLE_TIMEOUT)
                 .concatWithValues(AgentEventUtil.buildDoneEvent(mapper))
                 .startWith(AgentEventUtil.ssEvent("connected",
@@ -116,9 +113,9 @@ public class AgentService {
 
     /**
      * 将 AgentEvent 转换为 SSE 事件流（可能为 0..N 个事件）。
-     * <p>EXCEED_MAX_ITERS 作为普通 SSE error 事件发出，流正常完成后追加 done 事件。</p>
+     * <p>所有事件无条件发送，EXCEED_MAX_ITERS 作为普通 SSE error 事件发出。</p>
      */
-    private Flux<ServerSentEvent<String>> toSseEvents(AgentEvent event, boolean verbose) {
+    private Flux<ServerSentEvent<String>> toSseEvents(AgentEvent event) {
         try {
             log.debug("AgentEvent: type={}, class={}", event.getType(), event.getClass().getSimpleName());
             return switch (event.getType()) {
@@ -133,22 +130,14 @@ public class AgentService {
                                 mapper.writeValueAsString(Map.of("end", true))));
 
                 case THINKING_BLOCK_DELTA -> {
-                    if (!verbose) {
-                        yield Flux.empty();
-                    }
                     String delta = ((ThinkingBlockDeltaEvent) event).getDelta();
                     yield Flux.just(
                             AgentEventUtil.ssEvent("thinking",
                                     mapper.writeValueAsString(Map.of("delta", delta))));
                 }
-                case THINKING_BLOCK_END -> {
-                    if (!verbose) {
-                        yield Flux.empty();
-                    }
-                    yield Flux.just(
-                            AgentEventUtil.ssEvent("thinking",
-                                    mapper.writeValueAsString(Map.of("end", true))));
-                }
+                case THINKING_BLOCK_END -> Flux.just(
+                        AgentEventUtil.ssEvent("thinking",
+                                mapper.writeValueAsString(Map.of("end", true))));
 
                 case TOOL_CALL_START -> {
                     ToolCallStartEvent e = (ToolCallStartEvent) event;
@@ -167,9 +156,6 @@ public class AgentService {
                 }
 
                 case TOOL_RESULT_TEXT_DELTA -> {
-                    if (!verbose) {
-                        yield Flux.empty();
-                    }
                     ToolResultTextDeltaEvent e = (ToolResultTextDeltaEvent) event;
                     yield Flux.just(
                             AgentEventUtil.ssEvent("observation",
@@ -177,19 +163,12 @@ public class AgentService {
                                             "toolCallId", e.getToolCallId(),
                                             "delta", e.getDelta()))));
                 }
-                case TOOL_RESULT_END -> {
-                    if (!verbose) {
-                        yield Flux.empty();
-                    }
-                    yield Flux.just(
-                            AgentEventUtil.ssEvent("observation",
-                                    mapper.writeValueAsString(Map.of("end", true))));
-                }
+                case TOOL_RESULT_END -> Flux.just(
+                        AgentEventUtil.ssEvent("observation",
+                                mapper.writeValueAsString(Map.of("end", true))));
 
                 case EXCEED_MAX_ITERS -> {
                     ExceedMaxItersEvent e = (ExceedMaxItersEvent) event;
-                    // 发射普通 SSE error 事件后流正常完成（会追加 done 事件），
-                    // 避免 Flux.error 信号与 Tomcat AsyncContext 交互产生 IllegalStateException
                     yield Flux.just(
                             AgentEventUtil.buildErrorEvent(mapper,
                                     "超过最大迭代次数: " + e.getMaxIters()));
@@ -198,17 +177,12 @@ public class AgentService {
                 // AGENT_END 和 AGENT_START 不产生 SSE 事件
                 case AGENT_END, AGENT_START -> Flux.empty();
 
-                // 未明确映射的事件类型：verbose 模式下作为日志输出
-                default -> {
-                    if (verbose) {
-                        yield Flux.just(
-                                AgentEventUtil.ssEvent("log",
-                                        mapper.writeValueAsString(Map.of(
-                                                "type", event.getType().getValue(),
-                                                "id", event.getId()))));
-                    }
-                    yield Flux.empty();
-                }
+                // 未明确映射的事件类型：作为日志输出
+                default -> Flux.just(
+                        AgentEventUtil.ssEvent("log",
+                                mapper.writeValueAsString(Map.of(
+                                        "type", event.getType().getValue(),
+                                        "id", event.getId()))));
             };
         } catch (JsonProcessingException e) {
             log.warn("事件序列化失败: type={}", event.getType(), e);

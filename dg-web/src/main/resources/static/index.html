@@ -139,7 +139,7 @@
 <div id="toast" class="toast hidden"></div>
 
 <button id="ai-fab" class="ai-fab hidden" type="button"
-        aria-label="AI Agent，可拖动">
+        aria-label="AI助手，可拖动">
     <svg class="ai-fab-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
         <!-- 天线 -->
         <path d="M12 1v2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
@@ -157,29 +157,47 @@
         <path d="M9 16.5h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
     </svg>
 </button>
-<aside id="ai-drawer" class="ai-drawer hidden" aria-label="AI Agent">
+<aside id="ai-drawer" class="ai-drawer hidden" aria-label="AI助手">
     <header class="ai-drawer-header">
-        <h2>AI Agent</h2>
+        <h2>AI助手</h2>
         <div class="ai-drawer-header-actions">
-            <button id="ai-end-session" type="button" class="ai-header-link">新对话</button>
-            <button id="ai-drawer-close" class="icon-btn" type="button" aria-label="关闭">&times;</button>
+            <button id="ai-new-chat" type="button" class="ai-header-icon-btn" title="新对话">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 5v14M5 12h14"/>
+                </svg>
+            </button>
+            <button id="ai-history-btn" type="button" class="ai-header-icon-btn" title="历史对话">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <polyline points="12 6 12 12 16 14"/>
+                </svg>
+            </button>
+            <button id="ai-clear-chat" type="button" class="ai-header-icon-btn" title="清空会话">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                </svg>
+            </button>
+            <button id="ai-drawer-close" class="ai-header-icon-btn" type="button" title="关闭" aria-label="关闭">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/>
+                    <line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </button>
         </div>
     </header>
+    <!-- 历史对话下拉面板 -->
+    <div id="ai-history-panel" class="ai-history-panel hidden">
+        <div class="ai-history-list" id="ai-history-list"></div>
+    </div>
     <div class="ai-drawer-body">
         <div id="ai-messages" class="ai-messages scrollbar-overlay"></div>
         <div class="ai-composer">
             <form id="ai-chat-form" class="ai-composer-form">
                 <textarea id="ai-input" rows="1" spellcheck="false"
-                          placeholder="想到什么就随时发…"></textarea>
+                          placeholder="想到什么随时就发…"></textarea>
                 <div class="ai-composer-toolbar">
-                    <div class="ai-composer-left">
-                        <label class="ai-think-toggle" title="开启后显示推理过程">
-                            <input type="checkbox" id="ai-think-toggle">
-                            <span class="ai-think-slider"></span>
-                            <span class="ai-think-label">深度思考</span>
-                        </label>
-                    </div>
-                    <div class="ai-composer-right ai-composer-right-only">
+                    <div class="ai-composer-right">
                         <button type="submit" id="ai-send-btn" class="ai-send-btn" aria-label="发送" disabled>
                             <svg class="ai-send-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
                                 <path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"

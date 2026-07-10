@@ -1214,26 +1214,35 @@ th {
     gap: 0.5rem;
 }
 
-.ai-header-link {
+.ai-header-icon-btn {
+    width: 32px;
+    height: 32px;
     border: none;
     background: transparent;
-    color: var(--primary);
-    font-size: 0.8125rem;
+    color: #64748b;
     cursor: pointer;
-    padding: 0.35rem 0.5rem;
     border-radius: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    flex-shrink: 0;
+    transition: background 0.15s ease, color 0.15s ease;
 }
 
-.ai-header-link:hover {
-    background: #eff6ff;
+.ai-header-icon-btn svg {
+    width: 18px;
+    height: 18px;
 }
 
-.ai-header-link:disabled,
-.ai-header-link.disabled {
-    color: var(--muted);
-    cursor: default;
-    pointer-events: none;
-    background: transparent;
+.ai-header-icon-btn:hover {
+    background: #f1f5f9;
+    color: #334155;
+}
+
+.ai-header-icon-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
 }
 
 .ai-drawer-header h2 {
@@ -1340,7 +1349,7 @@ th {
     }
 }
 
-/* ── 思考过程块 — DeepSeek 风格 ── */
+/* ── 思考过程块 ── */
 .ai-think-block {
     width: 100%;
     margin: 0.25rem 0;
@@ -1442,7 +1451,6 @@ th {
     max-height: 280px;
     overflow-y: auto;
     border-top: 1px solid #e2e8f0;
-    /* 确保滚动到底部时内容可见 */
     scroll-behavior: auto;
 }
 
@@ -1451,9 +1459,12 @@ th {
     display: none;
 }
 
-/* 思考完成 — 默认折叠 */
-.ai-think-block.is-done:not(.is-expanded) {
-    /* 已完成时默认折叠，用户可点击展开 */
+.ai-think-block.is-thinking {
+    border-left: 2px solid #6366f1;
+}
+
+.ai-think-block.is-done {
+    border-left: 2px solid #94a3b8;
 }
 
 .ai-think-content::-webkit-scrollbar {
@@ -1467,46 +1478,221 @@ th {
     border-radius: 999px;
 }
 
-/* ── 深度思考开关 ── */
-.ai-think-toggle {
-    display: inline-flex;
+/* ── 工具调用块 ── */
+.ai-tool-block {
+    width: 100%;
+    margin: 0.25rem 0;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background: #f8fafc;
+    font-size: 0.75rem;
+    overflow: hidden;
+}
+
+.ai-tool-header {
+    display: flex;
     align-items: center;
-    gap: 0.4rem;
+    gap: 0.35rem;
+    padding: 0.4rem 0.6rem;
     cursor: pointer;
     user-select: none;
+    color: #64748b;
+    font-size: 0.75rem;
 }
-.ai-think-toggle input { display: none; }
-.ai-think-slider {
-    position: relative;
-    width: 28px;
-    height: 16px;
-    background: #cbd5e1;
-    border-radius: 8px;
-    transition: background 0.2s;
+
+.ai-tool-header:hover {
+    background: #f1f5f9;
+}
+
+.ai-tool-icon {
+    width: 14px;
+    height: 14px;
     flex-shrink: 0;
-}
-.ai-think-slider::after {
-    content: '';
-    position: absolute;
-    top: 2px; left: 2px;
-    width: 12px; height: 12px;
-    background: #fff;
-    border-radius: 50%;
-    transition: transform 0.2s;
-}
-.ai-think-toggle input:checked + .ai-think-slider {
-    background: #6366f1;
-}
-.ai-think-toggle input:checked + .ai-think-slider::after {
-    transform: translateX(12px);
-}
-.ai-think-label {
-    font-size: 0.6875rem;
-    color: #94a3b8;
-    white-space: nowrap;
-}
-.ai-think-toggle input:checked ~ .ai-think-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
     color: #6366f1;
+}
+
+.ai-tool-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.ai-tool-name {
+    flex: 1;
+    min-width: 0;
+    font-weight: 500;
+    color: #475569;
+}
+
+.ai-tool-status {
+    flex-shrink: 0;
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.ai-tool-spinner {
+    width: 12px;
+    height: 12px;
+    border: 2px solid #cbd5e1;
+    border-top-color: #6366f1;
+    border-radius: 50%;
+    animation: tool-spin 0.7s linear infinite;
+}
+
+@keyframes tool-spin {
+    to { transform: rotate(360deg); }
+}
+
+.ai-tool-check {
+    width: 14px;
+    height: 14px;
+    color: #16a34a;
+}
+
+.ai-tool-arrow {
+    flex-shrink: 0;
+    width: 14px;
+    height: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform 0.25s ease;
+    color: #94a3b8;
+}
+
+.ai-tool-block.is-expanded .ai-tool-arrow {
+    transform: rotate(180deg);
+}
+
+.ai-tool-arrow svg {
+    width: 12px;
+    height: 12px;
+}
+
+.ai-tool-content {
+    padding: 0.35rem 0.6rem;
+    color: #94a3b8;
+    font-size: 0.725rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+    border-top: 1px solid #e2e8f0;
+}
+
+.ai-tool-block:not(.is-expanded) .ai-tool-content {
+    display: none;
+}
+
+.ai-tool-block.is-running {
+    border-left: 2px solid #6366f1;
+}
+
+.ai-tool-block.is-done {
+    border-left: 2px solid #16a34a;
+}
+
+.ai-tool-content::-webkit-scrollbar {
+    width: 4px;
+}
+.ai-tool-content::-webkit-scrollbar-track {
+    background: transparent;
+}
+.ai-tool-content::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
+}
+
+/* ── 历史对话悬浮面板 ── */
+.ai-history-panel {
+    position: absolute;
+    top: 52px;
+    left: 8px;
+    right: 8px;
+    z-index: 10;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+    max-height: 260px;
+    overflow-y: auto;
+}
+
+.ai-history-list {
+    display: flex;
+    flex-direction: column;
+    padding: 0.25rem;
+}
+
+.ai-history-empty {
+    padding: 1.5rem 1rem;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 0.8125rem;
+}
+
+.ai-history-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.55rem 0.65rem;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    border-radius: 6px;
+    transition: background 0.1s;
+}
+
+.ai-history-item:hover {
+    background: #f1f5f9;
+}
+
+.ai-history-item-title {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: #334155;
+}
+
+.ai-history-item-time {
+    flex-shrink: 0;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+.ai-history-item-del {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border: none;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 1rem;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    opacity: 0;
+    transition: opacity 0.1s;
+}
+
+.ai-history-item:hover .ai-history-item-del {
+    opacity: 1;
+}
+
+.ai-history-item-del:hover {
+    background: #fee2e2;
+    color: #dc2626;
 }
 
 /* 底部输入区 — 参考 Cursor 聊天 composer */
@@ -1567,23 +1753,12 @@ th {
     padding: 0.35rem 0.65rem 0.65rem;
 }
 
-.ai-composer-left {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    min-width: 0;
-    flex: 1;
-}
-
-.ai-composer-right-only {
-    margin-left: auto;
-}
-
 .ai-composer-right {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     flex-shrink: 0;
+    margin-left: auto;
 }
 
 .ai-circle-btn {
