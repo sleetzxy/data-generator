@@ -64,8 +64,9 @@ public class SessionService {
             }
         }
 
-        // 按 chatId 倒序（UUID 时间戳序），最新会话在前
-        result.sort(Comparator.comparing(SessionInfo::chatId).reversed());
+        // 按 updatedAt 倒序：JsonFileAgentStateStore 读取实际文件时间，
+        // 其他 store 回退到当前时间（限制：此时排序可能不准确）
+        result.sort(Comparator.comparing(SessionInfo::updatedAt).reversed());
         return result;
     }
 

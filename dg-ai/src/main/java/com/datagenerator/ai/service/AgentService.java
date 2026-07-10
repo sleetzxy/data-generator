@@ -19,7 +19,7 @@ import io.agentscope.harness.agent.HarnessAgent;
 import java.time.Duration;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.codec.ServerSentEvent;
@@ -44,9 +44,6 @@ public class AgentService {
     private final ObjectMapper mapper;
 
     private final HarnessAgent agent;
-
-    /** 缓冲工具调用结果 delta，用于去重和完整结果回传。 */
-    private final ConcurrentHashMap<String, StringBuilder> toolResultBuffer = new ConcurrentHashMap<>();
 
     public AgentService(HarnessAgent agent, ObjectMapper mapper) {
         this.agent = agent;
@@ -169,11 +166,6 @@ public class AgentService {
                 }
                 case TOOL_RESULT_TEXT_DELTA -> {
                     ToolResultTextDeltaEvent e = (ToolResultTextDeltaEvent) event;
-                    toolResultBuffer.compute(e.getToolCallId(), (k, v) -> {
-                        if (v == null) v = new StringBuilder();
-                        v.append(e.getDelta());
-                        return v;
-                    });
                     yield Flux.just(
                             AgentEventUtil.ssEvent("observation",
                                     mapper.writeValueAsString(Map.of(
@@ -182,18 +174,14 @@ public class AgentService {
                 }
                 case TOOL_RESULT_END -> {
                     ToolResultEndEvent e = (ToolResultEndEvent) event;
-                    // 仅在无流式 delta 时才从 state store 兜底读取完整结果
-                    StringBuilder sb = toolResultBuffer.remove(e.getToolCallId());
+                    // 始终从 stateStore 读取完整结果（流式 delta 已实时发送给前端）
+                    String result = extractToolResultFromState(chatId, e.getToolCallId());
                     Map<String, Object> data = new java.util.LinkedHashMap<>();
                     data.put("toolCallId", e.getToolCallId());
-                    if (sb == null) {
-                        // 无流式 delta：从 AgentState 读取已持久化的结果
-                        String result = extractToolResultFromState(chatId, e.getToolCallId());
-                        if (!result.isEmpty()) {
-                            data.put("result", result);
-                        }
-                    }
                     data.put("end", true);
+                    if (!result.isEmpty()) {
+                        data.put("result", result);
+                    }
                     yield Flux.just(
                             AgentEventUtil.ssEvent("observation",
                                     mapper.writeValueAsString(data)));
@@ -228,7 +216,11 @@ public class AgentService {
      */
     private String extractToolResultFromState(String chatId, String toolCallId) {
         try {
-            var stateOpt = agent.getStateStore()
+            var store = agent.getStateStore();
+            if (store == null) {
+                return "";
+            }
+            var stateOpt = store
                     .get(DEFAULT_USER_ID, chatId, "agent_state",
                             io.agentscope.core.state.AgentState.class);
             if (stateOpt.isEmpty()) {

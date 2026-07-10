@@ -12,6 +12,7 @@ import io.agentscope.core.tool.ToolParam;
 import io.agentscope.harness.agent.HarnessAgent;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -72,7 +73,7 @@ public class ConfigTools {
             return emitAndReturn(emitter, "未连接数据服务，无法查询配置");
         }
         List<ConfigSummary> list = client.listConfigs();
-        if (list.isEmpty()) {
+        if (list == null || list.isEmpty()) {
             return emitAndReturn(emitter, "暂无已有配置");
         }
         StringBuilder sb = new StringBuilder("已有配置：\n");
@@ -471,7 +472,7 @@ public class ConfigTools {
         if (m.find()) {
             return m.group(1);
         }
-        return "generated-" + System.currentTimeMillis();
+        return "generated-" + UUID.randomUUID();
     }
 
     private static String extractConfigName(String yaml) {

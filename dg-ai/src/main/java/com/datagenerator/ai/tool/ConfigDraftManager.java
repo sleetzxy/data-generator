@@ -10,7 +10,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
+
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -117,6 +117,15 @@ public class ConfigDraftManager {
      * @return workspace 相对路径
      */
     private String draftPath(String draftId, String... segments) {
+        // 防止路径穿越攻击：draftId 和 segments 中不得包含导航字符
+        if (draftId.contains("..") || draftId.contains("/") || draftId.contains("\\")) {
+            throw new IllegalArgumentException("draftId 包含非法字符: " + draftId);
+        }
+        for (String seg : segments) {
+            if (seg.contains("..")) {
+                throw new IllegalArgumentException("路径片段包含非法字符: " + seg);
+            }
+        }
         String joined = String.join("/", segments);
         return DRAFTS_DIR + "/" + draftId + (joined.isEmpty() ? "" : "/" + joined);
     }
@@ -228,12 +237,19 @@ public class ConfigDraftManager {
     }
 
     /**
-     * 废弃草稿。覆盖 header 文件为空标记删除，合并时检查 header 为空则视为无效草稿。
+     * 废弃草稿。先清理所有 table 子文件，再标记 header 和索引为空。
+     * 确保同名新草稿不会被旧 table 残留文件阻塞创建。
      *
      * @param rc      RuntimeContext
      * @param draftId 草稿 ID
      */
     public void deleteDraft(RuntimeContext rc, String draftId) {
+        // 先清理所有 table 文件，避免残留文件阻塞同名新草稿
+        List<String> tables = listTableNames(rc, draftId);
+        for (String tableName : tables) {
+            removeTable(rc, draftId, tableName);
+        }
+        // 再标记 header 和索引为空（逻辑删除）
         writeFile(rc, draftId, HEADER_FILE, "");
         writeFile(rc, draftId, TABLES_INDEX, "");
         log.info("草稿已废弃: draftId={}", draftId);
@@ -866,6 +882,12 @@ public class ConfigDraftManager {
      */
     @SuppressWarnings("unchecked")
     public void loadExistingAsDraft(RuntimeContext rc, String draftId, String fullYaml) {
+        // 冲突检测：草稿已存在时先清理旧数据，避免静默覆盖导致表/字段丢失
+        if (draftExists(rc, draftId)) {
+            log.warn("草稿「{}」已存在，覆盖前先清理旧数据", draftId);
+            deleteDraft(rc, draftId);
+        }
+
         Map<String, Object> root = yaml().load(fullYaml);
 
         // 1. 提取 header（除 tables/constraints/seeds 外的顶级字段）

@@ -82,11 +82,11 @@ class SessionServiceTest {
         var result = sessionService.listSessions();
 
         assertThat(result).hasSize(2);
-        // 按 chatId 倒序排列
-        assertThat(result.get(0).chatId()).isEqualTo("def456");
-        assertThat(result.get(1).chatId()).isEqualTo("abc123");
-        assertThat(result.get(1).title()).isEqualTo("帮我创建用户表");
-        assertThat(result.get(1).messageCount()).isEqualTo(2);
+        // 按 updatedAt 倒序排列（mock 的 InMemoryStore 使用 Instant.now()，两者时间相同，稳定排序保持插入顺序）
+        assertThat(result.get(0).chatId()).isEqualTo("abc123");
+        assertThat(result.get(1).chatId()).isEqualTo("def456");
+        assertThat(result.get(0).title()).isEqualTo("帮我创建用户表");
+        assertThat(result.get(0).messageCount()).isEqualTo(2);
     }
 
     @Test

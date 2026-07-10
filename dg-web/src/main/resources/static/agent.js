@@ -9,6 +9,9 @@ let aiToolBlocks = new Map();
 /** 当前思考过程块 */
 let aiThinkBlock = null;
 
+/** 当前 SSE 流的 AbortController，用于取消进行中的请求 */
+let aiAbortController = null;
+
 /** 缓存最近一次获取的会话列表 */
 let aiSessionsCache = [];
 /** 当前加载的会话消息（用于标题提取） */
@@ -263,6 +266,12 @@ async function handleSend(event) {
         return;
     }
 
+    // 中止进行中的旧 SSE 流（防御：理论上 aiSending 为 true 时会提前返回）
+    if (aiAbortController) {
+        aiAbortController.abort();
+        aiAbortController = null;
+    }
+
     const input = document.getElementById('ai-input');
     const content = input.value.trim();
     if (!content) {
@@ -299,6 +308,11 @@ async function handleSend(event) {
 
 /** ── 新对话 ── */
 async function handleNewChat() {
+    // 先中止进行中的 SSE 流，再重置会话
+    if (aiAbortController) {
+        aiAbortController.abort();
+        aiAbortController = null;
+    }
     document.getElementById('ai-history-panel').classList.add('hidden');
     resetSession();
     showAgentToast('已开始新对话');
@@ -306,6 +320,11 @@ async function handleNewChat() {
 
 /** ── 清空当前会话 ── */
 async function handleClearChat() {
+    // 先中止进行中的 SSE 流
+    if (aiAbortController) {
+        aiAbortController.abort();
+        aiAbortController = null;
+    }
     // 删除服务端 Agent 状态
     if (aiChatId) {
         try {
@@ -378,11 +397,19 @@ async function switchToHistory(idx) {
     const item = aiSessionsCache[idx];
     if (!item) return;
 
+    // 先中止进行中的 SSE 流
+    if (aiAbortController) {
+        aiAbortController.abort();
+        aiAbortController = null;
+    }
+
     const messagesEl = document.getElementById('ai-messages');
     messagesEl.innerHTML = '<div class="ai-history-empty">加载中...</div>';
     aiAssistantBubble = null;
     aiToolBlocks.clear();
     aiThinkBlock = null;
+    // 提前设置 chatId，防止加载期间用户发送消息到错误会话
+    aiChatId = item.chatId;
 
     let sessionMessages;
     try {
@@ -395,7 +422,6 @@ async function switchToHistory(idx) {
     }
 
     messagesEl.innerHTML = '';
-    aiChatId = item.chatId;
 
     // 恢复历史消息（含 blocks 结构）
     const messages = sessionMessages.messages || [];
@@ -577,6 +603,11 @@ function escapeHtml(str) {
 }
 
 function resetSession() {
+    // 中止进行中的 SSE 流
+    if (aiAbortController) {
+        aiAbortController.abort();
+        aiAbortController = null;
+    }
     aiChatId = null;
     aiAssistantBubble = null;
     aiToolBlocks.clear();
@@ -782,6 +813,9 @@ function createToolBlock(toolName, toolCallId) {
     block.appendChild(content);
 
     // 按时间顺序插入到 assistant bubble 中
+    if (!aiAssistantBubble) {
+        aiAssistantBubble = appendMessage('assistant', '');
+    }
     if (aiAssistantBubble) {
         aiAssistantBubble.classList.remove('is-waiting');
         aiAssistantBubble.appendChild(block);
@@ -954,6 +988,10 @@ function handleSseEvent(eventName, data) {
                 } else if (parsed.delta) {
                     if (!aiThinkBlock) {
                         aiThinkBlock = createThinkBlock();
+                        // 确保有 assistant bubble 可容纳思考块
+                        if (!aiAssistantBubble) {
+                            aiAssistantBubble = appendMessage('assistant', '');
+                        }
                         if (aiAssistantBubble) {
                             aiAssistantBubble.classList.remove('is-waiting');
                             aiAssistantBubble.appendChild(aiThinkBlock);
@@ -1030,6 +1068,9 @@ async function sendAgentMessage(chatId, content, onEvent) {
         }
     }
 
+    // 创建 AbortController 以支持取消进行中的流
+    aiAbortController = new AbortController();
+
     // 不再传递 mode 参数，模型自动处理思考
     const response = await fetch(
         `${AGENT_API}/chat/${encodeURIComponent(chatId)}`,
@@ -1037,7 +1078,8 @@ async function sendAgentMessage(chatId, content, onEvent) {
             method: 'POST',
             credentials: 'same-origin',
             headers,
-            body: JSON.stringify({ content })
+            body: JSON.stringify({ content }),
+            signal: aiAbortController.signal
         }
     );
 
@@ -1058,17 +1100,27 @@ async function sendAgentMessage(chatId, content, onEvent) {
     const decoder = new TextDecoder();
     let buffer = '';
 
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-            break;
+    try {
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) {
+                break;
+            }
+            buffer += decoder.decode(value, { stream: true });
+            buffer = consumeSseBuffer(buffer, onEvent);
         }
-        buffer += decoder.decode(value, { stream: true });
-        buffer = consumeSseBuffer(buffer, onEvent);
+        consumeSseBuffer(buffer + '\n\n', onEvent);
+    } catch (err) {
+        if (err.name === 'AbortError') {
+            // 用户主动取消，无需报错
+            return;
+        }
+        throw err;
+    } finally {
+        hideTypingIndicator(aiAssistantBubble);
+        setSending(false);
+        aiAbortController = null;
     }
-    consumeSseBuffer(buffer + '\n\n', onEvent);
-    hideTypingIndicator(aiAssistantBubble);
-    setSending(false);
 }
 
 function consumeSseBuffer(buffer, onEvent) {
@@ -1098,7 +1150,8 @@ function consumeSseBuffer(buffer, onEvent) {
 
 async function agentFetch(path, options = {}) {
     const method = (options.method || 'GET').toUpperCase();
-    const headers = { 'Content-Type': 'application/json', ...options.headers };
+    // 先展开调用方 headers，再设置必需字段，确保 Content-Type 和 CSRF Token 不被覆盖
+    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
     if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS' && typeof getCsrfToken === 'function') {
         const csrfToken = getCsrfToken();
         if (csrfToken) {
@@ -1106,10 +1159,12 @@ async function agentFetch(path, options = {}) {
         }
     }
 
+    // 排除 options 中的 headers 避免重复展开覆盖
+    const { headers: _, ...restOptions } = options;
     const response = await fetch(`${AGENT_API}${path}`, {
         credentials: 'same-origin',
         headers,
-        ...options
+        ...restOptions
     });
 
     if (response.status === 401) {
