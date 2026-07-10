@@ -9,10 +9,10 @@ let aiToolBlocks = new Map();
 /** 当前思考过程块 */
 let aiThinkBlock = null;
 
-/** localStorage 键名 */
-const HISTORY_KEY = 'dg-ai-chat-history';
-/** 最多保留的历史条数 */
-const MAX_HISTORY = 20;
+/** 缓存最近一次获取的会话列表 */
+let aiSessionsCache = [];
+/** 当前加载的会话消息（用于标题提取） */
+let aiCurrentMessages = [];
 
 /** 欢迎说明 */
 const AGENT_WELCOME_TEXT = `我是 Data Generator 的 AI 配置顾问，基于 ReAct（推理-行动）范式工作。
@@ -278,8 +278,6 @@ async function handleSend(event) {
     try {
         if (!aiChatId) {
             await ensureChat();
-            // 保存新会话到历史
-            saveCurrentChatToHistory(content);
         }
     } catch (err) {
         showAgentToast('创建会话失败: ' + err.message);
@@ -302,21 +300,22 @@ async function handleSend(event) {
 /** ── 新对话 ── */
 async function handleNewChat() {
     document.getElementById('ai-history-panel').classList.add('hidden');
-    if (aiChatId) {
-        // 保存当前会话到历史
-        saveCurrentChatToHistory();
-    }
     resetSession();
     showAgentToast('已开始新对话');
 }
 
 /** ── 清空当前会话 ── */
-function handleClearChat() {
-    document.getElementById('ai-messages').innerHTML = '';
-    aiAssistantBubble = null;
-    aiToolBlocks.clear();
-    aiThinkBlock = null;
-    showWelcomeIfEmpty();
+async function handleClearChat() {
+    // 删除服务端 Agent 状态
+    if (aiChatId) {
+        try {
+            await agentFetch(`/chat/${encodeURIComponent(aiChatId)}`, { method: 'DELETE' });
+        } catch (e) {
+            // 删除失败不阻塞前端重置
+            console.warn('删除服务端会话失败:', e);
+        }
+    }
+    resetSession();
     showAgentToast('会话已清空');
 }
 
@@ -330,16 +329,26 @@ function toggleHistoryPanel() {
 }
 
 /** ── 渲染历史列表 ── */
-function renderHistoryList() {
+async function renderHistoryList() {
     const list = document.getElementById('ai-history-list');
-    const history = loadHistory();
-    if (history.length === 0) {
+    list.innerHTML = '<div class="ai-history-empty">加载中...</div>';
+
+    let sessions;
+    try {
+        sessions = await fetchSessions();
+    } catch (e) {
+        list.innerHTML = '<div class="ai-history-empty">加载失败，请重试</div>';
+        return;
+    }
+
+    if (!sessions || sessions.length === 0) {
         list.innerHTML = '<div class="ai-history-empty">暂无历史对话</div>';
         return;
     }
-    list.innerHTML = history.map((item, idx) => {
+
+    list.innerHTML = sessions.map((item, idx) => {
         const title = item.title || '未命名对话';
-        const time = item.time ? formatTime(item.time) : '';
+        const time = formatTime(item.updatedAt);
         return `<div class="ai-history-item" data-index="${idx}">
             <span class="ai-history-item-title">${escapeHtml(title)}</span>
             <span class="ai-history-item-time">${time}</span>
@@ -365,21 +374,42 @@ function renderHistoryList() {
     });
 }
 
-function switchToHistory(idx) {
-    const history = loadHistory();
-    const item = history[idx];
+async function switchToHistory(idx) {
+    const item = aiSessionsCache[idx];
     if (!item) return;
-    aiChatId = item.chatId;
+
     const messagesEl = document.getElementById('ai-messages');
-    messagesEl.innerHTML = '';
+    messagesEl.innerHTML = '<div class="ai-history-empty">加载中...</div>';
     aiAssistantBubble = null;
     aiToolBlocks.clear();
     aiThinkBlock = null;
 
-    // 恢复历史消息
-    if (item.messages && item.messages.length > 0) {
-        item.messages.forEach(msg => {
-            appendMessage(msg.role, msg.content);
+    let sessionMessages;
+    try {
+        sessionMessages = await fetchSessionMessages(item.chatId);
+    } catch (e) {
+        showAgentToast('加载会话失败: ' + e.message);
+        messagesEl.innerHTML = '';
+        showWelcomeIfEmpty();
+        return;
+    }
+
+    messagesEl.innerHTML = '';
+    aiChatId = item.chatId;
+
+    // 恢复历史消息（含 blocks 结构）
+    const messages = sessionMessages.messages || [];
+    if (messages.length > 0) {
+        messages.forEach(msg => {
+            const blocks = msg.blocks || [];
+            if (msg.role === 'user') {
+                // 用户消息：取第一个 text block 作为内容
+                const textBlock = blocks.find(b => b.type === 'text');
+                appendMessage('user', textBlock ? textBlock.text : '');
+            } else {
+                // 非用户消息：按 block 顺序渲染
+                renderHistoryBlocks(msg.role, blocks);
+            }
         });
     } else {
         showWelcomeIfEmpty();
@@ -389,83 +419,155 @@ function switchToHistory(idx) {
     showAgentToast('已切换到: ' + (item.title || '历史对话'));
 }
 
-function saveCurrentChatToHistory(firstMessage) {
-    if (!aiChatId) return;
-    const messagesEl = document.getElementById('ai-messages');
-    let title = firstMessage || '';
-    if (!title) {
-        // 取第一条用户消息作为标题
-        const firstUserMsg = messagesEl.querySelector('.ai-message-user');
-        if (firstUserMsg) {
-            title = firstUserMsg.textContent || '';
+/**
+ * 按 block 顺序渲染历史消息中的结构化内容。
+ * 与直播 SSE 事件处理保持一致的视觉结构：文本段、思考块、工具调用块、工具结果。
+ */
+function renderHistoryBlocks(role, blocks) {
+    for (const block of blocks) {
+        switch (block.type) {
+            case 'text': {
+                if (role === 'tool') {
+                    // tool 角色的文本追加到最近的工具结果块
+                    // 历史恢复中 TOOL 消息不太常见，直接追加到 assistant bubble
+                    if (aiAssistantBubble) {
+                        appendTextToAssistantBubble(block.text);
+                    } else {
+                        aiAssistantBubble = appendMessage('assistant', '');
+                        appendTextToAssistantBubble(block.text);
+                    }
+                } else {
+                    if (aiAssistantBubble) {
+                        appendTextToAssistantBubble(block.text);
+                    } else {
+                        aiAssistantBubble = appendMessage('assistant', '');
+                        appendTextToAssistantBubble(block.text);
+                    }
+                }
+                break;
+            }
+            case 'thinking': {
+                if (!aiAssistantBubble) {
+                    aiAssistantBubble = appendMessage('assistant', '');
+                }
+                const thinkBlock = createThinkBlock();
+                thinkBlock.classList.remove('is-thinking', 'is-expanded');
+                thinkBlock.classList.add('is-done');
+                const textEl = thinkBlock.querySelector('.ai-think-header-text');
+                if (textEl) textEl.textContent = '思考过程';
+                const dots = thinkBlock.querySelector('.ai-think-dots');
+                if (dots) {
+                    dots.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ai-tool-check">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>`;
+                }
+                const content = thinkBlock.querySelector('.ai-think-content');
+                if (content) content.textContent = block.thinking;
+                aiAssistantBubble.appendChild(thinkBlock);
+                break;
+            }
+            case 'tool_call': {
+                if (!aiAssistantBubble) {
+                    aiAssistantBubble = appendMessage('assistant', '');
+                }
+                const toolBlock = createToolBlock(block.toolName, block.toolCallId);
+                toolBlock.classList.remove('is-running');
+                toolBlock.classList.add('is-done');
+                const status = toolBlock.querySelector('.ai-tool-status');
+                if (status) {
+                    status.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ai-tool-check">
+                        <polyline points="20 6 9 17 4 12"/>
+                    </svg>`;
+                }
+                aiToolBlocks.set(block.toolCallId, toolBlock);
+                break;
+            }
+            case 'tool_result': {
+                const toolBlock = aiToolBlocks.get(block.toolCallId);
+                if (toolBlock) {
+                    const content = toolBlock.querySelector('.ai-tool-content');
+                    if (content) {
+                        content.textContent += block.text;
+                    }
+                }
+                break;
+            }
         }
     }
-    title = title.substring(0, 40);
-
-    // 提取消息数据用于恢复
-    const msgData = [];
-    messagesEl.querySelectorAll('.ai-message').forEach(el => {
-        if (el.classList.contains('ai-message-user')) {
-            msgData.push({ role: 'user', content: el.textContent || '' });
-        } else if (el.classList.contains('ai-message-assistant')) {
-            const contentEl = el.querySelector('.ai-message-content');
-            const text = contentEl ? contentEl.textContent : (el.textContent || '');
-            msgData.push({ role: 'assistant', content: text });
-        }
-    });
-
-    const history = loadHistory();
-    // 移除同一 chatId 的旧记录
-    const filtered = history.filter(h => h.chatId !== aiChatId);
-    filtered.unshift({
-        chatId: aiChatId,
-        title: title,
-        time: Date.now(),
-        messages: msgData
-    });
-    // 限制条数
-    if (filtered.length > MAX_HISTORY) {
-        filtered.length = MAX_HISTORY;
-    }
-    saveHistory(filtered);
 }
 
-function loadHistory() {
-    try {
-        const raw = localStorage.getItem(HISTORY_KEY);
-        return raw ? JSON.parse(raw) : [];
-    } catch (_) {
+/** 追加文本到 assistant bubble，复用现有文本段或创建新段。 */
+function appendTextToAssistantBubble(text) {
+    const cleaned = stripInternalAgentHints(text);
+    if (!cleaned) return;
+    const lastChild = aiAssistantBubble.lastElementChild;
+    let content;
+    if (lastChild && lastChild.classList.contains('ai-message-content')) {
+        content = lastChild;
+    } else {
+        content = document.createElement('span');
+        content.className = 'ai-message-content';
+        aiAssistantBubble.appendChild(content);
+    }
+    content.textContent += cleaned;
+}
+
+/** ── 服务端会话 API ── */
+
+async function fetchSessions() {
+    const response = await agentFetch('/sessions');
+    if (!response || !response.data) {
         return [];
     }
+    aiSessionsCache = response.data;
+    return aiSessionsCache;
 }
 
-function saveHistory(history) {
+async function fetchSessionMessages(chatId) {
+    const response = await agentFetch(`/chat/${encodeURIComponent(chatId)}/messages`);
+    if (!response || !response.data) {
+        return { chatId, messages: [] };
+    }
+    aiCurrentMessages = response.data.messages || [];
+    return response.data;
+}
+
+async function deleteSessionRemote(chatId) {
+    await agentFetch(`/chat/${encodeURIComponent(chatId)}`, { method: 'DELETE' });
+}
+
+/** ── 删除历史项 ── */
+async function deleteHistoryItem(idx) {
+    const item = aiSessionsCache[idx];
+    if (!item) return;
     try {
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-    } catch (_) { /* ignore */ }
-}
-
-function deleteHistoryItem(idx) {
-    const history = loadHistory();
-    if (idx < 0 || idx >= history.length) return;
-    const item = history[idx];
-    history.splice(idx, 1);
-    saveHistory(history);
-    renderHistoryList();
+        await deleteSessionRemote(item.chatId);
+    } catch (e) {
+        showAgentToast('删除失败: ' + e.message);
+        return;
+    }
     if (item.chatId === aiChatId) {
         aiChatId = null;
     }
+    aiSessionsCache.splice(idx, 1);
+    renderHistoryList();
 }
 
-function formatTime(ts) {
-    const d = new Date(ts);
-    const now = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    if (d.toDateString() === now.toDateString()) {
-        return time;
+function formatTime(updatedAt) {
+    if (!updatedAt) return '';
+    try {
+        const d = new Date(updatedAt);
+        if (isNaN(d.getTime())) return '';
+        const now = new Date();
+        const pad = n => String(n).padStart(2, '0');
+        const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        if (d.toDateString() === now.toDateString()) {
+            return time;
+        }
+        return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${time}`;
+    } catch (_) {
+        return '';
     }
-    return `${pad(d.getMonth() + 1)}/${pad(d.getDate())} ${time}`;
 }
 
 function escapeHtml(str) {
@@ -479,6 +581,7 @@ function resetSession() {
     aiAssistantBubble = null;
     aiToolBlocks.clear();
     aiThinkBlock = null;
+    aiCurrentMessages = [];
     document.getElementById('ai-messages').innerHTML = '';
     document.getElementById('ai-input').value = '';
     const input = document.getElementById('ai-input');
@@ -587,7 +690,7 @@ function createThinkBlock() {
 
     const text = document.createElement('span');
     text.className = 'ai-think-header-text';
-    text.textContent = '思考中';
+    text.textContent = '思考过程';
 
     const dots = document.createElement('span');
     dots.className = 'ai-think-dots';
@@ -616,15 +719,18 @@ function createThinkBlock() {
     return block;
 }
 
-/** 思考完成，更新块状态 — 默认折叠 */
+/** 思考完成，更新块状态 — 默认折叠并显示完成勾 */
 function finalizeThinkBlock(block) {
     if (!block) return;
     block.classList.remove('is-thinking', 'is-expanded');
     block.classList.add('is-done');
-    const textEl = block.querySelector('.ai-think-header-text');
-    if (textEl) textEl.textContent = '已深度思考';
     const dots = block.querySelector('.ai-think-dots');
-    if (dots) dots.remove();
+    if (dots) {
+        // 替换动画点为完成勾
+        dots.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ai-tool-check">
+            <polyline points="20 6 9 17 4 12"/>
+        </svg>`;
+    }
 }
 
 /** ── 工具调用块 ── */
@@ -696,11 +802,6 @@ function completeToolBlock(toolCallId) {
     if (!block) return;
     block.classList.remove('is-running');
     block.classList.add('is-done');
-    // 如果有结果内容则展开
-    const content = block.querySelector('.ai-tool-content');
-    if (content && content.textContent.trim()) {
-        block.classList.add('is-expanded');
-    }
     const status = block.querySelector('.ai-tool-status');
     if (status) {
         status.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="ai-tool-check">
@@ -718,8 +819,6 @@ function setToolResult(toolCallId, text) {
     if (content) {
         content.textContent += text;
         content.scrollTop = content.scrollHeight;
-        // 有结果时自动展开
-        block.classList.add('is-expanded');
     }
 }
 
@@ -789,7 +888,11 @@ function handleSseEvent(eventName, data) {
                 const parsed = JSON.parse(data);
                 const toolName = parsed.tool || parsed.name || '未知工具';
                 const toolCallId = parsed.toolCallId || parsed.id || Date.now().toString();
-                createToolBlock(toolName, toolCallId);
+                // 幂等处理：TOOL_CALL_START 和 TOOL_RESULT_START 都可能触发 tool_start，
+                // 避免为同一 toolCallId 创建重复的 DOM 块
+                if (!aiToolBlocks.has(toolCallId)) {
+                    createToolBlock(toolName, toolCallId);
+                }
                 if (parsed.name === 'saveConfig') {
                     handleAgentJobSaved();
                 }
@@ -822,8 +925,19 @@ function handleSseEvent(eventName, data) {
             try {
                 const parsed = JSON.parse(data);
                 const toolCallId = parsed.toolCallId || '';
+                // delta: 流式逐段追加（正常路径）
                 if (parsed.delta) {
                     setToolResult(toolCallId, parsed.delta);
+                }
+                // result: 无流式 delta 时的完整结果（兜底，与 delta 互斥不会重复）
+                if (parsed.result) {
+                    const block = aiToolBlocks.get(toolCallId);
+                    if (block) {
+                        const content = block.querySelector('.ai-tool-content');
+                        if (content && !content.textContent.trim()) {
+                            content.textContent = parsed.result;
+                        }
+                    }
                 }
             } catch (_) { /* ignore */ }
             break;
@@ -831,13 +945,18 @@ function handleSseEvent(eventName, data) {
         case 'thinking': {
             try {
                 const parsed = JSON.parse(data);
-                if (parsed.delta) {
+                if (parsed.end) {
+                    // 思考阶段结束：finalize 当前块并重置引用，下次 delta 创建新块
+                    if (aiThinkBlock) {
+                        finalizeThinkBlock(aiThinkBlock);
+                        aiThinkBlock = null;
+                    }
+                } else if (parsed.delta) {
                     if (!aiThinkBlock) {
                         aiThinkBlock = createThinkBlock();
                         if (aiAssistantBubble) {
                             aiAssistantBubble.classList.remove('is-waiting');
                             aiAssistantBubble.appendChild(aiThinkBlock);
-                            // 确保 typing 指示器始终在末尾
                             const indicator = aiAssistantBubble.querySelector('.ai-typing-indicator');
                             if (indicator) {
                                 aiAssistantBubble.appendChild(indicator);
@@ -878,7 +997,7 @@ function handleSseEvent(eventName, data) {
                 finalizeThinkBlock(aiThinkBlock);
                 aiThinkBlock = null;
             }
-            // 完成所有未结束的工具调用块
+            // 完成所有未结束的工具调用块——全部折叠
             aiToolBlocks.forEach((block, id) => {
                 block.classList.remove('is-running');
                 block.classList.add('is-done');

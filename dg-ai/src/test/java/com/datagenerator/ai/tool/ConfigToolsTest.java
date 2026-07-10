@@ -71,7 +71,7 @@ class ConfigToolsTest {
     @Test
     void startConfigDraft_and_saveConfigDraft_createsConfig() {
         String result = tools.startConfigDraft("test-job",
-                "id: test-job\nname: 测试\nwriter:\n  type: csv\n", rc);
+                "id: test-job\nname: 测试\nwriter:\n  type: csv\n", null, rc);
         assertThat(result).contains("已创建");
 
         tools.addTableToDraft("test-job", """
@@ -80,14 +80,14 @@ class ConfigToolsTest {
             fields:
               - name: id
                 type: integer
-            """, rc);
+            """, null, rc);
 
         when(client.validateYaml(anyString())).thenReturn(new ValidationResult(true, List.of()));
         when(client.getConfig("test-job")).thenReturn(null); // 新建
         when(client.createConfig(anyString(), anyString()))
                 .thenReturn(new ConfigDetail("test-job", "测试", "test-job", "..."));
 
-        String saveResult = tools.saveConfigDraft("test-job", rc);
+        String saveResult = tools.saveConfigDraft("test-job", null, rc);
         assertThat(saveResult).contains("已保存");
     }
 
@@ -106,7 +106,7 @@ class ConfigToolsTest {
         when(client.getConfig("edit-job")).thenReturn(
                 new ConfigDetail("edit-job", "编辑配置", "edit-job", existingYaml));
 
-        String result = tools.startEditDraft("edit-job", rc);
+        String result = tools.startEditDraft("edit-job", null, rc);
         assertThat(result).contains("已加载配置");
 
         tools.updateTableInDraft("edit-job", "items", """
@@ -115,7 +115,7 @@ class ConfigToolsTest {
             fields:
               - name: new_col
                 type: integer
-            """, rc);
+            """, null, rc);
 
         when(client.validateYaml(anyString())).thenReturn(new ValidationResult(true, List.of()));
         when(client.getConfig("edit-job")).thenReturn(
@@ -123,14 +123,14 @@ class ConfigToolsTest {
         when(client.updateConfig(eq("edit-job"), anyString(), anyString()))
                 .thenReturn(new ConfigDetail("edit-job", "编辑配置", "edit-job", "..."));
 
-        String saveResult = tools.saveConfigDraft("edit-job", rc);
+        String saveResult = tools.saveConfigDraft("edit-job", null, rc);
         assertThat(saveResult).contains("已更新");
     }
 
     @Test
     void saveConfigDraft_validationFailure_returnsErrors() {
         String header = "id: bad-job\nname: 校验失败\n";
-        tools.startConfigDraft("bad-job", header, rc);
+        tools.startConfigDraft("bad-job", header, null, rc);
 
         // 添加一个简单 table 通过预检，然后测试校验失败场景
         tools.addTableToDraft("bad-job", """
@@ -139,12 +139,12 @@ class ConfigToolsTest {
             fields:
               - name: id
                 type: integer
-            """, rc);
+            """, null, rc);
 
         when(client.validateYaml(anyString()))
                 .thenReturn(new ValidationResult(false, List.of("缺少 tables 字段")));
 
-        String result = tools.saveConfigDraft("bad-job", rc);
+        String result = tools.saveConfigDraft("bad-job", null, rc);
         assertThat(result).contains("校验失败");
         assertThat(result).contains("缺少 tables 字段");
     }

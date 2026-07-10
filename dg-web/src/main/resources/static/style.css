@@ -1352,6 +1352,7 @@ th {
 /* ── 思考过程块 ── */
 .ai-think-block {
     width: 100%;
+    min-width: 300px;
     margin: 0.25rem 0;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
@@ -1481,6 +1482,7 @@ th {
 /* ── 工具调用块 ── */
 .ai-tool-block {
     width: 100%;
+    min-width: 300px;
     margin: 0.25rem 0;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
