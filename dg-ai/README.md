@@ -374,17 +374,23 @@ curl -X POST http://localhost:8081/api/v1/agent/chat/open
 ### 发送消息（SSE 流式响应）
 
 ```bash
-curl -X POST http://localhost:8081/api/v1/agent/chat/{chatId}?mode=token \
+curl -X POST http://localhost:8081/api/v1/agent/chat/{chatId} \
   -H "Content-Type: application/json" \
   -d '{"content": "帮我创建一个用户表，写入 PostgreSQL dev-pg"}'
 ```
 
-**mode 参数：**
+**SSE 事件类型：** 所有事件无条件发送，前端实时渲染——
 
-| 值 | 说明 |
+| 事件 | 说明 |
 |---|---|
-| `token`（默认） | 输出 text、tool_start、tool_end、done、error |
-| `verbose` | 额外输出 thinking、observation、log（调试用） |
+| `connected` | 连接已建立 |
+| `text` | 文本增量（delta / end） |
+| `thinking` | 思考过程增量（delta / end） |
+| `tool_start` | 工具调用开始 |
+| `tool_end` | 工具调用结束 |
+| `observation` | 工具调用结果（流式 delta + 完整 result + end） |
+| `done` | 对话完成 |
+| `error` | 异常信息（含超出最大迭代次数） |
 
 ### 知识库管理
 

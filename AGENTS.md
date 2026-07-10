@@ -86,12 +86,12 @@ data-generator/
 |---|---|
 | `config/` | `AiAutoConfiguration`（HarnessAgent/Model/Toolkit/StateStore/Embedding 装配）、`AiProperties` |
 | `controller/` | `ChatController` — POST `/api/v1/agent/chat/{chatId}` SSE 端点；`KnowledgeController` — 知识库上传/索引/状态 API |
-| `service/` | `AgentService` — HarnessAgent streamEvents → SSE 事件适配（token/verbose 双模式）；`KnowledgeChunkService` — 文档按 `##` 切分与索引维护 |
+| `service/` | `AgentService` — HarnessAgent streamEvents → SSE 事件适配（全事件无条件流式输出）；`SessionService` — 会话管理（列表/消息历史查询/删除）；`KnowledgeChunkService` — 文档按 `##` 切分与索引维护 |
 | `embedding/` | `SimpleEmbeddingModel` — OpenAI-compatible Embedding（Ollama/SiliconFlow） |
 | `tool/` | `ConfigTools`（配置 CRUD/Schema/Connection/校验保存）、`KnowledgeTools`（向量语义检索）、`ConfigDraftManager`（配置草稿分片与 YAML 合并） |
 | `client/` | `DgWebClient` — RestTemplate HTTP 客户端，携带 `X-DG-Service-Auth` 回调 dg-web |
 | `prompt/` | `SystemPrompt` — 统一 System Prompt（领域知识 + 工作流程 + 行为规范） |
-| `dto/` | `ChatRequest`、`ApiResponse`、`ProviderInfo` |
+| `dto/` | `ChatRequest`、`ApiResponse`、`ProviderInfo`、`SessionInfo`、`SessionMessages` |
 | `exception/` | `AiExceptionHandler` — @RestControllerAdvice 全局异常处理 |
 
 **依赖方向：**

@@ -232,7 +232,7 @@ AI 能力由 **`dg-ai` 独立 HTTP 服务**提供。浏览器经 dg-web 的 `/ap
 - **多轮对话生成** — AgentScope HarnessAgent + ReAct 循环，LLM 自主决策调用 Tool 完成 Job 创建
 - **RAG 知识库** — 上传 Markdown 文档 → 按标题切分 → 向量索引 → 语义检索，Agent 可按需查阅配置文档
 - **配置草稿管理** — 复杂多表 Job 分片持久化 + 增量 YAML 合并，突破单次 LLM token 限制
-- **SSE 流式输出** — 支持 token（生产）与 verbose（调试）双模式，前端实时渲染文本与思考过程
+- **SSE 流式输出** — 所有事件（文本/思考/工具调用/工具结果）无条件流式输出，前端实时渲染文本、思考过程与工具调用结果
 
 ### 启动 dg-ai
 
