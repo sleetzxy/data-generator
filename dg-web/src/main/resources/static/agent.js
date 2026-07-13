@@ -432,6 +432,10 @@ async function switchToHistory(idx) {
                 // 用户消息：取第一个 text block 作为内容
                 const textBlock = blocks.find(b => b.type === 'text');
                 appendMessage('user', textBlock ? textBlock.text : '');
+                // 重置 assistant bubble 引用，确保下一轮对话创建新的 assistant 气泡
+                // 否则多轮历史中后续 assistant 消息会错误地追加到第一个 assistant 气泡
+                aiAssistantBubble = null;
+                aiToolBlocks.clear();
             } else {
                 // 非用户消息：按 block 顺序渲染
                 renderHistoryBlocks(msg.role, blocks);
