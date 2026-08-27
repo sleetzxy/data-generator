@@ -1,8 +1,8 @@
 package com.datagenerator.core.engine;
 
-import com.datagenerator.core.schema.ConstraintDefinition;
-import com.datagenerator.core.schema.FieldDefinition;
-import com.datagenerator.core.schema.SchemaDefinition;
+import com.datagenerator.core.model.ConstraintDefinition;
+import com.datagenerator.core.model.FieldDefinition;
+import com.datagenerator.core.model.TableSchema;
 import com.datagenerator.spi.model.DataRow;
 
 import java.util.HashSet;
@@ -20,7 +20,7 @@ public final class UpstreamFieldCollector {
 
     public static Set<String> collectRequiredFields(
             String upstreamTableName,
-            SchemaDefinition downstreamSchema,
+            TableSchema downstreamSchema,
             List<ConstraintDefinition> downstreamConstraints) {
         Set<String> fields = new HashSet<>();
         collectFromSchema(upstreamTableName, downstreamSchema, fields);
@@ -43,7 +43,7 @@ public final class UpstreamFieldCollector {
     }
 
     private static void collectFromSchema(
-            String upstreamTableName, SchemaDefinition schema, Set<String> fields) {
+            String upstreamTableName, TableSchema schema, Set<String> fields) {
         if (schema == null || schema.getFields() == null) {
             return;
         }

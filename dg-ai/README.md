@@ -1,6 +1,6 @@
 # dg-ai — Data Generator AI Agent 服务
 
-基于 **AgentScope HarnessAgent** 的独立 HTTP 服务，提供多轮对话式 Job 配置生成能力。集成 **RAG 知识库**（文档上传、向量索引与语义检索）、**配置草稿管理**（分片持久化与增量合并），通过 SSE 与 Web 控制台交互，并借助 Tool Set 回调 dg-web 的 REST API 实现环境探查、配置校验与持久化。
+基于 **AgentScope HarnessAgent** 的独立 HTTP 服务，提供多轮对话式任务配置生成能力。集成 **RAG 知识库**（文档上传、向量索引与语义检索）、**配置草稿管理**（分片持久化与增量合并），通过 SSE 与 Web 控制台交互，并借助 Tool Set 回调 dg-web 的 REST API 实现环境探查、配置校验与持久化。
 
 **技术栈：** Java 21 · Spring Boot 3.3 · AgentScope HarnessAgent + RAG · Reactor SSE · RestTemplate（HTTP 客户端）· Knife4j（API 文档）
 
@@ -131,10 +131,10 @@ sequenceDiagram
         TOOL-->>HA: 可用连接清单
 
         HA->>LLM: Chat Completions API<br/>（注入 Tool 结果）
-        LLM-->>HA: 决策：调用 listSchemas
+        LLM-->>HA: 决策：调用 listTableSchemas
 
-        HA->>TOOL: listSchemas()
-        TOOL->>DWC: GET /api/v1/schemas
+        HA->>TOOL: listTableSchemas()
+        TOOL->>DWC: GET /api/v1/table-schemas
         DWC-->>TOOL: ["users", "orders", ...]
         TOOL-->>HA: 可用 Schema 清单
 
@@ -149,7 +149,7 @@ sequenceDiagram
         LLM-->>HA: 决策：调用 validateYaml
 
         HA->>TOOL: validateYaml(yaml)
-        TOOL->>DWC: POST /api/v1/job-definitions?validateOnly=true
+        TOOL->>DWC: POST /api/v1/task-configs?validateOnly=true
         DWC-->>TOOL: {valid: true}
         TOOL-->>HA: 校验通过 ✅
 
@@ -157,7 +157,7 @@ sequenceDiagram
         LLM-->>HA: 决策：调用 saveConfig
 
         HA->>TOOL: saveConfig("用户表配置", yaml)
-        TOOL->>DWC: POST /api/v1/job-definitions
+        TOOL->>DWC: POST /api/v1/task-configs
         DWC-->>TOOL: {fileName: "...", name: "..."}
         TOOL-->>HA: 保存成功 ✅
 
@@ -422,13 +422,13 @@ HarnessAgent 在 ReAct 循环中按需调用以下 Tool。
 
 | Tool | 说明 |
 |---|---|
-| `listConfigs` | 列出所有已有 Job 配置 |
+| `listConfigs` | 列出所有已有任务配置 |
 | `getConfig(fileName)` | 查看指定配置的完整 YAML |
 | `loadConfigForEdit(fileName)` | 加载已有配置用于编辑 |
 | `deleteConfig(fileName)` | 删除指定配置（需用户确认） |
 | `listConnections` | 查询所有可用数据库连接（名称 + 类型） |
-| `listSchemas` | 查询所有可用 Schema 定义（含字段详情） |
-| `getSchema(name)` | 查看某个 Schema 的字段详情 |
+| `listTableSchemas` | 查询所有可用表结构定义（含字段详情） |
+| `getTableSchema(name)` | 查看某个表结构定义的字段详情 |
 | `validateYaml(yaml)` | 校验 YAML 语法和业务规则 |
 | `saveConfig(configName, yaml)` | 校验通过后保存配置到 dg-web |
 
@@ -462,7 +462,7 @@ HarnessAgent 在 ReAct 循环中按需调用以下 Tool。
 
 Agent 按 System Prompt 中定义的流程执行，LLM 在 ReAct 循环中自主决策每一步：
 
-1. **环境探查** — 调用 `listConnections` / `listSchemas` 了解可用资源
+1. **环境探查** — 调用 `listConnections` / `listTableSchemas` 了解可用资源
 2. **表结构设计** — 确定表名、字段、类型、生成策略、主键、依赖关系
 3. **Writer 配置** — 确定目标数据源、写入模式（单写 `writer` / 多写 `writers`）
 4. **约束规则** — 根据需要添加校验规则（range、foreign_key、nullable、conditional 等）

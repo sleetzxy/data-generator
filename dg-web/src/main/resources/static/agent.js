@@ -1,6 +1,5 @@
 const AGENT_API = '/api/v1/agent';
 
-let aiEnabled = false;
 let aiChatId = null;
 let aiSending = false;
 let aiAssistantBubble = null;
@@ -28,30 +27,15 @@ const AGENT_WELCOME_TEXT = `我是 Data Generator 的 AI 配置顾问，基于 R
 
 我会自动规划复杂任务的执行步骤，并逐步完成。直接描述你的造数需求即可开始。`;
 
-const FAB_POSITION_KEY = 'dg-ai-fab-position';
-const FAB_DRAG_THRESHOLD_PX = 4;
-
 document.addEventListener('DOMContentLoaded', initAgentUi);
 
-async function initAgentUi() {
-    const fab = document.getElementById('ai-fab');
-    const drawer = document.getElementById('ai-drawer');
-    if (!fab || !drawer) {
+function initAgentUi() {
+    const chatForm = document.getElementById('ai-chat-form');
+    if (!chatForm) {
         return;
     }
 
-    aiEnabled = await probeAgentApi();
-    if (!aiEnabled) {
-        fab.classList.add('hidden');
-        return;
-    }
-
-    fab.classList.remove('hidden');
-
-    initFabDrag(fab);
-    fab.addEventListener('click', handleFabClick);
-    document.getElementById('ai-drawer-close').addEventListener('click', closeDrawer);
-    document.getElementById('ai-chat-form').addEventListener('submit', handleSend);
+    chatForm.addEventListener('submit', handleSend);
     document.getElementById('ai-new-chat').addEventListener('click', handleNewChat);
     document.getElementById('ai-history-btn').addEventListener('click', toggleHistoryPanel);
     document.getElementById('ai-clear-chat').addEventListener('click', handleClearChat);
@@ -60,165 +44,24 @@ async function initAgentUi() {
     input.addEventListener('input', handleInputChange);
     input.addEventListener('keydown', handleInputKeydown);
 
-    // 点击抽屉外部关闭历史面板
+    window.dgOnAiViewShown = onAiViewShown;
+
+    // 点击面板外部关闭历史对话列表
     document.addEventListener('click', function (e) {
         const panel = document.getElementById('ai-history-panel');
         const btn = document.getElementById('ai-history-btn');
-        if (!panel || panel.classList.contains('hidden')) return;
+        if (!panel || panel.classList.contains('hidden')) {
+            return;
+        }
         if (!panel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
             panel.classList.add('hidden');
         }
     });
 }
 
-async function probeAgentApi() {
-    try {
-        const response = await agentFetch('/chat/open', { method: 'POST' });
-        return response != null;
-    } catch (_) {
-        return false;
-    }
-}
-
-function handleFabClick() {
-    const fab = document.getElementById('ai-fab');
-    if (fab && fab.dataset.suppressClick === '1') {
-        fab.dataset.suppressClick = '0';
-        return;
-    }
-    openDrawer();
-}
-
-function initFabDrag(fab) {
-    restoreFabPosition(fab);
-
-    let activePointerId = null;
-    let startX = 0;
-    let startY = 0;
-    let originLeft = 0;
-    let originTop = 0;
-    let didDrag = false;
-
-    fab.addEventListener('pointerdown', event => {
-        if (event.button !== 0) {
-            return;
-        }
-        activePointerId = event.pointerId;
-        didDrag = false;
-        fab.setPointerCapture(activePointerId);
-        fab.classList.add('ai-fab-dragging');
-
-        const rect = fab.getBoundingClientRect();
-        originLeft = rect.left;
-        originTop = rect.top;
-        startX = event.clientX;
-        startY = event.clientY;
-
-        fab.style.left = `${originLeft}px`;
-        fab.style.top = `${originTop}px`;
-        fab.style.right = 'auto';
-        fab.style.bottom = 'auto';
-    });
-
-    fab.addEventListener('pointermove', event => {
-        if (activePointerId === null || event.pointerId !== activePointerId) {
-            return;
-        }
-
-        const dx = event.clientX - startX;
-        const dy = event.clientY - startY;
-        if (!didDrag && (Math.abs(dx) > FAB_DRAG_THRESHOLD_PX || Math.abs(dy) > FAB_DRAG_THRESHOLD_PX)) {
-            didDrag = true;
-        }
-        if (!didDrag) {
-            return;
-        }
-
-        const rect = fab.getBoundingClientRect();
-        const margin = 8;
-        let left = originLeft + dx;
-        let top = originTop + dy;
-        left = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin));
-        top = Math.max(margin, Math.min(top, window.innerHeight - rect.height - margin));
-
-        fab.style.left = `${left}px`;
-        fab.style.top = `${top}px`;
-    });
-
-    const endDrag = event => {
-        if (activePointerId === null || event.pointerId !== activePointerId) {
-            return;
-        }
-        fab.releasePointerCapture(activePointerId);
-        fab.classList.remove('ai-fab-dragging');
-        if (didDrag) {
-            saveFabPosition(fab);
-            fab.dataset.suppressClick = '1';
-        }
-        activePointerId = null;
-    };
-
-    fab.addEventListener('pointerup', endDrag);
-    fab.addEventListener('pointercancel', endDrag);
-
-    window.addEventListener('resize', () => clampFabInViewport(fab));
-}
-
-function saveFabPosition(fab) {
-    const left = parseFloat(fab.style.left);
-    const top = parseFloat(fab.style.top);
-    if (Number.isFinite(left) && Number.isFinite(top)) {
-        try {
-            localStorage.setItem(FAB_POSITION_KEY, JSON.stringify({ left, top }));
-        } catch (_) { /* 隐私模式等 */ }
-    }
-}
-
-function restoreFabPosition(fab) {
-    try {
-        const raw = localStorage.getItem(FAB_POSITION_KEY);
-        if (!raw) {
-            return;
-        }
-        const pos = JSON.parse(raw);
-        if (!Number.isFinite(pos.left) || !Number.isFinite(pos.top)) {
-            return;
-        }
-        fab.style.left = `${pos.left}px`;
-        fab.style.top = `${pos.top}px`;
-        fab.style.right = 'auto';
-        fab.style.bottom = 'auto';
-        clampFabInViewport(fab);
-    } catch (_) { /* ignore */ }
-}
-
-function clampFabInViewport(fab) {
-    if (!fab.style.left || !fab.style.top) {
-        return;
-    }
-    const rect = fab.getBoundingClientRect();
-    const margin = 8;
-    let left = rect.left;
-    let top = rect.top;
-    left = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin));
-    top = Math.max(margin, Math.min(top, window.innerHeight - rect.height - margin));
-    fab.style.left = `${left}px`;
-    fab.style.top = `${top}px`;
-}
-
-async function openDrawer() {
-    document.getElementById('ai-drawer').classList.remove('hidden');
-    document.getElementById('ai-fab').classList.add('hidden');
-    showWelcomeIfEmpty();
-}
-
-function closeDrawer() {
-    document.getElementById('ai-drawer').classList.add('hidden');
+function onAiViewShown() {
     document.getElementById('ai-history-panel').classList.add('hidden');
-    const fab = document.getElementById('ai-fab');
-    if (fab && aiEnabled) {
-        fab.classList.remove('hidden');
-    }
+    showWelcomeIfEmpty();
 }
 
 async function ensureChat() {

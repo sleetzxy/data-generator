@@ -558,7 +558,9 @@ tables:
 | `reader` | 三选一 | 内联 SQL / 连接配置，每次采样一行 |
 | `reference` | 三选一 | 引用 `references/*.yaml` 中预定义的 reader |
 | `template` | 三选一 | 内联固定键值 Map |
-| `link` | 否 | 与上游 seed 关联，保证多源同行对齐（见下） |
+| `link` | 否 | 与上游 seed 关联，保证多源同行对齐（见 [多 seed 关联](#多-seed-关联link)） |
+
+> **性能：** 根 seed 仍按行随机采样；带 `link` 的从属 seed 在任务启动时**一次性预加载** SQL 结果，生成阶段在内存中匹配，不逐行打库。
 
 ### 三种数据来源（三选一）
 
@@ -570,51 +572,115 @@ tables:
 
 ### 多 seed 关联（link）
 
-多个数据源需在同一关联维度对齐（如相同 `id`）时，为从属 seed 配置 `link`：
+多个数据源需在同一关联维度对齐（如相同 `roadclid`、`pcsid`）时，为从属 seed 配置 `link`。
+
+**写法：** 在 `link` 中声明匹配规则，`reader.query` 写纯 SQL 预加载数据。引擎启动时一次性执行 SQL，生成阶段在内存中按父 seed 采样值匹配，**不会逐行打库**。
+
+#### 等值关联（equals）
+
+父 seed 某列与从属 seed 查询结果某列相等时：
 
 ```yaml
-seeds:
-  - name: customer
+  - name: police_station_sample
+    link:
+      seed: road_sample
+      parent_field: pcsid      # 从父 seed 采样行取关联值
+      match: equals
+      local_field: pcsid       # 在加载结果中按此列匹配；省略时与 parent_field 同名
     reader:
       type: postgresql
       connection: dev-pg
-      query: "SELECT id, name FROM customers ORDER BY random() LIMIT 1"
+      query: |-
+        SELECT pcsid, name
+        FROM bas_police_station
+```
 
+#### 多数据源（path / contains）
+
+路径分段匹配、字符串包含匹配等场景，用 `link.sources` 声明多条加载规则（按顺序尝试，命中首行即返回）：
+
+```yaml
+  - name: big_road_sample
+    link:
+      seed: road_sample
+      parent_field: roadclid
+      sources:
+        - match: path
+          column: path
+          profile: segment
+          query: |-
+            SELECT bigroadid, name, froadname, troadname, fnode, tnode, length, path
+            FROM bigroadcl_lkld
+        - match: contains
+          column: nodeids
+          profile: node
+          query: |-
+            SELECT nodeid, name, nodeids
+            FROM centerpoint_main_lkld
+    reader:
+      type: postgresql
+      url: jdbc:postgresql://host:5432/db
+      username: postgres
+      password: ***
+```
+
+`profile` 用于结果列映射：`segment` → 大路字段（`bigroadid` 等），`node` → 节点字段（`nodeid` 等）。省略时 `contains` 默认 `node`，`path` 默认 `segment`。
+
+单数据源 path/contains 也可简写为顶层 `match` + `local_field`（或 `column` 语义同 `local_field`）：
+
+```yaml
   - name: order
     link:
       seed: customer
-      parent_field: id    # 父 seed 采样行中用于关联的列
+      parent_field: region_code
+      match: equals
+      local_field: region_code
     reader:
-      type: postgresql
-      connection: dev-pg
-      query: "SELECT id, amount FROM orders WHERE id = :link_id LIMIT 1"
+      query: "SELECT region_code, tax_rate FROM dim_region"
 ```
 
-`link` 字段说明：
+#### `link` 字段说明
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
 | `seed` | 是 | 父 seed 的 `name` |
-| `parent_field` | 二选一 | 父 seed 采样行中的列名（**推荐**） |
-| `on` | 二选一 | 与 `parent_field` 同义；父子列名相同时可用 |
-| `local_field` | 否 | 从属 seed 查询侧列名；省略时与 `parent_field` / `on` 相同 |
+| `parent_field` | 二选一 | 父 seed 采样行中用于关联的列（**推荐**） |
+| `on` | 二选一 | 与 `parent_field` 同义 |
+| `match` | 否* | 单数据源匹配：`equals` / `path` / `contains` |
+| `local_field` | 否 | 加载结果中用于匹配的列；省略时与 `parent_field` 同名 |
+| `sources` | 否* | 多数据源规则列表（见下表）；与顶层 `match` 二选一 |
+
+\* 从属 seed **必须**声明 `match` 或 `sources`。
+
+`sources[]` 子字段：
+
+| 字段 | 必填 | 说明 |
+|------|------|------|
+| `match` | 是 | `path` / `contains`（多源暂不支持 `equals`） |
+| `column` | 是 | 加载结果中用于匹配的列名 |
+| `query` | 二选一 | 预加载 SQL |
+| `table` | 二选一 | 未写 `query` 时退化为 `SELECT * FROM table` |
+| `profile` | 否 | 结果映射：`segment` / `node` |
 
 > **YAML 注意：** 不要写未加引号的 `on: id`。YAML 1.1 会把 `on` / `off` / `yes` / `no` 解析成布尔值，引擎读不到关联列，启动时报错 `seed link requires 'on' or 'parent_field'`。请优先使用 `parent_field`；若坚持用 `on`，须写成 `"on": id`。
 
-从属 seed 的 query 支持占位符：
+#### 匹配方式说明
 
-| 占位符 | 含义 |
-|--------|------|
-| `:link_id` | 当前 link 解析出的关联键值 |
-| `:link.<column>` | 父 seed 采样行某列，如 `:link.region` |
+| `match` | 含义 | 典型场景 |
+|---------|------|----------|
+| `equals` | 加载结果列值与父 seed 关联值相等 | `pcsid = 父行.pcsid` |
+| `path` | 路径字符串按 `,` / `;` 分段，匹配其中一段 | 路网 `path` 字段 |
+| `contains` | 加载结果列字符串包含关联值 | `nodeids` 包含 `roadclid` |
 
-关联查询须返回**恰好一行**；失败时整行重试（重新采根 seed），超过重试次数则丢弃该行。
+关联未命中时从属 seed 为空行，对应字段为 **null**（与非 seed 字段空值行为一致）；写入非空列时可配 `default` 兜底。
+
+> **注意：** 从属 seed 的 query 中**不支持** SQL 占位符（如 `:link_id`），匹配规则一律在 `link` 块声明。
 
 ### 部分 seed 无数据
 
 根 seed 的 SQL 查询**允许返回 0 行**：引擎不会因此中断整个 Job，该 seed 对应字段生成 **null**（与非 seed 字段空值行为一致）。适用于多个 seed 源中仅部分库表有数据的场景。若目标库列不允许 `null`，可在字段 generator 上配置 `default`（如 `default: ''`）兜底。
 
-> **注意：** 从属 seed 的 `link` 关联查询仍须返回恰好一行；`reference` 维表引用策略在无数据时仍会报错（与 seed 语义不同）。
+> **注意：** 从属 seed 的 link 关联在内存中匹配；未命中时对应字段为 **null**（见 [多 seed 关联（link）](#多-seed-关联link)）。`reference` 维表引用策略在无数据时仍会报错（与 seed 语义不同）。
 
 ### SQL 采样技巧
 
@@ -794,7 +860,7 @@ tables:
 
 ```json
 {
-  "jobConfig": "jobs/my_job.yaml",
+  "configPath": "jobs/my_job.yaml",
   "writers": [
     { "type": "postgresql", "connection": "dev-pg", "mode": "insert" },
     { "type": "clickhouse", "connection": "dev-ck", "mode": "insert" }
@@ -829,18 +895,18 @@ tables:
 ### 通过 API 运行（可选）
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/jobs \
+curl -X POST http://localhost:8080/api/v1/task-runs \
   -H "Content-Type: application/json" \
-  -d '{"jobConfig": "jobs/my_job.yaml", "overrides": {"tables.customers.count": 500}}'
+  -d '{"configPath": "jobs/my_job.yaml", "overrides": {"tables.customers.count": 500}}'
 ```
 
 也可在请求体中指定运行时写入（Job YAML 未配置时生效）：
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/jobs \
+curl -X POST http://localhost:8080/api/v1/task-runs \
   -H "Content-Type: application/json" \
   -d '{
-    "jobConfig": "jobs/my_job.yaml",
+    "configPath": "jobs/my_job.yaml",
     "writers": [
       {"type": "postgresql", "connection": "dev-pg", "mode": "insert"},
       {"type": "clickhouse", "connection": "dev-ck", "mode": "insert"}
@@ -855,7 +921,7 @@ curl -X POST http://localhost:8080/api/v1/jobs \
 ```bash
 curl -X POST http://localhost:8080/api/v1/preview \
   -H "Content-Type: application/json" \
-  -d '{"jobConfig": "jobs/my_job.yaml", "preview": {"limit": 5}}'
+  -d '{"configPath": "jobs/my_job.yaml", "preview": {"limit": 5}}'
 ```
 
 返回 JSON，包含 `status`（`COMPLETED`）、`duration` 及各表样本：
@@ -879,7 +945,7 @@ curl -X POST http://localhost:8080/api/v1/preview \
 
 ### 取消任务
 
-控制台「停止」或 `DELETE /api/v1/jobs/{id}`；仅对进行中的任务有效。
+控制台「停止」或 `DELETE /api/v1/task-runs/{id}`；仅对进行中的运行有效。
 
 ---
 
@@ -968,8 +1034,8 @@ tables:
 | `job.batch-size` | 1000 | 写入批次；进度/日志按批更新（SQLite 持久化有节流，表完成时强制落盘） |
 | `job.thread-pool-size` | 4 | 异步任务线程池；单表行数 ≥5000 时并行生成行数据 |
 | `job.generation-parallelism` | 0 | 造数并行度；`0` 表示沿用 `thread-pool-size`；API 提交 Job 时可在 `options.generationParallelism` 覆盖 |
-| `storage.sqlite-path` | `./data/dg-jobs.db` | 任务记录 SQLite 库 |
-| `storage.log-dir` | `./data/job-logs` | 运行日志文件目录（每任务一个 `{jobId}.log`） |
+| `storage.sqlite-path` | `./data/dg-tasks.db` | 运行记录 SQLite 库（表 `task_runs`、`task_schedules`） |
+| `storage.log-dir` | `./data/task-run-logs` | 运行日志文件目录（每次运行一个 `{runId}.log`，前缀 `task-run-`） |
 
 ---
 
@@ -999,8 +1065,8 @@ A：目标列不允许 `null`，但 generator（常见于 `seed`）产出了 `nu
 **Q：多表 Job 第二表很慢或内存占用高**  
 A：确认已配置 `depends_on` 与 `reference align: index`；引擎会对 FK 校验建索引，并在上游表完成后仅保留下游所需列。单表 ≥5000 行时可调大 `job.thread-pool-size` 或 `job.generation-parallelism` 提升并行度。
 
-**Q：link 关联 seed 采样失败**  
-A：检查从属 seed 的 query 是否使用 `:link_id` 占位符，且关联查询能返回恰好一行。
+**Q：link 关联 seed 无数据或字段为 null**  
+A：确认 `link.parent_field` 与父 seed 采样列一致；从属 seed 须在 `link` 中声明 `match` 或 `sources`，`reader.query` 写纯 SQL 预加载。启动时会预加载 SQL 结果并在内存中匹配；未命中时对应字段为 null，可配 `default` 兜底。详见 [多 seed 关联（link）](#多-seed-关联link)。
 
 **Q：启动报 `seed link requires 'on' or 'parent_field'`**  
 A：`link` 里未正确指定父列。把 `on: 列名` 改为 `parent_field: 列名`，或给 `on` 加引号：`"on": 列名`（见 [多 seed 关联（link）](#多-seed-关联link)）。

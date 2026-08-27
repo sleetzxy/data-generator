@@ -7,25 +7,56 @@
     <link rel="stylesheet" href="/style.css">
 </head>
 <body class="login-page">
-<div class="login-wrapper">
-    <div class="login-card">
-        <div class="login-brand">
-            <h1>Data Generator</h1>
-            <p>测试数据生成控制台</p>
+<div class="login-shell">
+    <aside class="login-aside" aria-hidden="true">
+        <div class="login-aside-inner">
+            <div class="login-aside-brand">
+                <div class="login-brand-icon">DG</div>
+                <h1 class="login-aside-title">Data Generator</h1>
+                <p class="login-aside-desc">基于 YAML 配置的测试数据自动生成平台</p>
+            </div>
+            <ul class="login-feature-list">
+                <li>
+                    <span class="login-feature-dot"></span>
+                    多数据源写入：PostgreSQL、ClickHouse、CSV
+                </li>
+                <li>
+                    <span class="login-feature-dot"></span>
+                    DAG 编排与约束校验，保障数据一致性
+                </li>
+                <li>
+                    <span class="login-feature-dot"></span>
+                    定时调度、运行监控与 AI 配置助手
+                </li>
+            </ul>
         </div>
-        <form class="login-form" method="post" action="/api/v1/auth/login">
-            <label class="field">
-                <span>用户名</span>
-                <input type="text" name="username" autocomplete="username" required autofocus>
-            </label>
-            <label class="field">
-                <span>密码</span>
-                <input type="password" name="password" autocomplete="current-password" required>
-            </label>
-            <p id="login-message" class="login-message hidden"></p>
-            <button type="submit" class="btn primary login-submit">登录</button>
-        </form>
-    </div>
+    </aside>
+    <main class="login-main">
+        <div class="login-card">
+            <div class="login-card-header">
+                <div class="login-brand-icon login-brand-icon-sm">DG</div>
+                <div>
+                    <h2 class="login-card-title">欢迎回来</h2>
+                    <p class="login-card-subtitle">登录以进入控制台</p>
+                </div>
+            </div>
+            <form class="login-form" method="post" action="/api/v1/auth/login">
+                <label class="login-field">
+                    <span class="login-field-label">用户名</span>
+                    <input type="text" name="username" class="login-input"
+                           autocomplete="username" required autofocus placeholder="请输入用户名">
+                </label>
+                <label class="login-field">
+                    <span class="login-field-label">密码</span>
+                    <input type="password" name="password" class="login-input"
+                           autocomplete="current-password" required placeholder="请输入密码">
+                </label>
+                <p id="login-message" class="login-message hidden"></p>
+                <button type="submit" class="btn primary login-submit">登录</button>
+            </form>
+        </div>
+        <p class="login-footer-note">Data Generator 控制台</p>
+    </main>
 </div>
 <script src="/csrf.js"></script>
 <script>

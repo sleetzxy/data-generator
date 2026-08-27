@@ -1,8 +1,8 @@
 package com.datagenerator.core.config;
 
-import com.datagenerator.core.schema.ConfigLoadException;
-import com.datagenerator.core.schema.JobDefinition;
-import com.datagenerator.core.schema.TableTask;
+import com.datagenerator.core.model.ConfigLoadException;
+import com.datagenerator.core.model.TaskConfig;
+import com.datagenerator.core.model.TableTask;
 import com.datagenerator.spi.model.WriterConfig;
 
 import java.util.ArrayList;
@@ -43,7 +43,7 @@ public final class WriterConfigResolver {
     }
 
     public static List<Map<String, Object>> resolveDefaultWriters(
-            JobDefinition job, List<Map<String, Object>> runtimeWriters) {
+            TaskConfig job, List<Map<String, Object>> runtimeWriters) {
         if (!job.getWriters().isEmpty()) {
             return copyWriterMaps(job.getWriters());
         }
@@ -74,7 +74,7 @@ public final class WriterConfigResolver {
         }
     }
 
-    public static void validateJobWriters(JobDefinition job) {
+    public static void validateJobWriters(TaskConfig job) {
         validateScopeWriters(job.getWriter(), job.getWriters(), "job '" + job.getId() + "'");
         for (TableTask table : job.getTables()) {
             validateScopeWriters(

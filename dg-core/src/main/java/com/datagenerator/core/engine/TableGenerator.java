@@ -8,11 +8,11 @@ import com.datagenerator.core.constraint.field.ForeignKeyIndex;
 import com.datagenerator.core.generator.GeneratorRegistry;
 import com.datagenerator.core.reference.ReferenceDataLoader;
 import com.datagenerator.core.generator.GeneratorOutputFormatter;
-import com.datagenerator.core.schema.ConstraintDefinition;
-import com.datagenerator.core.schema.FieldDefinition;
-import com.datagenerator.core.schema.SchemaDefinition;
-import com.datagenerator.core.schema.SeedDefinition;
-import com.datagenerator.core.schema.YamlConfigLoader;
+import com.datagenerator.core.model.ConstraintDefinition;
+import com.datagenerator.core.model.FieldDefinition;
+import com.datagenerator.core.model.TableSchema;
+import com.datagenerator.core.model.SeedDefinition;
+import com.datagenerator.core.model.YamlConfigLoader;
 import com.datagenerator.spi.model.ConstraintContext;
 import com.datagenerator.spi.model.DataRow;
 import com.datagenerator.spi.model.GenerationContext;
@@ -60,7 +60,7 @@ public class TableGenerator {
     }
 
     public TableGenerationResult generate(
-            SchemaDefinition schema,
+            TableSchema schema,
             long count,
             List<ConstraintDefinition> constraints,
             ConstraintValidatorRegistry constraintRegistry,
@@ -81,7 +81,7 @@ public class TableGenerator {
     }
 
     public TableGenerationResult generate(
-            SchemaDefinition schema,
+            TableSchema schema,
             long count,
             List<ConstraintDefinition> constraints,
             ConstraintValidatorRegistry constraintRegistry,
@@ -105,7 +105,7 @@ public class TableGenerator {
     }
 
     public TableGenerationResult generate(
-            SchemaDefinition schema,
+            TableSchema schema,
             long count,
             List<ConstraintDefinition> constraints,
             ConstraintValidatorRegistry constraintRegistry,
@@ -130,7 +130,7 @@ public class TableGenerator {
     }
 
     public TableGenerationResult generate(
-            SchemaDefinition schema,
+            TableSchema schema,
             long count,
             List<ConstraintDefinition> constraints,
             ConstraintValidatorRegistry constraintRegistry,
@@ -221,7 +221,7 @@ public class TableGenerator {
     }
 
     private long generateAndWriteInParallel(
-            SchemaDefinition schema,
+            TableSchema schema,
             long count,
             String tableName,
             Map<String, List<DataRow>> upstreamTables,
@@ -423,7 +423,7 @@ public class TableGenerator {
     }
 
     private DataRow generateValidRow(
-            SchemaDefinition schema,
+            TableSchema schema,
             String tableName,
             int rowIndex,
             Map<String, List<DataRow>> upstreamTables,
@@ -447,7 +447,7 @@ public class TableGenerator {
     }
 
     private DataRow generateRow(
-            SchemaDefinition schema,
+            TableSchema schema,
             String tableName,
             int rowIndex,
             Map<String, List<DataRow>> upstreamTables,

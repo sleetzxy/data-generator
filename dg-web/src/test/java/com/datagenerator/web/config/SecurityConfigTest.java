@@ -35,7 +35,7 @@ class SecurityConfigTest {
 
     @Test
     void protectedApi_withoutCredentials_returnsUnauthorized() throws Exception {
-        mockMvc.perform(get("/api/v1/jobs"))
+        mockMvc.perform(get("/api/v1/task-runs"))
                 .andExpect(status().isUnauthorized());
     }
 
@@ -60,7 +60,7 @@ class SecurityConfigTest {
     @Test
     @WithMockUser(username = "testuser")
     void protectedApi_withAuthenticatedUser_returnsOk() throws Exception {
-        mockMvc.perform(get("/api/v1/jobs"))
+        mockMvc.perform(get("/api/v1/task-runs"))
                 .andExpect(status().isOk());
     }
 
@@ -79,7 +79,7 @@ class SecurityConfigTest {
 
     @Test
     void protectedApi_withInvalidServiceAuth_returnsUnauthorized() throws Exception {
-        mockMvc.perform(get("/api/v1/config/connections")
+        mockMvc.perform(get("/api/v1/task-runs")
                         .header("X-DG-Service-Auth", "wrong-token"))
                 .andExpect(status().isUnauthorized());
     }

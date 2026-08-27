@@ -1,0 +1,124 @@
+package com.datagenerator.core.model;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+public class TaskConfig {
+
+    private String id;
+    private String name;
+    private String constraints;
+    private List<ConstraintDefinition> inlineConstraints = new ArrayList<>();
+    private Map<String, Object> writer = new HashMap<>();
+    private List<Map<String, Object>> writers = new ArrayList<>();
+    private Map<String, Map<String, Object>> connections = new HashMap<>();
+    private List<SeedDefinition> seeds = new ArrayList<>();
+    private List<TableTask> tables = new ArrayList<>();
+    private ScheduleDefinition schedule;
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getConstraints() {
+        return constraints;
+    }
+
+    public void setConstraints(String constraints) {
+        this.constraints = constraints;
+    }
+
+    public List<ConstraintDefinition> getInlineConstraints() {
+        return Collections.unmodifiableList(inlineConstraints);
+    }
+
+    public void setInlineConstraints(List<ConstraintDefinition> inlineConstraints) {
+        this.inlineConstraints =
+                inlineConstraints == null ? new ArrayList<>() : new ArrayList<>(inlineConstraints);
+    }
+
+    public Map<String, Object> getWriter() {
+        return Collections.unmodifiableMap(writer);
+    }
+
+    public void setWriter(Map<String, Object> writer) {
+        this.writer = writer == null ? new HashMap<>() : new HashMap<>(writer);
+    }
+
+    public List<Map<String, Object>> getWriters() {
+        return Collections.unmodifiableList(writers);
+    }
+
+    public void setWriters(List<Map<String, Object>> writers) {
+        if (writers == null || writers.isEmpty()) {
+            this.writers = new ArrayList<>();
+            return;
+        }
+        List<Map<String, Object>> copies = new ArrayList<>(writers.size());
+        for (Map<String, Object> writerMap : writers) {
+            copies.add(writerMap == null ? new HashMap<>() : new HashMap<>(writerMap));
+        }
+        this.writers = copies;
+    }
+
+    public Map<String, Map<String, Object>> getConnections() {
+        return Collections.unmodifiableMap(connections);
+    }
+
+    public void setConnections(Map<String, Map<String, Object>> connections) {
+        if (connections == null || connections.isEmpty()) {
+            this.connections = new HashMap<>();
+            return;
+        }
+        Map<String, Map<String, Object>> copies = new HashMap<>();
+        connections.forEach((name, config) ->
+                copies.put(name, config == null ? new HashMap<>() : new HashMap<>(config)));
+        this.connections = copies;
+    }
+
+    public List<SeedDefinition> getSeeds() {
+        return Collections.unmodifiableList(seeds);
+    }
+
+    public void setSeeds(List<SeedDefinition> seeds) {
+        this.seeds = seeds == null ? new ArrayList<>() : new ArrayList<>(seeds);
+    }
+
+    public List<TableTask> getTables() {
+        return Collections.unmodifiableList(tables);
+    }
+
+    public void setTables(List<TableTask> tables) {
+        this.tables = tables == null ? new ArrayList<>() : new ArrayList<>(tables);
+    }
+
+    public Optional<TableTask> findTable(String name) {
+        return tables.stream()
+                .filter(table -> table.getName().equals(name))
+                .findFirst();
+    }
+
+    public Optional<ScheduleDefinition> getSchedule() {
+        return Optional.ofNullable(schedule);
+    }
+
+    public void setSchedule(ScheduleDefinition schedule) {
+        this.schedule = schedule;
+    }
+}

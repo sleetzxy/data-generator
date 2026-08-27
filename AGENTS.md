@@ -43,7 +43,7 @@
 | 构建 | Maven 多模块 |
 | 配置 | YAML（`config-dir` / `writable-config-dir`，Job 由部署方自行维护） |
 | 数据源 | PostgreSQL、ClickHouse、CSV（插件化） |
-| 任务存储 | SQLite（`./data/dg-jobs.db`，任务记录）+ 文件（`./data/job-logs/`，运行日志） |
+| 任务存储 | SQLite（`./data/dg-tasks.db`，任务记录）+ 文件（`./data/task-run-logs/`，运行日志） |
 
 设计文档：
 - Spec：`docs/superpowers/specs/2026-06-05-data-generator-design.md`

@@ -1,6 +1,6 @@
 package com.datagenerator.core.constraint.field;
 
-import com.datagenerator.core.schema.ConstraintDefinition;
+import com.datagenerator.core.model.ConstraintDefinition;
 import com.datagenerator.spi.model.DataRow;
 
 import java.util.HashMap;

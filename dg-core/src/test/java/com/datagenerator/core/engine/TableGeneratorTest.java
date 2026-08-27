@@ -1,10 +1,10 @@
 package com.datagenerator.core.engine;
 
-import com.datagenerator.core.schema.ConstraintDefinition;
-import com.datagenerator.core.schema.FieldDefinition;
-import com.datagenerator.core.schema.SchemaDefinition;
-import com.datagenerator.core.schema.SeedDefinition;
-import com.datagenerator.core.schema.SeedLinkDefinition;
+import com.datagenerator.core.model.ConstraintDefinition;
+import com.datagenerator.core.model.FieldDefinition;
+import com.datagenerator.core.model.TableSchema;
+import com.datagenerator.core.model.SeedDefinition;
+import com.datagenerator.core.model.SeedLinkDefinition;
 import com.datagenerator.spi.model.Batch;
 import com.datagenerator.spi.model.DataRow;
 import com.datagenerator.spi.model.WriteResult;
@@ -35,7 +35,7 @@ class TableGeneratorTest {
 
     @Test
     void tableGenerator_producesRowsWithConstraints() {
-        SchemaDefinition schema = new SchemaDefinition();
+        TableSchema schema = new TableSchema();
         schema.setTable("items");
         schema.setFields(List.of(
                 new FieldDefinition("id", "BIGINT", Map.of("strategy", "sequence", "start", 1, "step", 1)),
@@ -68,7 +68,7 @@ class TableGeneratorTest {
 
     @Test
     void tableGenerator_countsFailedRowsAfterMaxRetries() {
-        SchemaDefinition schema = new SchemaDefinition();
+        TableSchema schema = new TableSchema();
         schema.setTable("items");
         schema.setFields(List.of(
                 new FieldDefinition("amount", "DECIMAL", Map.of("strategy", "enum", "values", List.of(999)))));
@@ -97,7 +97,7 @@ class TableGeneratorTest {
 
     @Test
     void tableGenerator_resolvesForeignKeyFromUpstream() {
-        SchemaDefinition schema = new SchemaDefinition();
+        TableSchema schema = new TableSchema();
         schema.setTable("orders");
         schema.setFields(List.of(
                 new FieldDefinition("id", "BIGINT", Map.of("strategy", "sequence", "start", 1, "step", 1)),
@@ -147,7 +147,7 @@ class TableGeneratorTest {
         detail.setLink(link);
         detail.setTemplate(Map.of("id", 100L, "line_no", 1, "sku", "SKU-001"));
 
-        SchemaDefinition schema = new SchemaDefinition();
+        TableSchema schema = new TableSchema();
         schema.setTable("export");
         schema.setFields(List.of(
                 new FieldDefinition("id", "BIGINT", Map.of("strategy", "seed", "source", "header", "field", "id")),
@@ -176,7 +176,7 @@ class TableGeneratorTest {
 
     @Test
     void tableGenerator_appliesPrefixForAnyStrategy() {
-        SchemaDefinition schema = new SchemaDefinition();
+        TableSchema schema = new TableSchema();
         schema.setTable("orders");
         schema.setFields(List.of(
                 new FieldDefinition(
@@ -206,7 +206,7 @@ class TableGeneratorTest {
 
     @Test
     void tableGenerator_idcardGenerateAndDeriveFromSameRow() {
-        SchemaDefinition schema = new SchemaDefinition();
+        TableSchema schema = new TableSchema();
         schema.setTable("person");
         schema.setFields(List.of(
                 new FieldDefinition(

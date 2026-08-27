@@ -1,11 +1,11 @@
 package com.datagenerator.core.constraint;
 
-import com.datagenerator.core.schema.ConstraintDefinition;
-import com.datagenerator.core.schema.ConstraintsDefinition;
-import com.datagenerator.core.schema.JobDefinition;
-import com.datagenerator.core.schema.SchemaDefinition;
-import com.datagenerator.core.schema.TableTask;
-import com.datagenerator.core.schema.YamlConfigLoader;
+import com.datagenerator.core.model.ConstraintDefinition;
+import com.datagenerator.core.model.ConstraintsDefinition;
+import com.datagenerator.core.model.TaskConfig;
+import com.datagenerator.core.model.TableSchema;
+import com.datagenerator.core.model.TableTask;
+import com.datagenerator.core.model.YamlConfigLoader;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -20,14 +20,14 @@ public class ConstraintLoader {
         this.configLoader = configLoader;
     }
 
-    public List<ConstraintDefinition> load(SchemaDefinition schema, JobDefinition job, TableTask tableTask) {
+    public List<ConstraintDefinition> load(TableSchema schema, TaskConfig job, TableTask tableTask) {
         List<ConstraintDefinition> schemaConstraints = loadPath(schema == null ? null : schema.getConstraints());
         List<ConstraintDefinition> jobConstraints = loadJobConstraints(job);
         List<ConstraintDefinition> tableConstraints = loadTableConstraints(tableTask);
         return merge(schemaConstraints, jobConstraints, tableConstraints);
     }
 
-    private List<ConstraintDefinition> loadJobConstraints(JobDefinition job) {
+    private List<ConstraintDefinition> loadJobConstraints(TaskConfig job) {
         if (job == null) {
             return List.of();
         }

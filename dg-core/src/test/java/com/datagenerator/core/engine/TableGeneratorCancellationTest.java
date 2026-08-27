@@ -1,7 +1,7 @@
 package com.datagenerator.core.engine;
 
-import com.datagenerator.core.schema.FieldDefinition;
-import com.datagenerator.core.schema.SchemaDefinition;
+import com.datagenerator.core.model.FieldDefinition;
+import com.datagenerator.core.model.TableSchema;
 import com.datagenerator.spi.model.Batch;
 import com.datagenerator.spi.model.DataRow;
 import com.datagenerator.spi.model.WriteResult;
@@ -34,7 +34,7 @@ class TableGeneratorCancellationTest {
 
     @Test
     void generate_whenCancelledDuringSequentialWrite_stopsEarly() {
-        SchemaDefinition schema = simpleSchema();
+        TableSchema schema = simpleSchema();
         CancellationChecker checker = () -> writer.rows().size() >= 500;
         GenerationOptions options = new GenerationOptions(100, 0, "reject", 1, checker);
 
@@ -55,7 +55,7 @@ class TableGeneratorCancellationTest {
 
     @Test
     void generate_whenCancelledDuringParallelGeneration_stopsEarly() {
-        SchemaDefinition schema = simpleSchema();
+        TableSchema schema = simpleSchema();
         AtomicInteger checks = new AtomicInteger();
         CancellationChecker checker = () -> checks.incrementAndGet() > 2;
         GenerationOptions options = new GenerationOptions(1000, 0, "reject", 4, checker);
@@ -74,8 +74,8 @@ class TableGeneratorCancellationTest {
         assertThat(writer.rows()).hasSizeLessThan(12_000);
     }
 
-    private static SchemaDefinition simpleSchema() {
-        SchemaDefinition schema = new SchemaDefinition();
+    private static TableSchema simpleSchema() {
+        TableSchema schema = new TableSchema();
         schema.setTable("items");
         schema.setFields(List.of(
                 new FieldDefinition("id", "BIGINT", Map.of("strategy", "sequence", "start", 1, "step", 1)),

@@ -1,8 +1,8 @@
 package com.datagenerator.core.engine;
 
-import com.datagenerator.core.schema.ConstraintDefinition;
-import com.datagenerator.core.schema.FieldDefinition;
-import com.datagenerator.core.schema.SchemaDefinition;
+import com.datagenerator.core.model.ConstraintDefinition;
+import com.datagenerator.core.model.FieldDefinition;
+import com.datagenerator.core.model.TableSchema;
 import com.datagenerator.spi.model.DataRow;
 import org.junit.jupiter.api.Test;
 
@@ -16,7 +16,7 @@ class UpstreamFieldCollectorTest {
 
     @Test
     void collectRequiredFields_includesReferenceAndForeignKeyFields() {
-        SchemaDefinition downstream = new SchemaDefinition();
+        TableSchema downstream = new TableSchema();
         downstream.setFields(List.of(
                 new FieldDefinition(
                         "xh",

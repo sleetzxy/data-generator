@@ -3,11 +3,11 @@ package com.datagenerator.core.engine;
 import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.config.WriterConfigResolver;
 import com.datagenerator.core.constraint.ConstraintLoader;
-import com.datagenerator.core.schema.ConfigLoadException;
-import com.datagenerator.core.schema.JobDefinition;
-import com.datagenerator.core.schema.SchemaDefinition;
-import com.datagenerator.core.schema.TableTask;
-import com.datagenerator.core.schema.YamlConfigLoader;
+import com.datagenerator.core.model.ConfigLoadException;
+import com.datagenerator.core.model.TaskConfig;
+import com.datagenerator.core.model.TableSchema;
+import com.datagenerator.core.model.TableTask;
+import com.datagenerator.core.model.YamlConfigLoader;
 import com.datagenerator.spi.model.DataRow;
 import com.datagenerator.spi.model.WriterConfig;
 import com.datagenerator.spi.writer.DataWriter;
@@ -40,12 +40,12 @@ public class JobOrchestrator {
         this.connectionRegistry = connectionRegistry;
     }
 
-    public JobResult run(JobDefinition job, Map<String, Object> writerConfigMap, GenerationOptions options) {
+    public JobResult run(TaskConfig job, Map<String, Object> writerConfigMap, GenerationOptions options) {
         return run(job, writerConfigMap, options, JobExecutionListener.NOOP);
     }
 
     public JobResult run(
-            JobDefinition job,
+            TaskConfig job,
             Map<String, Object> writerConfigMap,
             GenerationOptions options,
             JobExecutionListener listener) {
@@ -53,14 +53,14 @@ public class JobOrchestrator {
     }
 
     public JobResult run(
-            JobDefinition job,
+            TaskConfig job,
             List<Map<String, Object>> runtimeWriters,
             GenerationOptions options) {
         return run(job, runtimeWriters, options, JobExecutionListener.NOOP);
     }
 
     public JobResult run(
-            JobDefinition job,
+            TaskConfig job,
             List<Map<String, Object>> runtimeWriters,
             GenerationOptions options,
             JobExecutionListener listener) {
@@ -98,8 +98,8 @@ public class JobOrchestrator {
                     activeWriterKey = writerKey;
                 }
 
-                SchemaDefinition schema = resolveSchema(tableTask);
-                List<com.datagenerator.core.schema.ConstraintDefinition> constraints =
+                TableSchema schema = resolveSchema(tableTask);
+                List<com.datagenerator.core.model.ConstraintDefinition> constraints =
                         constraintLoader.load(schema, job, tableTask);
 
                 long jobWrittenBeforeTable = writtenRows;
@@ -177,7 +177,7 @@ public class JobOrchestrator {
         return new CompositeWriter(delegates);
     }
 
-    private SchemaDefinition resolveSchema(TableTask tableTask) {
+    private TableSchema resolveSchema(TableTask tableTask) {
         if (tableTask.getSchemaDefinition() != null) {
             return tableTask.getSchemaDefinition();
         }
@@ -191,15 +191,15 @@ public class JobOrchestrator {
             String upstreamTableName,
             List<TableTask> sortedTables,
             int currentTableIndex,
-            JobDefinition job) {
+            TaskConfig job) {
         Set<String> fields = new HashSet<>();
         for (int i = currentTableIndex + 1; i < sortedTables.size(); i++) {
             TableTask downstream = sortedTables.get(i);
             if (!downstream.getDependsOn().contains(upstreamTableName)) {
                 continue;
             }
-            SchemaDefinition downstreamSchema = resolveSchema(downstream);
-            List<com.datagenerator.core.schema.ConstraintDefinition> downstreamConstraints =
+            TableSchema downstreamSchema = resolveSchema(downstream);
+            List<com.datagenerator.core.model.ConstraintDefinition> downstreamConstraints =
                     constraintLoader.load(downstreamSchema, job, downstream);
             fields.addAll(UpstreamFieldCollector.collectRequiredFields(
                     upstreamTableName, downstreamSchema, downstreamConstraints));

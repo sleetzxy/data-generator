@@ -1,7 +1,7 @@
 package com.datagenerator.core.engine;
 
-import com.datagenerator.core.schema.FieldDefinition;
-import com.datagenerator.core.schema.SchemaDefinition;
+import com.datagenerator.core.model.FieldDefinition;
+import com.datagenerator.core.model.TableSchema;
 import com.datagenerator.spi.model.Batch;
 import com.datagenerator.spi.model.DataRow;
 import com.datagenerator.spi.model.WriteResult;
@@ -32,7 +32,7 @@ class TableGeneratorParallelTest {
 
     @Test
     void generate_largeCountWithParallelism_producesExpectedRows() {
-        SchemaDefinition schema = new SchemaDefinition();
+        TableSchema schema = new TableSchema();
         schema.setTable("items");
         schema.setFields(List.of(
                 new FieldDefinition("id", "BIGINT", Map.of("strategy", "sequence", "start", 1, "step", 1)),

@@ -1,4 +1,11 @@
+import {
+    createYamlEditor,
+    destroyYamlEditor,
+    getYamlEditorValue
+} from './yaml-editor.js';
+
 const API = '/api/v1';
+const DOCS_GUIDE_PATH = '/docs/config-guide.md';
 const LOG_PAGE_SIZE = 10;
 const DEFINITION_PAGE_SIZE = 20;
 const PREVIEW_FETCH_LIMIT = 10;
@@ -28,6 +35,9 @@ let editingScheduleEditable = false;
 let allRunsCache = [];
 let definitionsCache = [];
 let definitionsPage = 1;
+let definitionSearchQuery = '';
+let definitionSearchTimer = null;
+let guideLoaded = false;
 let previewContext = {
     displayName: null,
     path: null,
@@ -39,7 +49,7 @@ let logModalContext = {
     definitionPath: null,
     runs: [],
     page: 1,
-    selectedJobId: null,
+    selectedRunId: null,
     logDetailLines: {}
 };
 let autoRefreshTimer = null;
@@ -49,15 +59,256 @@ let latestRunByPath = new Map();
 let activeRunByPath = new Map();
 let definitionsUiFrame = null;
 
-document.getElementById('btn-new-definition').addEventListener('click', () => openDefinitionModal(null));
-document.getElementById('btn-refresh-definitions').addEventListener('click', () => loadDefinitions({ fullRender: true }));
-document.getElementById('auto-refresh-toggle').addEventListener('change', (event) => {
-    if (event.target.checked) {
-        startAutoRefresh();
+const VIEW_TITLES = {
+    overview: '运行概览',
+    tasks: '任务管理',
+    ai: 'AI 助手',
+    docs: '配置指南'
+};
+
+let currentView = 'tasks';
+let overviewLoaded = false;
+let docsLoaded = false;
+
+function initNavigation() {
+    window.addEventListener('hashchange', () => {
+        const view = window.location.hash.replace('#', '');
+        if (view && VIEW_TITLES[view] && view !== currentView) {
+            switchView(view);
+        }
+    });
+
+    const hash = window.location.hash.replace('#', '');
+    if (hash && VIEW_TITLES[hash]) {
+        switchView(hash);
     } else {
-        stopAutoRefresh();
+        switchView('overview');
+        if (!window.location.hash) {
+            window.location.hash = 'overview';
+        }
     }
+}
+
+function navigateToView(view) {
+    if (!VIEW_TITLES[view]) {
+        return;
+    }
+    if (window.location.hash.replace('#', '') !== view) {
+        window.location.hash = view;
+        return;
+    }
+    switchView(view);
+}
+
+function switchView(view) {
+    currentView = view;
+    document.querySelectorAll('.sidebar-link[data-view]').forEach(link => {
+        link.classList.toggle('active', link.dataset.view === view);
+    });
+    document.querySelectorAll('.app-view').forEach(section => {
+        section.classList.toggle('hidden', section.id !== `view-${view}`);
+    });
+    document.getElementById('view-title').textContent = VIEW_TITLES[view];
+
+    if (view === 'overview') {
+        loadOverview().catch(err => showToast('概览加载失败: ' + err.message));
+    } else if (view === 'docs') {
+        loadDocsView().catch(err => showToast('配置指南加载失败: ' + err.message));
+    } else if (view === 'ai' && typeof window.dgOnAiViewShown === 'function') {
+        window.dgOnAiViewShown();
+    }
+    ensureAutoRefresh();
+}
+
+async function loadDocsView() {
+    if (docsLoaded) {
+        return;
+    }
+    if (typeof window.loadDocsGuide !== 'function') {
+        throw new Error('文档模块未加载');
+    }
+    await window.loadDocsGuide();
+    docsLoaded = true;
+    const docsView = document.getElementById('view-docs');
+    window.initOverlayScrollbars?.(docsView?.querySelector('.docs-sidebar'));
+    window.initOverlayScrollbars?.(docsView?.querySelector('.docs-content'));
+}
+
+function computeRunStats(runs) {
+    const stats = {
+        total: runs.length,
+        running: 0,
+        pending: 0,
+        completed: 0,
+        failed: 0,
+        cancelled: 0
+    };
+    for (const run of runs) {
+        if (run.status === 'RUNNING') {
+            stats.running++;
+        } else if (run.status === 'PENDING') {
+            stats.pending++;
+        } else if (run.status === 'COMPLETED') {
+            stats.completed++;
+        } else if (run.status === 'FAILED') {
+            stats.failed++;
+        } else if (run.status === 'CANCELLED') {
+            stats.cancelled++;
+        }
+    }
+    return stats;
+}
+
+function resolveConfigDisplayName(configPath) {
+    const def = definitionsCache.find(item => item.path === configPath);
+    return def?.name || configPath?.split('/').pop()?.replace(/\.yaml$/, '') || configPath || '-';
+}
+
+function renderOverviewStats(stats, configCount) {
+    const container = document.getElementById('overview-stats');
+    container.innerHTML = `
+        <div class="stat-card stat-accent-primary">
+            <div class="stat-card-label">任务配置</div>
+            <div class="stat-card-value stat-default">${configCount}</div>
+        </div>
+        <div class="stat-card stat-accent-neutral">
+            <div class="stat-card-label">总运行次数</div>
+            <div class="stat-card-value stat-default">${stats.total}</div>
+        </div>
+        <div class="stat-card stat-accent-running">
+            <div class="stat-card-label">运行中</div>
+            <div class="stat-card-value stat-running">${stats.running}</div>
+        </div>
+        <div class="stat-card stat-accent-pending">
+            <div class="stat-card-label">等待中</div>
+            <div class="stat-card-value stat-pending">${stats.pending}</div>
+        </div>
+        <div class="stat-card stat-accent-completed">
+            <div class="stat-card-label">已完成</div>
+            <div class="stat-card-value stat-completed">${stats.completed}</div>
+        </div>
+        <div class="stat-card stat-accent-failed">
+            <div class="stat-card-label">失败</div>
+            <div class="stat-card-value stat-failed">${stats.failed}</div>
+        </div>
+        <div class="stat-card stat-accent-cancelled">
+            <div class="stat-card-label">已取消</div>
+            <div class="stat-card-value stat-cancelled">${stats.cancelled}</div>
+        </div>
+    `;
+}
+
+function renderOverviewActiveRuns(runs) {
+    const tbody = document.getElementById('overview-active-body');
+    const activeRuns = runs
+        .filter(run => isActiveRun(run.status))
+        .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+
+    document.getElementById('overview-active-count').textContent = `${activeRuns.length} 个`;
+
+    if (!activeRuns.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5">当前无进行中的任务</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = activeRuns.map(run => `
+        <tr class="overview-run-row" onclick="viewOverviewRun('${escapeAttr(run.runId)}', '${escapeAttr(run.configPath)}')">
+            <td><code>${escapeHtml(run.runId)}</code></td>
+            <td class="overview-config-name" title="${escapeAttr(resolveConfigDisplayName(run.configPath))}">
+                <code>${escapeHtml(resolveConfigDisplayName(run.configPath))}</code>
+            </td>
+            <td>${statusBadge(run.status)}</td>
+            <td>${run.writtenRows ?? 0} / ${run.totalRows ?? 0}</td>
+            <td>${formatTime(run.submittedAt)}</td>
+        </tr>
+    `).join('');
+}
+
+function renderOverviewRecentRuns(runs) {
+    const tbody = document.getElementById('overview-recent-body');
+    const recentRuns = [...runs]
+        .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt))
+        .slice(0, 15);
+
+    if (!recentRuns.length) {
+        tbody.innerHTML = '<tr class="empty-row"><td colspan="5">暂无运行记录</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = recentRuns.map(run => `
+        <tr class="overview-run-row" onclick="viewOverviewRun('${escapeAttr(run.runId)}', '${escapeAttr(run.configPath)}')">
+            <td><code>${escapeHtml(run.runId)}</code></td>
+            <td class="overview-config-name" title="${escapeAttr(resolveConfigDisplayName(run.configPath))}">
+                <code>${escapeHtml(resolveConfigDisplayName(run.configPath))}</code>
+            </td>
+            <td>${statusBadge(run.status)}</td>
+            <td>${escapeHtml(run.duration || '-')}</td>
+            <td>${formatTime(run.submittedAt)}</td>
+        </tr>
+    `).join('');
+}
+
+async function loadOverview() {
+    const [configs, runs] = await Promise.all([
+        definitionsCache.length ? Promise.resolve(definitionsCache) : api('/task-configs'),
+        fetchAllJobs()
+    ]);
+    if (!definitionsCache.length) {
+        definitionsCache = configs;
+    }
+    allRunsCache = runs;
+    rebuildRunIndexes();
+
+    const stats = computeRunStats(runs);
+    renderOverviewStats(stats, configs.length);
+    renderOverviewActiveRuns(runs);
+    renderOverviewRecentRuns(runs);
+    overviewLoaded = true;
+}
+
+async function viewOverviewRun(runId, configPath) {
+    const name = resolveConfigDisplayName(configPath);
+    try {
+        if (!allRunsCache.length) {
+            allRunsCache = await fetchAllJobs();
+        }
+        const runs = allRunsCache
+            .filter(run => run.configPath === configPath)
+            .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
+        if (!runs.length) {
+            showToast('暂无运行记录');
+            return;
+        }
+        logModalContext.selectedRunId = runId;
+        openLogListModal(name, configPath, runs, { selectedRunId: runId });
+    } catch (err) {
+        showToast('加载失败: ' + err.message);
+    }
+}
+
+function syncOverviewInPlace() {
+    if (currentView !== 'overview' || !overviewLoaded) {
+        return;
+    }
+    const stats = computeRunStats(allRunsCache);
+    renderOverviewStats(stats, definitionsCache.length);
+    renderOverviewActiveRuns(allRunsCache);
+    renderOverviewRecentRuns(allRunsCache);
+}
+
+document.getElementById('btn-new-definition').addEventListener('click', () => {
+    openDefinitionModal(null).catch(err => showToast('打开编辑器失败: ' + err.message));
 });
+document.getElementById('btn-refresh-definitions').addEventListener('click', () => loadDefinitions({ fullRender: true }));
+document.getElementById('definition-search').addEventListener('input', (event) => {
+    definitionSearchQuery = event.target.value.trim();
+    definitionsPage = 1;
+    clearTimeout(definitionSearchTimer);
+    definitionSearchTimer = setTimeout(() => {
+        loadDefinitions({ fullRender: true });
+    }, 300);
+});
+document.getElementById('guide-toggle').addEventListener('click', toggleGuidePanel);
 
 document.getElementById('modal-close').addEventListener('click', closeModal);
 document.getElementById('modal-cancel').addEventListener('click', closeModal);
@@ -182,8 +433,8 @@ function buildLogDetailSummaryHtml(job, progress) {
 
 function captureLogModalScrollState() {
     const modalBody = document.querySelector('#log-modal .modal-body');
-    const logView = logModalContext.selectedJobId
-        ? document.querySelector(`#log-modal [data-log-panel="${cssEscape(logModalContext.selectedJobId)}"] .log-view`)
+    const logView = logModalContext.selectedRunId
+        ? document.querySelector(`#log-modal [data-log-panel="${cssEscape(logModalContext.selectedRunId)}"] .log-view`)
         : null;
     return {
         modal: modalBody
@@ -201,14 +452,14 @@ function applyLogModalScrollState(state) {
     }
     const modalBody = document.querySelector('#log-modal .modal-body');
     applyScrollState(modalBody, state.modal);
-    const logView = logModalContext.selectedJobId
-        ? document.querySelector(`#log-modal [data-log-panel="${cssEscape(logModalContext.selectedJobId)}"] .log-view`)
+    const logView = logModalContext.selectedRunId
+        ? document.querySelector(`#log-modal [data-log-panel="${cssEscape(logModalContext.selectedRunId)}"] .log-view`)
         : null;
     applyScrollState(logView, state.logView);
 }
 
-function updateRunRowCells(jobId, job, progress) {
-    const row = document.querySelector(`#log-runs-body tr.log-run-row[data-job-id="${cssEscape(jobId)}"]`);
+function updateRunRowCells(runId, job, progress) {
+    const row = document.querySelector(`#log-runs-body tr.log-run-row[data-run-id="${cssEscape(runId)}"]`);
     if (!row) {
         return;
     }
@@ -220,8 +471,8 @@ function updateRunRowCells(jobId, job, progress) {
 function syncPagedRunRowsInPlace() {
     const pagedRuns = getPagedRuns(logModalContext.runs, logModalContext.page);
     for (const run of pagedRuns) {
-        const latest = logModalContext.runs.find(item => item.jobId === run.jobId) || run;
-        updateRunRowCells(latest.jobId, latest, {
+        const latest = logModalContext.runs.find(item => item.runId === run.runId) || run;
+        updateRunRowCells(latest.runId, latest, {
             writtenRows: latest.writtenRows,
             totalRows: latest.totalRows
         });
@@ -236,6 +487,19 @@ function isLogModalOpen() {
     return !document.getElementById('log-modal').classList.contains('hidden');
 }
 
+function shouldAutoRefresh() {
+    if (currentView === 'overview') {
+        return true;
+    }
+    if (isLogModalOpen()) {
+        return true;
+    }
+    if (currentView === 'tasks' && hasActiveRuns()) {
+        return true;
+    }
+    return false;
+}
+
 function resolveAutoRefreshIntervalMs() {
     if (hasActiveRuns() || isLogModalOpen()) {
         return AUTO_REFRESH_ACTIVE_INTERVAL_MS;
@@ -243,19 +507,41 @@ function resolveAutoRefreshIntervalMs() {
     return AUTO_REFRESH_INTERVAL_MS;
 }
 
-function startAutoRefresh() {
-    stopAutoRefresh();
+async function refreshRuntimeSnapshot() {
+    allRunsCache = await fetchAllJobs();
+    rebuildRunIndexes();
+
+    if (currentView === 'overview') {
+        syncOverviewInPlace();
+    }
+
+    if (currentView === 'tasks' && canSyncDefinitionsInPlace()) {
+        syncDefinitionsTableInPlace();
+    }
+
+    if (isLogModalOpen()) {
+        await refreshOpenLogModal();
+    }
+}
+
+function ensureAutoRefresh() {
+    if (document.hidden || !shouldAutoRefresh()) {
+        stopAutoRefresh();
+        return;
+    }
+    if (autoRefreshTimer !== null) {
+        return;
+    }
     const tick = async () => {
+        autoRefreshTimer = null;
         try {
-            if (!document.hidden) {
-                await loadDefinitions({ fullRender: false });
+            if (!document.hidden && shouldAutoRefresh()) {
+                await refreshRuntimeSnapshot();
             }
         } catch (_) {
             // 自动刷新失败时不打断后续轮询
         }
-        if (document.getElementById('auto-refresh-toggle').checked) {
-            autoRefreshTimer = setTimeout(tick, resolveAutoRefreshIntervalMs());
-        }
+        ensureAutoRefresh();
     };
     autoRefreshTimer = setTimeout(tick, resolveAutoRefreshIntervalMs());
 }
@@ -271,7 +557,7 @@ function rebuildRunIndexes() {
     latestRunByPath = new Map();
     activeRunByPath = new Map();
     for (const run of allRunsCache) {
-        const path = run.jobConfig;
+        const path = run.configPath;
         const latest = latestRunByPath.get(path);
         if (!latest || new Date(run.submittedAt) > new Date(latest.submittedAt)) {
             latestRunByPath.set(path, run);
@@ -298,7 +584,7 @@ async function fetchAllJobs() {
     let page = 1;
     const size = 100;
     while (true) {
-        const data = await api(`/jobs?page=${page}&size=${size}`);
+        const data = await api(`/task-runs?page=${page}&size=${size}`);
         all.push(...(data.items || []));
         if (all.length >= data.total || !data.items?.length) {
             break;
@@ -308,12 +594,20 @@ async function fetchAllJobs() {
     return all;
 }
 
+function buildTaskConfigListUrl() {
+    const query = definitionSearchQuery.trim();
+    if (!query) {
+        return '/task-configs';
+    }
+    return `/task-configs?name=${encodeURIComponent(query)}`;
+}
+
 async function loadDefinitions(options = {}) {
     const fullRender = options.fullRender === true;
     const tbody = document.getElementById('definitions-body');
     try {
         const [items, runs] = await Promise.all([
-            api('/job-definitions'),
+            api(buildTaskConfigListUrl()),
             fetchAllJobs()
         ]);
         allRunsCache = runs;
@@ -322,9 +616,11 @@ async function loadDefinitions(options = {}) {
 
         if (!fullRender && canSyncDefinitionsInPlace()) {
             scheduleDefinitionsUiSync();
+            ensureAutoRefresh();
             return;
         }
         renderDefinitionsTable();
+        ensureAutoRefresh();
     } catch (err) {
         tbody.innerHTML = `<tr class="empty-row"><td colspan="6">加载失败: ${escapeHtml(err.message)}</td></tr>`;
         renderDefinitionsPagination();
@@ -388,14 +684,14 @@ function updateStopButtonInPlace(actionsCell, activeRun) {
         return;
     }
     const stopDisabled = !activeRun;
-    const stopJobId = activeRun?.jobId || '';
+    const stopRunId = activeRun?.runId || '';
     stopBtn.disabled = stopDisabled;
     stopBtn.classList.toggle('disabled', stopDisabled);
     if (stopDisabled) {
         stopBtn.removeAttribute('onclick');
         stopBtn.title = '当前无运行中的任务';
     } else {
-        stopBtn.setAttribute('onclick', `stopRun('${escapeAttr(stopJobId)}'); closeActionMenus()`);
+        stopBtn.setAttribute('onclick', `stopRun('${escapeAttr(stopRunId)}'); closeActionMenus()`);
         stopBtn.removeAttribute('title');
     }
 }
@@ -468,7 +764,10 @@ function renderDefinitionsTable() {
     }
 
     if (!definitionsCache.length) {
-        tbody.innerHTML = '<tr class="empty-row"><td colspan="6">暂无任务配置</td></tr>';
+        const message = definitionSearchQuery
+            ? `未找到匹配「${escapeHtml(definitionSearchQuery)}」的任务`
+            : '暂无任务配置';
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="6">${message}</td></tr>`;
         renderDefinitionsPagination();
         refreshOpenLogModal();
         lastRenderedPageKey = null;
@@ -508,13 +807,13 @@ function renderDefinitionsTable() {
 function renderActionsCell(item, index, displayName, fileName, path, activeRun, isBuiltin, scheduleEnabled) {
     const menuId = `action-menu-${index}`;
     const stopDisabled = !activeRun;
-    const stopJobId = activeRun?.jobId || '';
+    const stopRunId = activeRun?.runId || '';
     let menuItems = `
         <button type="button" class="action-menu-item" onclick="viewDefinition('${escapeAttr(fileName)}'); closeActionMenus()">查看</button>
         <button type="button" class="action-menu-item" onclick="previewDefinition('${escapeAttr(displayName)}', '${escapeAttr(path)}'); closeActionMenus()">预览</button>
         <button type="button" class="action-menu-item" onclick="viewDefinitionLogs('${escapeAttr(displayName)}', '${escapeAttr(path)}'); closeActionMenus()">日志</button>
         <button type="button" class="action-menu-item action-stop-btn${stopDisabled ? ' disabled' : ''}"
-            ${stopDisabled ? 'disabled title="当前无运行中的任务"' : `onclick="stopRun('${escapeAttr(stopJobId)}'); closeActionMenus()"`}>停止</button>`;
+            ${stopDisabled ? 'disabled title="当前无运行中的任务"' : `onclick="stopRun('${escapeAttr(stopRunId)}'); closeActionMenus()"`}>停止</button>`;
     if (!isBuiltin) {
         menuItems += `
         <button type="button" class="action-menu-item" onclick="editDefinition('${escapeAttr(fileName)}'); closeActionMenus()">编辑</button>
@@ -544,7 +843,7 @@ function closeActionMenus() {
     openActionMenuId = null;
 }
 
-function openDefinitionModal(fileName, content, readOnly = false, schedule = null, displayName = null) {
+async function openDefinitionModal(fileName, content, readOnly = false, schedule = null, displayName = null) {
     editingDefinition = fileName || null;
     const title = fileName
         ? (readOnly ? `查看任务: ${displayName || fileName}` : `编辑任务: ${displayName || fileName}`)
@@ -554,10 +853,46 @@ function openDefinitionModal(fileName, content, readOnly = false, schedule = nul
     document.getElementById('definition-name').disabled = !!readOnly;
     document.getElementById('name-field').style.display = 'flex';
     document.getElementById('definition-content').value = content || DEFAULT_JOB_TEMPLATE;
-    document.getElementById('definition-content').readOnly = !!readOnly;
     document.getElementById('modal-save').style.display = readOnly ? 'none' : '';
+    document.getElementById('guide-toggle').style.display = readOnly ? 'none' : '';
     applyScheduleFields(schedule, readOnly, !fileName);
     document.getElementById('modal').classList.remove('hidden');
+    ensureGuideLoaded();
+    await mountYamlEditor(content || DEFAULT_JOB_TEMPLATE, readOnly);
+}
+
+async function mountYamlEditor(content, readOnly) {
+    const host = document.getElementById('definition-editor');
+    await createYamlEditor(host, content, readOnly);
+}
+
+function toggleGuidePanel() {
+    const panel = document.getElementById('guide-panel');
+    const button = document.getElementById('guide-toggle');
+    const hidden = panel.classList.toggle('hidden');
+    button.setAttribute('aria-expanded', String(!hidden));
+    button.textContent = hidden ? '显示参考' : '配置参考';
+}
+
+async function ensureGuideLoaded() {
+    if (guideLoaded) {
+        return;
+    }
+    const body = document.getElementById('guide-body');
+    const toc = document.getElementById('guide-toc');
+    try {
+        const response = await fetch(DOCS_GUIDE_PATH, { credentials: 'same-origin' });
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        const markdown = await response.text();
+        body.innerHTML = renderMarkdown(markdown);
+        buildMarkdownToc(body, toc);
+        guideLoaded = true;
+    } catch (err) {
+        body.innerHTML = `<div class="docs-error">加载配置指南失败：${escapeHtml(err.message)}</div>`;
+        toc.innerHTML = '';
+    }
 }
 
 function applyScheduleFields(schedule, readOnly, isNew) {
@@ -593,14 +928,14 @@ function readScheduleFromModal() {
 
 function closeModal() {
     document.getElementById('modal').classList.add('hidden');
-    document.getElementById('definition-content').readOnly = false;
+    destroyYamlEditor();
     editingDefinition = null;
     editingScheduleEditable = false;
 }
 
 async function viewDefinition(fileName) {
     try {
-        const item = await api(`/job-definitions/${encodeURIComponent(fileName)}`);
+        const item = await api(`/task-configs/${encodeURIComponent(fileName)}`);
         openDefinitionModal(fileName, item.content, true, item.schedule, item.name);
     } catch (err) {
         showToast('加载失败: ' + err.message);
@@ -609,7 +944,7 @@ async function viewDefinition(fileName) {
 
 async function editDefinition(fileName) {
     try {
-        const item = await api(`/job-definitions/${encodeURIComponent(fileName)}`);
+        const item = await api(`/task-configs/${encodeURIComponent(fileName)}`);
         if (item.readOnly) {
             showToast('内置任务不可编辑');
             return;
@@ -622,7 +957,7 @@ async function editDefinition(fileName) {
 
 async function saveDefinition() {
     const displayName = document.getElementById('definition-name').value.trim();
-    const content = document.getElementById('definition-content').value;
+    const content = getYamlEditorValue() || document.getElementById('definition-content').value;
     if (!displayName) {
         showToast('请输入任务名称');
         return;
@@ -644,13 +979,13 @@ async function saveDefinition() {
     }
     try {
         if (editingDefinition) {
-            await api(`/job-definitions/${encodeURIComponent(editingDefinition)}`, {
+            await api(`/task-configs/${encodeURIComponent(editingDefinition)}`, {
                 method: 'PUT',
                 body: JSON.stringify(payload)
             });
             showToast('任务已更新');
         } else {
-            await api('/job-definitions', {
+            await api('/task-configs', {
                 method: 'POST',
                 body: JSON.stringify(payload)
             });
@@ -666,7 +1001,7 @@ async function saveDefinition() {
 async function deleteDefinition(fileName) {
     if (!confirm(`确定删除任务配置 "${fileName}"？`)) return;
     try {
-        await api(`/job-definitions/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
+        await api(`/task-configs/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
         showToast('已删除');
         loadDefinitions({ fullRender: true });
     } catch (err) {
@@ -797,7 +1132,7 @@ async function runPreview() {
         const result = await api('/preview', {
             method: 'POST',
             body: JSON.stringify({
-                jobConfig: previewContext.path,
+                configPath: previewContext.path,
                 preview: { limit: PREVIEW_FETCH_LIMIT }
             })
         });
@@ -819,14 +1154,14 @@ async function runDefinition(path, scheduleEnabled = false) {
         }
     }
     try {
-        const result = await api('/jobs', {
+        const result = await api('/task-runs', {
             method: 'POST',
-            body: JSON.stringify({ jobConfig: path })
+            body: JSON.stringify({ configPath: path })
         });
         if (result.status === 'PENDING') {
-            showToast(`任务已加入队列: ${result.jobId}`);
+            showToast(`任务已加入队列: ${result.runId}`);
         } else {
-            showToast(`任务已提交: ${result.jobId} (${result.status})`);
+            showToast(`任务已提交: ${result.runId} (${result.status})`);
         }
         await loadDefinitions({ fullRender: true });
     } catch (err) {
@@ -840,7 +1175,7 @@ async function viewDefinitionLogs(name, path) {
             allRunsCache = await fetchAllJobs();
         }
         const runs = allRunsCache
-            .filter(run => run.jobConfig === path)
+            .filter(run => run.configPath === path)
             .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
         if (!runs.length) {
             showToast(`任务 "${name}" 暂无运行记录`);
@@ -862,11 +1197,11 @@ function getPagedRuns(runs, page) {
 }
 
 function isSelectedRunOnCurrentPage() {
-    if (!logModalContext.selectedJobId) {
+    if (!logModalContext.selectedRunId) {
         return false;
     }
     return getPagedRuns(logModalContext.runs, logModalContext.page)
-        .some(run => run.jobId === logModalContext.selectedJobId);
+        .some(run => run.runId === logModalContext.selectedRunId);
 }
 
 function renderLogPagination() {
@@ -909,20 +1244,20 @@ function renderLogRunsTable() {
     const pagedRuns = getPagedRuns(runs, logModalContext.page);
     const selectedOnPage = isSelectedRunOnCurrentPage();
     if (!selectedOnPage) {
-        logModalContext.selectedJobId = null;
+        logModalContext.selectedRunId = null;
     }
 
     const scrollState = captureLogModalScrollState();
-    const preservedDetailHtml = logModalContext.selectedJobId
-        ? document.querySelector(`#log-modal [data-log-panel="${cssEscape(logModalContext.selectedJobId)}"]`)?.innerHTML
+    const preservedDetailHtml = logModalContext.selectedRunId
+        ? document.querySelector(`#log-modal [data-log-panel="${cssEscape(logModalContext.selectedRunId)}"]`)?.innerHTML
         : null;
 
     let html = '';
     for (const run of pagedRuns) {
-        const expanded = logModalContext.selectedJobId === run.jobId;
+        const expanded = logModalContext.selectedRunId === run.runId;
         html += `
-        <tr class="log-run-row${expanded ? ' selected' : ''}" data-job-id="${escapeAttr(run.jobId)}" onclick="toggleRunLogDetail('${escapeAttr(run.jobId)}')">
-            <td><code>${escapeHtml(run.jobId)}</code></td>
+        <tr class="log-run-row${expanded ? ' selected' : ''}" data-run-id="${escapeAttr(run.runId)}" onclick="toggleRunLogDetail('${escapeAttr(run.runId)}')">
+            <td><code>${escapeHtml(run.runId)}</code></td>
             <td>${statusBadge(run.status)}</td>
             <td>${formatTime(run.submittedAt)}</td>
             <td>${escapeHtml(run.duration || '-')}</td>
@@ -933,7 +1268,7 @@ function renderLogRunsTable() {
             html += `
         <tr class="log-detail-row">
             <td colspan="5">
-                <div class="log-detail-panel" data-log-panel="${escapeAttr(run.jobId)}">${detailContent}</div>
+                <div class="log-detail-panel" data-log-panel="${escapeAttr(run.runId)}">${detailContent}</div>
             </td>
         </tr>`;
         }
@@ -942,28 +1277,38 @@ function renderLogRunsTable() {
     renderLogPagination();
     applyLogModalScrollState(scrollState);
 
-    if (logModalContext.selectedJobId) {
+    if (logModalContext.selectedRunId) {
         if (preservedDetailHtml) {
-            refreshLogDetailContent(logModalContext.selectedJobId, scrollState?.logView);
+            refreshLogDetailContent(logModalContext.selectedRunId, scrollState?.logView);
         } else {
-            loadRunLogDetailContent(logModalContext.selectedJobId);
+            loadRunLogDetailContent(logModalContext.selectedRunId);
         }
     }
 }
 
-function openLogListModal(name, path, runs) {
+function openLogListModal(name, path, runs, options = {}) {
+    const selectedRunId = options.selectedRunId || null;
+    let page = 1;
+    if (selectedRunId) {
+        const index = runs.findIndex(run => run.runId === selectedRunId);
+        if (index >= 0) {
+            page = Math.floor(index / LOG_PAGE_SIZE) + 1;
+        }
+    }
+
     logModalContext = {
         definitionName: name,
         definitionPath: path,
         runs,
-        page: 1,
-        selectedJobId: null,
+        page,
+        selectedRunId,
         logDetailLines: {}
     };
 
     document.getElementById('log-title').textContent = `运行记录: ${name}`;
     renderLogRunsTable();
     document.getElementById('log-modal').classList.remove('hidden');
+    ensureAutoRefresh();
 }
 
 function changeLogPage(page) {
@@ -972,21 +1317,21 @@ function changeLogPage(page) {
         return;
     }
     logModalContext.page = page;
-    logModalContext.selectedJobId = null;
+    logModalContext.selectedRunId = null;
     renderLogRunsTable();
 }
 
-function toggleRunLogDetail(jobId) {
-    if (logModalContext.selectedJobId === jobId) {
-        logModalContext.selectedJobId = null;
+function toggleRunLogDetail(runId) {
+    if (logModalContext.selectedRunId === runId) {
+        logModalContext.selectedRunId = null;
     } else {
-        logModalContext.selectedJobId = jobId;
+        logModalContext.selectedRunId = runId;
     }
     renderLogRunsTable();
 }
 
-async function loadRunLogDetailContent(jobId) {
-    const panel = document.querySelector(`[data-log-panel="${cssEscape(jobId)}"]`);
+async function loadRunLogDetailContent(runId) {
+    const panel = document.querySelector(`[data-log-panel="${cssEscape(runId)}"]`);
     if (!panel) {
         return;
     }
@@ -996,12 +1341,12 @@ async function loadRunLogDetailContent(jobId) {
     }
 
     try {
-        const job = await api(`/jobs/${encodeURIComponent(jobId)}`);
-        const run = logModalContext.runs.find(item => item.jobId === jobId) || job;
+        const job = await api(`/task-runs/${encodeURIComponent(runId)}`);
+        const run = logModalContext.runs.find(item => item.runId === runId) || job;
         const progress = job.progress || {};
 
-        const logs = await api(`/jobs/${encodeURIComponent(jobId)}/logs`);
-        logModalContext.logDetailLines[jobId] = logs;
+        const logs = await api(`/task-runs/${encodeURIComponent(runId)}/logs`);
+        logModalContext.logDetailLines[runId] = logs;
         panel.innerHTML = `
             ${buildLogDetailSummaryHtml(job, progress)}
             <pre class="log-view scrollbar-overlay">${renderLogLines(logs)}</pre>
@@ -1011,16 +1356,16 @@ async function loadRunLogDetailContent(jobId) {
         if (run && run.status !== job.status) {
             run.status = job.status;
         }
-        updateRunRowCells(jobId, job, progress);
+        updateRunRowCells(runId, job, progress);
     } catch (err) {
         panel.textContent = '加载失败: ' + err.message;
     }
 }
 
-async function refreshLogDetailContent(jobId, previousLogScrollState) {
-    const panel = document.querySelector(`[data-log-panel="${cssEscape(jobId)}"]`);
+async function refreshLogDetailContent(runId, previousLogScrollState) {
+    const panel = document.querySelector(`[data-log-panel="${cssEscape(runId)}"]`);
     if (!panel) {
-        await loadRunLogDetailContent(jobId);
+        await loadRunLogDetailContent(runId);
         return;
     }
 
@@ -1030,10 +1375,10 @@ async function refreshLogDetailContent(jobId, previousLogScrollState) {
         : null);
 
     try {
-        const job = await api(`/jobs/${encodeURIComponent(jobId)}`);
+        const job = await api(`/task-runs/${encodeURIComponent(runId)}`);
         const progress = job.progress || {};
-        const logs = await api(`/jobs/${encodeURIComponent(jobId)}/logs`);
-        logModalContext.logDetailLines[jobId] = logs;
+        const logs = await api(`/task-runs/${encodeURIComponent(runId)}/logs`);
+        logModalContext.logDetailLines[runId] = logs;
 
         const summary = panel.querySelector('.log-detail-summary');
         if (summary) {
@@ -1052,14 +1397,14 @@ async function refreshLogDetailContent(jobId, previousLogScrollState) {
             applyScrollState(targetLogView, scrollState);
         }
 
-        const run = logModalContext.runs.find(item => item.jobId === jobId);
+        const run = logModalContext.runs.find(item => item.runId === runId);
         if (run) {
             run.status = job.status;
             run.duration = job.duration;
             run.writtenRows = progress.writtenRows;
             run.totalRows = progress.totalRows;
         }
-        updateRunRowCells(jobId, job, progress);
+        updateRunRowCells(runId, job, progress);
     } catch (_) {
         // 自动刷新失败时不打断当前阅读
     }
@@ -1071,7 +1416,7 @@ async function refreshOpenLogModal() {
     }
 
     const runs = allRunsCache
-        .filter(run => run.jobConfig === logModalContext.definitionPath)
+        .filter(run => run.configPath === logModalContext.definitionPath)
         .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
 
     if (!runs.length) {
@@ -1079,23 +1424,23 @@ async function refreshOpenLogModal() {
         return;
     }
 
-    const previousRunIds = new Set(logModalContext.runs.map(run => run.jobId));
-    const selectedJobId = logModalContext.selectedJobId;
+    const previousRunIds = new Set(logModalContext.runs.map(run => run.runId));
+    const selectedRunId = logModalContext.selectedRunId;
     logModalContext.runs = runs;
 
     const runsChanged = runs.length !== previousRunIds.size
-        || runs.some(run => !previousRunIds.has(run.jobId));
+        || runs.some(run => !previousRunIds.has(run.runId));
 
-    const selectedStillOnPage = selectedJobId
-        && getPagedRuns(runs, logModalContext.page).some(run => run.jobId === selectedJobId);
+    const selectedStillOnPage = selectedRunId
+        && getPagedRuns(runs, logModalContext.page).some(run => run.runId === selectedRunId);
 
-    if (runsChanged || !selectedJobId || !selectedStillOnPage) {
+    if (runsChanged || !selectedRunId || !selectedStillOnPage) {
         renderLogRunsTable();
         return;
     }
 
     syncPagedRunRowsInPlace();
-    await refreshLogDetailContent(selectedJobId);
+    await refreshLogDetailContent(selectedRunId);
 }
 
 function closeLogModal() {
@@ -1105,30 +1450,31 @@ function closeLogModal() {
         definitionPath: null,
         runs: [],
         page: 1,
-        selectedJobId: null,
+        selectedRunId: null,
         logDetailLines: {}
     };
     document.getElementById('log-runs-body').innerHTML = '';
     document.getElementById('log-pagination').classList.add('hidden');
     document.getElementById('log-pagination').innerHTML = '';
+    ensureAutoRefresh();
 }
 
-async function stopRun(jobId) {
-    if (!jobId) {
+async function stopRun(runId) {
+    if (!runId) {
         showToast('当前无运行中的任务');
         return;
     }
-    if (!confirm(`确定停止任务 ${jobId}？`)) return;
+    if (!confirm(`确定停止任务 ${runId}？`)) return;
     try {
         const runs = await fetchAllJobs();
         allRunsCache = runs;
-        const current = runs.find(run => run.jobId === jobId);
+        const current = runs.find(run => run.runId === runId);
         if (!current || !isActiveRun(current.status)) {
             showToast('任务已结束');
             await loadDefinitions({ fullRender: true });
             return;
         }
-        await api(`/jobs/${encodeURIComponent(jobId)}`, { method: 'DELETE' });
+        await api(`/task-runs/${encodeURIComponent(runId)}`, { method: 'DELETE' });
         showToast('任务已停止');
         await loadDefinitions({ fullRender: false });
     } catch (err) {
@@ -1157,22 +1503,41 @@ function escapeAttr(text) {
 }
 
 loadDefinitions({ fullRender: true });
-if (document.getElementById('auto-refresh-toggle').checked) {
-    startAutoRefresh();
-}
+initNavigation();
+ensureAutoRefresh();
 
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
         stopAutoRefresh();
         return;
     }
-    if (document.getElementById('auto-refresh-toggle').checked) {
-        loadDefinitions({ fullRender: false });
-        startAutoRefresh();
+    if (currentView === 'overview') {
+        loadOverview().catch(() => {});
+    } else if (currentView === 'tasks') {
+        refreshRuntimeSnapshot().catch(() => {});
     }
+    ensureAutoRefresh();
 });
 
 function openDefinitionModalForAi(yaml) {
-    openDefinitionModal(null, yaml, false, null, null);
+    openDefinitionModal(null, yaml, false, null, null).catch(err => showToast('打开编辑器失败: ' + err.message));
 }
 window.openDefinitionModalForAi = openDefinitionModalForAi;
+
+Object.assign(window, {
+    changeDefinitionsPage,
+    navigateToView,
+    viewOverviewRun,
+    viewDefinition,
+    previewDefinition,
+    viewDefinitionLogs,
+    stopRun,
+    editDefinition,
+    deleteDefinition,
+    runDefinition,
+    toggleActionMenu,
+    closeActionMenus,
+    switchPreviewTab,
+    changeLogPage,
+    toggleRunLogDetail
+});

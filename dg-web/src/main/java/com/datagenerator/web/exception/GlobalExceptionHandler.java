@@ -2,7 +2,7 @@ package com.datagenerator.web.exception;
 
 
 
-import com.datagenerator.core.schema.ConfigLoadException;
+import com.datagenerator.core.model.ConfigLoadException;
 
 import org.slf4j.Logger;
 
@@ -49,9 +49,9 @@ public class GlobalExceptionHandler {
 
 
 
-    @ExceptionHandler(JobNotFoundException.class)
+    @ExceptionHandler(TaskRunNotFoundException.class)
 
-    public ResponseEntity<ErrorResponse> handleNotFound(JobNotFoundException exception) {
+    public ResponseEntity<ErrorResponse> handleNotFound(TaskRunNotFoundException exception) {
 
         log.warn("Job not found: {}", exception.getMessage());
 

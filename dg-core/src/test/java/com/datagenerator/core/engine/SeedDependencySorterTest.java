@@ -1,7 +1,7 @@
 package com.datagenerator.core.engine;
 
-import com.datagenerator.core.schema.SeedDefinition;
-import com.datagenerator.core.schema.SeedLinkDefinition;
+import com.datagenerator.core.model.SeedDefinition;
+import com.datagenerator.core.model.SeedLinkDefinition;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;

@@ -1,0 +1,118 @@
+package com.datagenerator.web.dto;
+
+import com.fasterxml.jackson.annotation.JsonProperty;
+
+public class TaskConfigResponse {
+
+    /** 配置文件名（不含扩展名），用于 API 路径参数 */
+    private String fileName;
+    /** YAML 中的 name 字段，任务描述名称 */
+    private String name;
+    private String path;
+    private String id;
+    private String content;
+    /** 是否内置（来自 classpath / 主配置目录） */
+    private boolean builtin;
+    /** 是否只读（内置任务不可编辑/删除） */
+    @JsonProperty("readOnly")
+    private boolean readOnly;
+    private TaskScheduleResponse schedule;
+    /** 自定义任务创建时间（ISO-8601），内置任务为 null */
+    private String createdAt;
+
+    public TaskConfigResponse() {
+    }
+
+    public TaskConfigResponse(
+            String fileName,
+            String path,
+            String id,
+            String name,
+            String content,
+            boolean builtin,
+            boolean readOnly) {
+        this.fileName = fileName;
+        this.path = path;
+        this.id = id;
+        this.name = name;
+        this.content = content;
+        this.builtin = builtin;
+        this.readOnly = readOnly;
+    }
+
+    public TaskConfigResponse(String fileName, String path, String id, String name, boolean builtin) {
+        this(fileName, path, id, name, null, builtin, builtin);
+    }
+
+    public String getFileName() {
+        return fileName;
+    }
+
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public String getPath() {
+        return path;
+    }
+
+    public void setPath(String path) {
+        this.path = path;
+    }
+
+    public String getId() {
+        return id;
+    }
+
+    public void setId(String id) {
+        this.id = id;
+    }
+
+    public String getContent() {
+        return content;
+    }
+
+    public void setContent(String content) {
+        this.content = content;
+    }
+
+    public boolean isBuiltin() {
+        return builtin;
+    }
+
+    public void setBuiltin(boolean builtin) {
+        this.builtin = builtin;
+    }
+
+    public boolean isReadOnly() {
+        return readOnly;
+    }
+
+    public void setReadOnly(boolean readOnly) {
+        this.readOnly = readOnly;
+    }
+
+    public TaskScheduleResponse getSchedule() {
+        return schedule;
+    }
+
+    public void setSchedule(TaskScheduleResponse schedule) {
+        this.schedule = schedule;
+    }
+
+    public String getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(String createdAt) {
+        this.createdAt = createdAt;
+    }
+}

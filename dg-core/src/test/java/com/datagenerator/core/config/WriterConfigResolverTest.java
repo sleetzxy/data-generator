@@ -1,8 +1,8 @@
 package com.datagenerator.core.config;
 
-import com.datagenerator.core.schema.ConfigLoadException;
-import com.datagenerator.core.schema.JobDefinition;
-import com.datagenerator.core.schema.TableTask;
+import com.datagenerator.core.model.ConfigLoadException;
+import com.datagenerator.core.model.TaskConfig;
+import com.datagenerator.core.model.TableTask;
 import org.junit.jupiter.api.Test;
 
 import java.util.HashMap;
@@ -16,7 +16,7 @@ class WriterConfigResolverTest {
 
     @Test
     void resolveDefaultWriters_jobWritersOverrideRuntime() {
-        JobDefinition job = new JobDefinition();
+        TaskConfig job = new TaskConfig();
         job.setWriters(List.of(
                 Map.of("type", "postgresql", "connection", "pg"),
                 Map.of("type", "clickhouse", "connection", "ck")));
@@ -44,7 +44,7 @@ class WriterConfigResolverTest {
 
     @Test
     void validateJobWriters_bothWriterAndWritersAtJobLevel_throws() {
-        JobDefinition job = new JobDefinition();
+        TaskConfig job = new TaskConfig();
         job.setId("demo");
         job.setWriter(Map.of("type", "postgresql"));
         job.setWriters(List.of(Map.of("type", "clickhouse")));

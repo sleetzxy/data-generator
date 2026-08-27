@@ -67,7 +67,7 @@ public class ConfigTools {
 
     // ==================== CRUD ====================
 
-    @Tool(name = "listConfigs", description = "列出所有已有 Job 配置，返回显示名称和文件名")
+    @Tool(name = "listConfigs", description = "列出所有已有任务配置，返回显示名称和文件名")
     public String listConfigs(ToolEmitter emitter) {
         if (!hasClient()) {
             return emitAndReturn(emitter, "未连接数据服务，无法查询配置");
@@ -131,18 +131,18 @@ public class ConfigTools {
         return emitAndReturn(emitter, sb.toString());
     }
 
-    @Tool(name = "listSchemas", description = "查询所有可用 Schema 定义及其字段详情")
-    public String listSchemas(ToolEmitter emitter) {
+    @Tool(name = "listTableSchemas", description = "查询所有可用表结构定义及其字段详情")
+    public String listTableSchemas(ToolEmitter emitter) {
         if (!hasClient()) {
-            return emitAndReturn(emitter, "当前无可用的 Schema（未连接数据服务）");
+            return emitAndReturn(emitter, "当前无可用的表结构定义（未连接数据服务）");
         }
-        var names = client.listSchemas();
+        var names = client.listTableSchemas();
         if (names == null || names.isEmpty()) {
-            return emitAndReturn(emitter, "当前无可用 Schema");
+            return emitAndReturn(emitter, "当前无可用表结构定义");
         }
-        StringBuilder sb = new StringBuilder("可用 Schema：\n");
+        StringBuilder sb = new StringBuilder("可用表结构定义：\n");
         for (String name : names) {
-            var d = client.getSchema(name);
+            var d = client.getTableSchema(name);
             if (d != null && d.fields() != null) {
                 sb.append("- ").append(name).append(" (").append(d.fields().size()).append(" 字段): ");
                 d.fields().forEach(f -> sb.append(f.name()).append("(").append(f.type()).append(") "));
@@ -152,17 +152,17 @@ public class ConfigTools {
         return emitAndReturn(emitter, sb.toString());
     }
 
-    @Tool(name = "getSchema", description = "查看某个 Schema 的字段详情")
-    public String getSchema(@ToolParam(name = "name", description = "Schema 名称") String name,
+    @Tool(name = "getTableSchema", description = "查看某个表结构定义的字段详情")
+    public String getTableSchema(@ToolParam(name = "name", description = "表结构定义名称") String name,
             ToolEmitter emitter) {
         if (!hasClient()) {
-            return emitAndReturn(emitter, "未连接数据服务，无法查询 Schema");
+            return emitAndReturn(emitter, "未连接数据服务，无法查询表结构定义");
         }
-        var d = client.getSchema(name);
+        var d = client.getTableSchema(name);
         if (d == null) {
-            return emitAndReturn(emitter, "未找到 Schema：" + name);
+            return emitAndReturn(emitter, "未找到表结构定义：" + name);
         }
-        StringBuilder sb = new StringBuilder("Schema「").append(name).append("」字段（共 ")
+        StringBuilder sb = new StringBuilder("表结构定义「").append(name).append("」字段（共 ")
                 .append(d.fields().size()).append(" 个）：\n");
         d.fields().forEach(f -> sb.append("- ").append(f.name())
                 .append(" (").append(f.type()).append(")\n"));

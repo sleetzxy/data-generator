@@ -75,8 +75,8 @@ flowchart TB
         auth["Spring Security<br/>表单登录 · Session"]
         api["REST API<br/>/api/v1/*"]
         svc["JobService · JobLogStore"]
-        sqlite[("SQLite<br/>dg-jobs.db")]
-        logfiles["运行日志<br/>./data/job-logs"]
+        sqlite[("SQLite<br/>dg-tasks.db")]
+        logfiles["运行日志<br/>./data/task-run-logs"]
         yaml["YAML 配置<br/>classpath:configs · writable-config-dir"]
     end
 
@@ -226,7 +226,7 @@ mvn clean test
 
 ## AI Agent
 
-AI 能力由 **`dg-ai` 独立 HTTP 服务**提供。浏览器经 dg-web 的 `/api/v1/agent/**` 代理与 dg-ai 对话（SSE 流式）；dg-ai 的 Tool 通过 **`X-DG-Service-Auth` 请求头**回调 dg-web 既有 REST API（如 `/api/v1/config/connections`、`/api/v1/job-definitions?validateOnly=true`），无需单独暴露 agent-tools 端点。
+AI 能力由 **`dg-ai` 独立 HTTP 服务**提供。浏览器经 dg-web 的 `/api/v1/agent/**` 代理与 dg-ai 对话（SSE 流式）；dg-ai 的 Tool 通过 **`X-DG-Service-Auth` 请求头**回调 dg-web 既有 REST API（如 `/api/v1/config/connections`、`/api/v1/task-configs?validateOnly=true`），无需单独暴露 agent-tools 端点。
 
 **核心能力：**
 - **多轮对话生成** — AgentScope HarnessAgent + ReAct 循环，LLM 自主决策调用 Tool 完成 Job 创建
@@ -293,8 +293,8 @@ data-generator:
     username: admin
     password: admin123                  # 生产环境务必修改；可覆盖于 application-local.yml
   storage:
-    sqlite-path: ./data/dg-jobs.db      # 任务记录 SQLite 库
-    log-dir: ./data/job-logs          # 运行日志文件目录（每任务一个文件）
+    sqlite-path: ./data/dg-tasks.db      # 任务记录 SQLite 库
+    log-dir: ./data/task-run-logs      # 运行日志文件目录（每任务一个 {runId}.log）
   connections:                          # 数据源连接（Schema/Job YAML 引用 connection 名）
     dev-pg:
       type: postgresql
@@ -316,8 +316,8 @@ Schema/Job YAML 通过 `connection: dev-pg` 等形式引用连接，避免在业
 
 | 路径 | 说明 |
 |------|------|
-| `./data/dg-jobs.db` | 任务记录（SQLite，重启后保留） |
-| `./data/job-logs/` | 运行日志文件（每任务 `{jobId}.log`） |
+| `./data/dg-tasks.db` | 任务记录（SQLite，重启后保留） |
+| `./data/task-run-logs/` | 运行日志文件（每任务 `{runId}.log`，如 `task-run-{timestamp}-{id}.log`） |
 | `./data/configs/` | Web 控制台写入的可编辑 Job 定义 |
 
 ## 认证说明
@@ -333,7 +333,7 @@ curl -c cookies.txt -X POST http://localhost:8080/api/v1/auth/login \
   -d "username=admin&password=admin123"
 
 # 后续请求携带 Cookie
-curl -b cookies.txt http://localhost:8080/api/v1/jobs
+curl -b cookies.txt http://localhost:8080/api/v1/task-runs
 ```
 
 `/api/v1/health` 无需认证，可用于健康探针。
@@ -352,10 +352,10 @@ curl http://localhost:8080/api/v1/health
 { "status": "UP" }
 ```
 
-### 列出 Schema
+### 列出表结构（Table Schema）
 
 ```bash
-curl -b cookies.txt http://localhost:8080/api/v1/schemas
+curl -b cookies.txt http://localhost:8080/api/v1/table-schemas
 ```
 
 ### 列出连接（名称与类型，不含凭证）
@@ -370,7 +370,7 @@ curl -b cookies.txt http://localhost:8080/api/v1/config/connections
 curl -b cookies.txt -X POST http://localhost:8080/api/v1/preview \
   -H "Content-Type: application/json" \
   -d '{
-    "jobConfig": "jobs/my_job.yaml",
+    "configPath": "jobs/my_job.yaml",
     "overrides": { "tables.customers.count": 5 },
     "preview": { "limit": 5 }
   }'
@@ -378,23 +378,23 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/preview \
 
 响应包含 `status`、`duration` 及 `tables`（各表 `tableName`、`columns`、`rows` 样本数据），不会写入任何数据源。
 
-### Job 定义管理
+### 任务配置管理
 
 ```bash
-# 列出所有 Job 定义（响应含 fileName、name、id、schedule、createdAt 等）
-curl -b cookies.txt http://localhost:8080/api/v1/job-definitions
+# 列出所有任务配置（响应含 fileName、name、id、schedule、createdAt 等）
+curl -b cookies.txt http://localhost:8080/api/v1/task-configs
 # fileName 为配置文件名（API 路径参数）；name 为任务显示名称
 
-# 查看单个定义（自定义任务返回的 content 不含顶层 name，由 displayName 维护）
-curl -b cookies.txt http://localhost:8080/api/v1/job-definitions/joba1b2c3d4
+# 查看单个配置（自定义任务返回的 content 不含顶层 name，由 displayName 维护）
+curl -b cookies.txt http://localhost:8080/api/v1/task-configs/joba1b2c3d4
 
 # 仅校验 YAML（不写库、不保存）
-curl -b cookies.txt -X POST "http://localhost:8080/api/v1/job-definitions?validateOnly=true" \
+curl -b cookies.txt -X POST "http://localhost:8080/api/v1/task-configs?validateOnly=true" \
   -H "Content-Type: application/json" \
   -d '{"content": "writer:\n  type: csv\n  connection: local-csv\n  mode: insert\ntables:\n  - name: t\n    count: 1\n    schema:\n      table: t\n      fields:\n        - name: id\n          type: BIGINT\n          generator: { strategy: sequence, start: 1 }"}'
 
 # 创建自定义任务（displayName 必填；id/name 写入 YAML；文件名默认用生成的 id）
-curl -b cookies.txt -X POST http://localhost:8080/api/v1/job-definitions \
+curl -b cookies.txt -X POST http://localhost:8080/api/v1/task-configs \
   -H "Content-Type: application/json" \
   -d '{
     "displayName": "我的测试任务",
@@ -403,14 +403,14 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/job-definitions \
   }'
 
 # 更新（fileName 为路径参数；displayName 更新 YAML name）
-curl -b cookies.txt -X PUT http://localhost:8080/api/v1/job-definitions/joba1b2c3d4 \
+curl -b cookies.txt -X PUT http://localhost:8080/api/v1/task-configs/joba1b2c3d4 \
   -H "Content-Type: application/json" \
   -d '{"displayName":"更新后的名称","content":"..."}'
 
-curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/job-definitions/joba1b2c3d4
+curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/task-configs/joba1b2c3d4
 
 # 调度（自定义任务也可单独 PUT；内置任务只读）
-curl -b cookies.txt http://localhost:8080/api/v1/job-definitions/my_builtin/schedule
+curl -b cookies.txt http://localhost:8080/api/v1/task-configs/my_builtin/schedule
 ```
 
 自定义任务 YAML **禁止**包含 `schedule` 块；`id` 新建时自动生成；可选 `name` 指定 ASCII 配置文件名，否则与 `id` 相同。
@@ -420,10 +420,10 @@ curl -b cookies.txt http://localhost:8080/api/v1/job-definitions/my_builtin/sche
 单写示例：
 
 ```bash
-curl -b cookies.txt -X POST http://localhost:8080/api/v1/jobs \
+curl -b cookies.txt -X POST http://localhost:8080/api/v1/task-runs \
   -H "Content-Type: application/json" \
   -d '{
-    "jobConfig": "jobs/my_job.yaml",
+    "configPath": "jobs/my_job.yaml",
     "overrides": { "tables.customers.count": 100 },
     "writer": {
       "type": "csv",
@@ -436,10 +436,10 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/jobs \
 多写（同一批数据同时写入 PG 与 ClickHouse；Job YAML 中已配置 `writers` 时以 YAML 为准）：
 
 ```bash
-curl -b cookies.txt -X POST http://localhost:8080/api/v1/jobs \
+curl -b cookies.txt -X POST http://localhost:8080/api/v1/task-runs \
   -H "Content-Type: application/json" \
   -d '{
-    "jobConfig": "jobs/my_job.yaml",
+    "configPath": "jobs/my_job.yaml",
     "writers": [
       { "type": "postgresql", "connection": "dev-pg", "mode": "insert" },
       { "type": "clickhouse", "connection": "dev-ck", "mode": "insert" }
@@ -449,22 +449,22 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/jobs \
 
 写入 PostgreSQL 时将 `type` 改为 `postgresql`，`connection` 指向 `application.yml` 中已配置的连接名。单写/多写 YAML 与优先级说明见 Web 控制台「配置指南 → 指定写入目标」。
 
-### 查询任务与日志
+### 查询运行记录与日志
 
 ```bash
-# 列出历史任务（分页，默认 page=1 size=50）
-curl -b cookies.txt http://localhost:8080/api/v1/jobs?page=1&size=50
+# 列出历史运行（分页，默认 page=1 size=50）
+curl -b cookies.txt http://localhost:8080/api/v1/task-runs?page=1&size=50
 # 响应: {"items":[...],"total":100,"page":1,"size":50}
 
-# 查询单个任务
-curl -b cookies.txt http://localhost:8080/api/v1/jobs/{jobId}
+# 查询单次运行
+curl -b cookies.txt http://localhost:8080/api/v1/task-runs/{runId}
 
 # 查询运行日志
-curl -b cookies.txt http://localhost:8080/api/v1/jobs/{jobId}/logs
+curl -b cookies.txt http://localhost:8080/api/v1/task-runs/{runId}/logs
 
 # 取消运行中任务 / 删除历史记录
-curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}
-curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}/record
+curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/task-runs/{runId}
+curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/task-runs/{runId}/record
 ```
 
 ## 能力概览
@@ -479,14 +479,14 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}/record
 | 约束引擎 | 字段级（range、nullable、foreign_key）；组合级 SpEL（conditional、mutex） |
 | 多表编排 | 单表快捷 Job + 多表 DAG（`depends_on` 拓扑排序） |
 | 写入目标 | 单写 `writer`；多写 `writers`（同一批数据 fan-out 至 PG / ClickHouse / CSV 等） |
-| REST API | health、schemas、preview、jobs |
+| REST API | health、table-schemas、preview、task-configs、task-runs |
 
 ### P2（当前）
 
 | 能力 | 说明 |
 |------|------|
 | 采样分布 | reference 策略支持 `uniform` / `histogram` / `normal` 分布 |
-| 异步任务 | 预估行数 > `syncThreshold` 时返回 **202 Accepted**，轮询 `GET /jobs/{id}` |
+| 异步任务 | 预估行数 > `syncThreshold` 时返回 **202 Accepted**，轮询 `GET /task-runs/{id}` |
 | Aviator 表达式 | `level: custom` 或 `language: aviator` 约束 |
 | 空间约束 | JTS `within` 拓扑校验（点位于参考几何体内） |
 
@@ -494,10 +494,10 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/jobs/{jobId}/record
 
 | 能力 | 说明 |
 |------|------|
-| Job 级 seeds | 顶层 `seeds[]` 多命名数据源；字段 `strategy: seed` + `source`；支持 `link` 关联采样；**单个 seed 查询无结果时不阻断任务**，对应字段为 null（可配 `default` 兜底） |
+| Job 级 seeds | 顶层 `seeds[]` 多命名数据源；字段 `strategy: seed` + `source`；支持 `link` 关联（`match`/`sources` 声明规则，启动预加载 + 内存匹配）；**单个 seed 查询无结果时不阻断任务**，对应字段为 null（可配 `default` 兜底） |
 | Groovy 表达式 | `language: groovy` 约束与自定义表达式 |
 | 约束 repair/warn | `on_fail: repair` 自动修正；`warn` 记录告警并继续 |
-| 任务取消 | `DELETE /api/v1/jobs/{id}` 取消 PENDING/RUNNING 任务（同步/异步） |
+| 任务取消 | `DELETE /api/v1/task-runs/{id}` 取消 PENDING/RUNNING 运行（同步/异步） |
 | 大任务性能 | 单表 ≥5000 行并行生成；FK 校验 Hash 索引；upstream 行瘦身；seed 预加载与 L2 行级快照跨表复用 |
 
 ### Web 与运维（当前）

@@ -2,8 +2,8 @@ package com.datagenerator.core.engine;
 
 import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintLoader;
-import com.datagenerator.core.schema.ConfigPathResolver;
-import com.datagenerator.core.schema.YamlConfigLoader;
+import com.datagenerator.core.model.ConfigPathResolver;
+import com.datagenerator.core.model.YamlConfigLoader;
 import com.datagenerator.spi.model.Batch;
 import com.datagenerator.spi.model.DataRow;
 import com.datagenerator.spi.model.WriteResult;

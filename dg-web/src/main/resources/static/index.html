@@ -6,68 +6,260 @@
     <title>Data Generator 控制台</title>
     <link rel="stylesheet" href="/style.css">
 </head>
-<body class="tasks-page">
-<header class="header">
-    <div class="header-inner header-with-nav">
+<body class="app-shell">
+<aside class="app-sidebar">
+    <div class="sidebar-brand">
+        <div class="sidebar-brand-icon" aria-hidden="true">DG</div>
         <div>
-            <h1>Data Generator</h1>
-            <p class="subtitle">测试数据生成任务管理</p>
+            <h1 class="sidebar-title">Data Generator</h1>
+            <p class="sidebar-subtitle">测试数据生成</p>
         </div>
-        <nav class="header-nav">
-            <a href="/" class="nav-link active">任务管理</a>
-            <a href="/docs.html" class="nav-link">配置指南</a>
-            <form class="logout-form" action="/api/v1/auth/logout" method="post">
-                <button type="submit" class="btn-logout">退出</button>
-            </form>
-        </nav>
     </div>
-</header>
+    <nav class="sidebar-nav" aria-label="主导航">
+        <div class="sidebar-group">
+            <div class="sidebar-group-title">概览</div>
+            <a href="#overview" class="sidebar-link" data-view="overview">
+                <svg class="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <rect x="3" y="3" width="7" height="7" rx="1"/>
+                    <rect x="14" y="3" width="7" height="7" rx="1"/>
+                    <rect x="3" y="14" width="7" height="7" rx="1"/>
+                    <rect x="14" y="14" width="7" height="7" rx="1"/>
+                </svg>
+                <span>运行概览</span>
+            </a>
+        </div>
+        <div class="sidebar-group">
+            <div class="sidebar-group-title">任务</div>
+            <a href="#tasks" class="sidebar-link" data-view="tasks">
+                <svg class="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/>
+                    <rect x="9" y="3" width="6" height="4" rx="1"/>
+                    <line x1="9" y1="12" x2="15" y2="12"/>
+                    <line x1="9" y1="16" x2="13" y2="16"/>
+                </svg>
+                <span>任务管理</span>
+            </a>
+        </div>
+        <div class="sidebar-group sidebar-group-ai" id="sidebar-group-ai">
+            <div class="sidebar-group-title">智能</div>
+            <a href="#ai" class="sidebar-link" id="nav-ai" data-view="ai">
+                <svg class="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M12 8V4H8"/>
+                    <rect x="4" y="8" width="16" height="12" rx="2"/>
+                    <path d="M2 14h2M20 14h2M12 14v4"/>
+                    <circle cx="9" cy="13" r="1" fill="currentColor" stroke="none"/>
+                    <circle cx="15" cy="13" r="1" fill="currentColor" stroke="none"/>
+                </svg>
+                <span>AI 助手</span>
+            </a>
+        </div>
+        <div class="sidebar-group">
+            <div class="sidebar-group-title">帮助</div>
+            <a href="#docs" class="sidebar-link" data-view="docs">
+                <svg class="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                </svg>
+                <span>配置指南</span>
+            </a>
+        </div>
+    </nav>
+    <div class="sidebar-footer">
+        <div class="sidebar-group sidebar-group-footer">
+            <div class="sidebar-group-title">账户</div>
+            <form class="logout-form" action="/api/v1/auth/logout" method="post">
+                <button type="submit" class="sidebar-logout">
+                    <svg class="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                        <polyline points="16 17 21 12 16 7"/>
+                        <line x1="21" y1="12" x2="9" y2="12"/>
+                    </svg>
+                    <span>退出登录</span>
+                </button>
+            </form>
+        </div>
+    </div>
+</aside>
 
-<main class="container">
-    <section class="panel">
-        <div class="toolbar">
-            <button id="btn-new-definition" class="btn primary">新建任务</button>
-            <button id="btn-refresh-definitions" class="btn">刷新</button>
-            <label class="auto-refresh-toggle">
-                <input type="checkbox" id="auto-refresh-toggle" checked>
-                <span>自动刷新</span>
-            </label>
-        </div>
-        <div class="table-wrap definitions-table-wrap scrollbar-overlay">
-            <table class="definitions-table">
-                <thead>
-                <tr>
-                    <th>ID</th>
-                    <th>名称</th>
-                    <th>类型</th>
-                    <th>Cron</th>
-                    <th>最近状态</th>
-                    <th>操作</th>
-                </tr>
-                </thead>
-                <tbody id="definitions-body"></tbody>
-            </table>
-        </div>
-        <div id="definitions-pagination" class="pagination hidden"></div>
-    </section>
-</main>
+<div class="app-main">
+    <header class="app-topbar">
+        <h2 id="view-title" class="app-topbar-title">任务管理</h2>
+    </header>
+
+    <main class="app-content">
+        <!-- 运行概览 -->
+        <section id="view-overview" class="app-view hidden">
+            <div id="overview-stats" class="overview-stats"></div>
+            <div class="overview-grid">
+                <section class="panel overview-panel">
+                    <div class="panel-header">
+                        <h3>进行中的任务</h3>
+                        <span id="overview-active-count" class="panel-meta">0 个</span>
+                    </div>
+                    <div class="table-wrap overview-table-wrap scrollbar-overlay">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>任务 ID</th>
+                                <th>配置</th>
+                                <th>状态</th>
+                                <th>进度</th>
+                                <th>提交时间</th>
+                            </tr>
+                            </thead>
+                            <tbody id="overview-active-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+                <section class="panel overview-panel">
+                    <div class="panel-header">
+                        <h3>最近运行</h3>
+                        <span id="overview-recent-meta" class="panel-meta">最近 15 条</span>
+                    </div>
+                    <div class="table-wrap overview-table-wrap scrollbar-overlay">
+                        <table>
+                            <thead>
+                            <tr>
+                                <th>任务 ID</th>
+                                <th>配置</th>
+                                <th>状态</th>
+                                <th>耗时</th>
+                                <th>提交时间</th>
+                            </tr>
+                            </thead>
+                            <tbody id="overview-recent-body"></tbody>
+                        </table>
+                    </div>
+                </section>
+            </div>
+        </section>
+
+        <!-- 任务管理 -->
+        <section id="view-tasks" class="app-view">
+            <section class="panel panel-fill">
+                <div class="toolbar">
+                    <button id="btn-new-definition" class="btn primary">新建任务</button>
+                    <button id="btn-refresh-definitions" class="btn">刷新</button>
+                    <input type="search" id="definition-search" class="search-input" placeholder="搜索任务名称…" autocomplete="off">
+                </div>
+                <div class="table-wrap definitions-table-wrap scrollbar-overlay">
+                    <table class="definitions-table">
+                        <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>名称</th>
+                            <th>类型</th>
+                            <th>Cron</th>
+                            <th>最近状态</th>
+                            <th>操作</th>
+                        </tr>
+                        </thead>
+                        <tbody id="definitions-body"></tbody>
+                    </table>
+                </div>
+                <div id="definitions-pagination" class="pagination hidden"></div>
+            </section>
+        </section>
+
+        <!-- AI 助手 -->
+        <section id="view-ai" class="app-view hidden">
+            <div class="ai-panel panel panel-fill">
+                <header class="ai-panel-header">
+                    <p class="ai-panel-desc">基于 ReAct 的配置顾问，可创建、编辑与校验 YAML 任务配置</p>
+                    <div class="ai-panel-actions">
+                        <button id="ai-new-chat" type="button" class="ai-header-icon-btn" title="新对话">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 5v14M5 12h14"/>
+                            </svg>
+                        </button>
+                        <button id="ai-history-btn" type="button" class="ai-header-icon-btn" title="历史对话">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"/>
+                                <polyline points="12 6 12 12 16 14"/>
+                            </svg>
+                        </button>
+                        <button id="ai-clear-chat" type="button" class="ai-header-icon-btn" title="清空会话">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="3 6 5 6 21 6"/>
+                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            </svg>
+                        </button>
+                    </div>
+                </header>
+                <div id="ai-history-panel" class="ai-history-panel hidden">
+                    <div class="ai-history-list" id="ai-history-list"></div>
+                </div>
+                <div class="ai-panel-body">
+                    <div id="ai-messages" class="ai-messages scrollbar-overlay"></div>
+                    <div class="ai-composer">
+                        <form id="ai-chat-form" class="ai-composer-form">
+                            <textarea id="ai-input" rows="1" spellcheck="false"
+                                      placeholder="描述你的造数需求，例如：帮我创建一个包含用户和订单表的 Job…"></textarea>
+                            <div class="ai-composer-toolbar">
+                                <div class="ai-composer-right">
+                                    <button type="submit" id="ai-send-btn" class="ai-send-btn" aria-label="发送" disabled>
+                                        <svg class="ai-send-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                                            <path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
+                                                  stroke-linejoin="round" d="M12 19V5M12 5l-5 5M12 5l5 5"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- 配置指南 -->
+        <section id="view-docs" class="app-view hidden">
+            <div class="docs-content-shell">
+                <aside class="docs-sidebar scrollbar-overlay" id="docs-sidebar">
+                    <div class="docs-sidebar-title">目录</div>
+                    <nav id="docs-toc" class="docs-toc"></nav>
+                </aside>
+                <article class="docs-content scrollbar-overlay">
+                    <div id="docs-body" class="docs-body">
+                        <p class="docs-loading">加载中…</p>
+                    </div>
+                </article>
+            </div>
+        </section>
+    </main>
+</div>
 
 <div id="modal" class="modal hidden">
     <div class="modal-backdrop"></div>
-    <div class="modal-content">
+    <div class="modal-content modal-editor">
         <div class="modal-header">
             <h2 id="modal-title">编辑任务</h2>
-            <button id="modal-close" class="icon-btn" aria-label="关闭">&times;</button>
+            <div class="modal-header-actions">
+                <button id="guide-toggle" type="button" class="btn small" aria-expanded="true">配置参考</button>
+                <button id="modal-close" class="icon-btn" aria-label="关闭">&times;</button>
+            </div>
         </div>
-        <div class="modal-body scrollbar-overlay">
+        <div class="modal-body modal-editor-body">
             <label id="name-field" class="field">
                 <span>任务名称</span>
                 <input type="text" id="definition-name" placeholder="例如 我的测试任务">
             </label>
-            <label class="field">
-                <span>YAML 内容</span>
-                <textarea id="definition-content" rows="14" spellcheck="false"></textarea>
-            </label>
+            <div class="editor-split">
+                <div class="editor-pane">
+                    <div class="editor-pane-label">YAML 内容</div>
+                    <div id="definition-editor" class="yaml-editor-host"></div>
+                    <textarea id="definition-content" class="hidden-fallback" spellcheck="false" aria-hidden="true"></textarea>
+                </div>
+                <aside id="guide-panel" class="guide-panel scrollbar-overlay">
+                    <div class="guide-panel-header">
+                        <span>配置指南</span>
+                        <a href="#docs" class="guide-open-link">完整文档</a>
+                    </div>
+                    <nav id="guide-toc" class="guide-toc"></nav>
+                    <div id="guide-body" class="guide-body scrollbar-overlay">
+                        <p class="docs-loading">加载中…</p>
+                    </div>
+                </aside>
+            </div>
             <div id="schedule-fields" class="schedule-fields">
                 <h3 class="section-title">定时调度</h3>
                 <label class="field">
@@ -138,82 +330,11 @@
 
 <div id="toast" class="toast hidden"></div>
 
-<button id="ai-fab" class="ai-fab hidden" type="button"
-        aria-label="AI助手，可拖动">
-    <svg class="ai-fab-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-        <!-- 天线 -->
-        <path d="M12 1v2.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
-        <circle cx="12" cy="1.5" r="1.2" fill="currentColor" stroke="none"/>
-        <!-- 头部 — 宽扁 -->
-        <rect x="4" y="4" width="16" height="8.5" rx="3" fill="none" stroke="currentColor" stroke-width="2"/>
-        <!-- 眼睛 -->
-        <circle cx="8.5" cy="7.5" r="1.3" fill="currentColor" stroke="none"/>
-        <circle cx="15.5" cy="7.5" r="1.3" fill="currentColor" stroke="none"/>
-        <!-- 嘴巴 -->
-        <path d="M8 11h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-        <!-- 身体 — 宽扁 -->
-        <rect x="5.5" y="13" width="13" height="8" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/>
-        <!-- 身体面板线 -->
-        <path d="M9 16.5h6" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
-    </svg>
-</button>
-<aside id="ai-drawer" class="ai-drawer hidden" aria-label="AI助手">
-    <header class="ai-drawer-header">
-        <h2>AI助手</h2>
-        <div class="ai-drawer-header-actions">
-            <button id="ai-new-chat" type="button" class="ai-header-icon-btn" title="新对话">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M12 5v14M5 12h14"/>
-                </svg>
-            </button>
-            <button id="ai-history-btn" type="button" class="ai-header-icon-btn" title="历史对话">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <circle cx="12" cy="12" r="10"/>
-                    <polyline points="12 6 12 12 16 14"/>
-                </svg>
-            </button>
-            <button id="ai-clear-chat" type="button" class="ai-header-icon-btn" title="清空会话">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <polyline points="3 6 5 6 21 6"/>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-                </svg>
-            </button>
-            <button id="ai-drawer-close" class="ai-header-icon-btn" type="button" title="关闭" aria-label="关闭">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"/>
-                    <line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-            </button>
-        </div>
-    </header>
-    <!-- 历史对话下拉面板 -->
-    <div id="ai-history-panel" class="ai-history-panel hidden">
-        <div class="ai-history-list" id="ai-history-list"></div>
-    </div>
-    <div class="ai-drawer-body">
-        <div id="ai-messages" class="ai-messages scrollbar-overlay"></div>
-        <div class="ai-composer">
-            <form id="ai-chat-form" class="ai-composer-form">
-                <textarea id="ai-input" rows="1" spellcheck="false"
-                          placeholder="想到什么随时就发…"></textarea>
-                <div class="ai-composer-toolbar">
-                    <div class="ai-composer-right">
-                        <button type="submit" id="ai-send-btn" class="ai-send-btn" aria-label="发送" disabled>
-                            <svg class="ai-send-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                                <path fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"
-                                      stroke-linejoin="round" d="M12 19V5M12 5l-5 5M12 5l5 5"/>
-                            </svg>
-                        </button>
-                    </div>
-                </div>
-            </form>
-        </div>
-    </div>
-</aside>
-
 <script src="/csrf.js"></script>
 <script src="/scrollbar.js"></script>
-<script src="/app.js"></script>
+<script src="/markdown.js"></script>
+<script src="/docs.js"></script>
+<script type="module" src="/app.js"></script>
 <script src="/agent.js"></script>
 </body>
 </html>

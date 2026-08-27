@@ -166,7 +166,7 @@ $dirs = @(
     "logs",
     "run",
     "data\configs\jobs",
-    "data\job-logs"
+    "data\task-run-logs"
 )
 foreach ($dir in $dirs) {
     New-Item -ItemType Directory -Path (Join-Path $StagingDir $dir) -Force | Out-Null

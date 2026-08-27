@@ -27,7 +27,7 @@ class EndToEndTest {
 
         String body = """
                 {
-                  "jobConfig": "jobs/preview_smoke.yaml",
+                  "configPath": "jobs/preview_smoke.yaml",
                   "preview": { "limit": 5 }
                 }
                 """;

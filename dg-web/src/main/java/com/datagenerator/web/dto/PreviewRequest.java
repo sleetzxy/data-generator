@@ -1,6 +1,6 @@
 package com.datagenerator.web.dto;
 
-public class PreviewRequest extends JobSubmitRequest {
+public class PreviewRequest extends TaskRunSubmitRequest {
 
     private PreviewOptions preview = new PreviewOptions();
 

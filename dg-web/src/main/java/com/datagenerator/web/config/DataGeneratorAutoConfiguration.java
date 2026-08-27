@@ -9,13 +9,15 @@ import com.datagenerator.core.engine.PluginRegistry;
 import com.datagenerator.core.engine.TableGenerator;
 import com.datagenerator.core.generator.GeneratorRegistry;
 import com.datagenerator.core.reference.ReferenceDataLoader;
-import com.datagenerator.core.schema.ConfigPathResolver;
-import com.datagenerator.core.schema.YamlConfigLoader;
+import com.datagenerator.core.model.ConfigPathResolver;
+import com.datagenerator.core.model.YamlConfigLoader;
 import com.datagenerator.spi.reader.DataReader;
 import com.datagenerator.spi.writer.DataWriter;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
 
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -23,6 +25,7 @@ import java.util.List;
 import java.util.Map;
 
 @Configuration
+@EnableScheduling
 @EnableConfigurationProperties(DataGeneratorProperties.class)
 public class DataGeneratorAutoConfiguration {
 
@@ -41,9 +44,9 @@ public class DataGeneratorAutoConfiguration {
     }
 
     @Bean
-    JobRuntimeSettings jobRuntimeSettings(DataGeneratorProperties properties) {
+    TaskRunRuntimeSettings taskRunRuntimeSettings(DataGeneratorProperties properties) {
         DataGeneratorProperties.JobProperties job = properties.getJob();
-        return new JobRuntimeSettings(
+        return new TaskRunRuntimeSettings(
                 job.getSyncThreshold(),
                 job.getBatchSize(),
                 job.getThreadPoolSize(),
@@ -117,5 +120,14 @@ public class DataGeneratorAutoConfiguration {
                 tableGenerator,
                 pluginRegistry,
                 connectionRegistry);
+    }
+
+    @Bean
+    ThreadPoolTaskScheduler jobTaskScheduler() {
+        ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
+        scheduler.setPoolSize(2);
+        scheduler.setThreadNamePrefix("job-schedule-");
+        scheduler.initialize();
+        return scheduler;
     }
 }

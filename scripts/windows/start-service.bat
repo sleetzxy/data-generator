@@ -16,7 +16,7 @@ if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 if not exist "%RUN_DIR%" mkdir "%RUN_DIR%"
 if /I "%APP_ROLE%"=="web" (
     if not exist "%APP_HOME%\data\configs\jobs" mkdir "%APP_HOME%\data\configs\jobs"
-    if not exist "%APP_HOME%\data\job-logs" mkdir "%APP_HOME%\data\job-logs"
+    if not exist "%APP_HOME%\data\task-run-logs" mkdir "%APP_HOME%\data\task-run-logs"
 )
 
 if exist "%PID_FILE%" (

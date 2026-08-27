@@ -3,12 +3,12 @@ package com.datagenerator.core.constraint;
 import com.datagenerator.core.constraint.composite.ConditionalValidator;
 import com.datagenerator.core.constraint.field.RangeValidator;
 import com.datagenerator.core.expression.ExpressionEvaluatorRegistry;
-import com.datagenerator.core.schema.ConfigPathResolver;
-import com.datagenerator.core.schema.ConstraintDefinition;
-import com.datagenerator.core.schema.JobDefinition;
-import com.datagenerator.core.schema.SchemaDefinition;
-import com.datagenerator.core.schema.TableTask;
-import com.datagenerator.core.schema.YamlConfigLoader;
+import com.datagenerator.core.model.ConfigPathResolver;
+import com.datagenerator.core.model.ConstraintDefinition;
+import com.datagenerator.core.model.TaskConfig;
+import com.datagenerator.core.model.TableSchema;
+import com.datagenerator.core.model.TableTask;
+import com.datagenerator.core.model.YamlConfigLoader;
 import com.datagenerator.spi.model.ConstraintContext;
 import com.datagenerator.spi.model.DataRow;
 import org.junit.jupiter.api.BeforeEach;
@@ -86,10 +86,10 @@ class ConstraintPipelineTest {
 
     @Test
     void constraintLoader_loadsFromYamlPaths() {
-        SchemaDefinition schema = new SchemaDefinition();
+        TableSchema schema = new TableSchema();
         schema.setConstraints("fixtures/constraints/schema_rules.yaml");
 
-        JobDefinition job = new JobDefinition();
+        TaskConfig job = new TaskConfig();
         job.setConstraints("fixtures/constraints/job_rules.yaml");
 
         TableTask tableTask = new TableTask();

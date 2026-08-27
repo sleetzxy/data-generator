@@ -1,6 +1,6 @@
 package com.datagenerator.core.engine;
 
-import com.datagenerator.core.schema.SeedDefinition;
+import com.datagenerator.core.model.SeedDefinition;
 
 import java.util.ArrayDeque;
 import java.util.ArrayList;

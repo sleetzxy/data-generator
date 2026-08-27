@@ -1,6 +1,6 @@
 package com.datagenerator.core.engine;
 
-import com.datagenerator.core.schema.TableTask;
+import com.datagenerator.core.model.TableTask;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

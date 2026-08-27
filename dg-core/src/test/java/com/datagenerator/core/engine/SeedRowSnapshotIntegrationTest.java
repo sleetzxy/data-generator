@@ -1,9 +1,9 @@
 package com.datagenerator.core.engine;
 
 import com.datagenerator.core.reference.ReferenceDataLoader;
-import com.datagenerator.core.schema.FieldDefinition;
-import com.datagenerator.core.schema.SchemaDefinition;
-import com.datagenerator.core.schema.SeedDefinition;
+import com.datagenerator.core.model.FieldDefinition;
+import com.datagenerator.core.model.TableSchema;
+import com.datagenerator.core.model.SeedDefinition;
 import com.datagenerator.spi.model.Batch;
 import com.datagenerator.spi.model.DataRow;
 import com.datagenerator.spi.model.ReadRequest;
@@ -68,8 +68,8 @@ class SeedRowSnapshotIntegrationTest {
         pluginRegistry.registerWriter("mock", writer);
         TableGenerator tableGenerator = new TableGenerator(pluginRegistry);
 
-        SchemaDefinition upstreamSchema = schemaWithSeed("roadclid", "road_sample", "roadclid");
-        SchemaDefinition downstreamSchema = schemaWithSeed("roadclid", "road_sample", "roadclid");
+        TableSchema upstreamSchema = schemaWithSeed("roadclid", "road_sample", "roadclid");
+        TableSchema downstreamSchema = schemaWithSeed("roadclid", "road_sample", "roadclid");
 
         SeedRowSnapshotStore snapshots = new SeedRowSnapshotStore();
         tableGenerator.generate(
@@ -114,7 +114,7 @@ class SeedRowSnapshotIntegrationTest {
         roadSeed.setName("road_sample");
         roadSeed.setTemplate(Map.of("roadclid", "R-fixed", "jd", "113.0"));
 
-        SchemaDefinition schema = schemaWithSeed("roadclid", "road_sample", "roadclid");
+        TableSchema schema = schemaWithSeed("roadclid", "road_sample", "roadclid");
         SeedSampler sampler = new SeedSampler(
                 new ReferenceDataLoader(Map.of()),
                 null,
@@ -127,8 +127,8 @@ class SeedRowSnapshotIntegrationTest {
         assertThat(second.get("road_sample")).isSameAs(first.get("road_sample"));
     }
 
-    private static SchemaDefinition schemaWithSeed(String fieldName, String seedName, String seedField) {
-        SchemaDefinition schema = new SchemaDefinition();
+    private static TableSchema schemaWithSeed(String fieldName, String seedName, String seedField) {
+        TableSchema schema = new TableSchema();
         schema.setTable("t");
         schema.setFields(List.of(new FieldDefinition(
                 fieldName,

@@ -50,13 +50,13 @@ public class DgWebClient {
         log.info("DgWebClient 初始化完成，baseUrl: {}", baseUrl);
     }
 
-    // ==================== Config / JobDefinition ====================
+    // ==================== Config / TaskConfig ====================
 
     /** 列出所有已有配置的摘要 */
     public List<ConfigSummary> listConfigs() {
         try {
             ResponseEntity<JsonNode> resp = restTemplate.getForEntity(
-                    baseUrl + "/api/v1/job-definitions", JsonNode.class);
+                    baseUrl + "/api/v1/task-configs", JsonNode.class);
             if (!resp.getStatusCode().is2xxSuccessful()) {
                 log.warn("listConfigs 返回非 2xx: {}", resp.getStatusCode());
                 return List.of();
@@ -81,7 +81,7 @@ public class DgWebClient {
     public ConfigDetail getConfig(String fileName) {
         try {
             ResponseEntity<JsonNode> resp = restTemplate.getForEntity(
-                    baseUrl + "/api/v1/job-definitions/{name}", JsonNode.class, fileName);
+                    baseUrl + "/api/v1/task-configs/{name}", JsonNode.class, fileName);
             if (!resp.getStatusCode().is2xxSuccessful()) {
                 log.warn("getConfig({}) 返回非 2xx: {}", fileName, resp.getStatusCode());
                 return null;
@@ -114,7 +114,7 @@ public class DgWebClient {
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
 
         ResponseEntity<JsonNode> resp = restTemplate.exchange(
-                baseUrl + "/api/v1/job-definitions",
+                baseUrl + "/api/v1/task-configs",
                 HttpMethod.POST, entity, JsonNode.class);
         if (!resp.getStatusCode().is2xxSuccessful()) {
             throw new RuntimeException("创建配置失败: HTTP " + resp.getStatusCode());
@@ -133,7 +133,7 @@ public class DgWebClient {
         HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
 
         ResponseEntity<JsonNode> resp = restTemplate.exchange(
-                baseUrl + "/api/v1/job-definitions/{name}",
+                baseUrl + "/api/v1/task-configs/{name}",
                 HttpMethod.PUT, entity, JsonNode.class, fileName);
         if (!resp.getStatusCode().is2xxSuccessful()) {
             throw new RuntimeException("更新配置失败: HTTP " + resp.getStatusCode());
@@ -144,7 +144,7 @@ public class DgWebClient {
     /** 删除配置 */
     public void deleteConfig(String fileName) {
         try {
-            restTemplate.delete(baseUrl + "/api/v1/job-definitions/{name}", fileName);
+            restTemplate.delete(baseUrl + "/api/v1/task-configs/{name}", fileName);
         } catch (Exception e) {
             log.warn("删除配置失败: {}", fileName, e);
             throw new RuntimeException("删除配置失败: " + e.getMessage(), e);
@@ -156,7 +156,7 @@ public class DgWebClient {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("content", yaml);
 
-        String url = UriComponentsBuilder.fromHttpUrl(baseUrl + "/api/v1/job-definitions")
+        String url = UriComponentsBuilder.fromHttpUrl(baseUrl + "/api/v1/task-configs")
                 .queryParam("validateOnly", "true")
                 .toUriString();
 
@@ -187,15 +187,15 @@ public class DgWebClient {
         }
     }
 
-    // ==================== Schema ====================
+    // ==================== 表结构定义（table-schemas API） ====================
 
-    /** 列出所有可用 Schema 名称 */
-    public List<String> listSchemas() {
+    /** 列出所有可用表结构定义名称 */
+    public List<String> listTableSchemas() {
         try {
             ResponseEntity<JsonNode> resp = restTemplate.getForEntity(
-                    baseUrl + "/api/v1/schemas", JsonNode.class);
+                    baseUrl + "/api/v1/table-schemas", JsonNode.class);
             if (!resp.getStatusCode().is2xxSuccessful()) {
-                log.warn("listSchemas 返回非 2xx: {}", resp.getStatusCode());
+                log.warn("listTableSchemas 返回非 2xx: {}", resp.getStatusCode());
                 return List.of();
             }
             List<String> result = new ArrayList<>();
@@ -204,22 +204,24 @@ public class DgWebClient {
             }
             return result;
         } catch (Exception e) {
-            log.warn("调用 listSchemas 失败", e);
+            log.warn("调用 listTableSchemas 失败", e);
             return List.of();
         }
     }
 
-    /** 获取 Schema 的字段详情，不存在返回 null */
-    public SchemaDetail getSchema(String name) {
+    /** 获取表结构定义的字段详情，不存在返回 null */
+    public TableSchemaDetail getTableSchema(String name) {
         try {
             ResponseEntity<JsonNode> resp = restTemplate.getForEntity(
-                    baseUrl + "/api/v1/schemas/{name}", JsonNode.class, name);
+                    baseUrl + "/api/v1/table-schemas/{name}", JsonNode.class, name);
             if (!resp.getStatusCode().is2xxSuccessful()) {
-                log.warn("getSchema({}) 返回非 2xx: {}", name, resp.getStatusCode());
+                log.warn("getTableSchema({}) 返回非 2xx: {}", name, resp.getStatusCode());
                 return null;
             }
             JsonNode body = resp.getBody();
-            if (body == null || !body.has("fields")) return null;
+            if (body == null || !body.has("fields")) {
+                return null;
+            }
 
             List<FieldInfo> fields = new ArrayList<>();
             for (JsonNode f : body.get("fields")) {
@@ -228,9 +230,9 @@ public class DgWebClient {
                         getText(f, "type"),
                         false)); // dg-web 不提供 nullable 信息
             }
-            return new SchemaDetail(fields);
+            return new TableSchemaDetail(fields);
         } catch (Exception e) {
-            log.warn("获取 Schema 失败: {}", name, e);
+            log.warn("获取表结构定义失败: {}", name, e);
             return null;
         }
     }
@@ -283,8 +285,8 @@ public class DgWebClient {
     /** YAML 校验结果 */
     public record ValidationResult(boolean valid, List<String> errors) {}
 
-    /** Schema 字段详情 */
-    public record SchemaDetail(List<FieldInfo> fields) {}
+    /** 表结构定义字段详情 */
+    public record TableSchemaDetail(List<FieldInfo> fields) {}
 
     /** 字段信息 */
     public record FieldInfo(String name, String type, boolean nullable) {}

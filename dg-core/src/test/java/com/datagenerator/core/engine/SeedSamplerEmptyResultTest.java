@@ -1,8 +1,8 @@
 package com.datagenerator.core.engine;
 
-import com.datagenerator.core.schema.FieldDefinition;
-import com.datagenerator.core.schema.SchemaDefinition;
-import com.datagenerator.core.schema.SeedDefinition;
+import com.datagenerator.core.model.FieldDefinition;
+import com.datagenerator.core.model.TableSchema;
+import com.datagenerator.core.model.SeedDefinition;
 import com.datagenerator.spi.model.DataRow;
 import com.datagenerator.spi.model.ReadRequest;
 import com.datagenerator.spi.model.ReaderConfig;
@@ -49,7 +49,7 @@ class SeedSamplerEmptyResultTest {
         emptySeed.setName("wf_dict_sample");
         emptySeed.setReader(Map.of("type", "postgresql", "query", "SELECT 1 WHERE false"));
 
-        SchemaDefinition schema = new SchemaDefinition();
+        TableSchema schema = new TableSchema();
         schema.setTable("t");
         schema.setFields(List.of(
                 new FieldDefinition("id", "BIGINT", Map.of("strategy", "sequence", "start", 1, "step", 1)),

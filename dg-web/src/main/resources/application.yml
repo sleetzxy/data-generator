@@ -19,7 +19,7 @@ data-generator:
       username: postgres
       password: changeme
     dev-road:
-      type: postgresql
+      type: postgresql  
       url: jdbc:postgresql://localhost:5432/road
       username: postgres
       password: changeme
@@ -38,8 +38,8 @@ data-generator:
     thread-pool-size: 4
     generation-parallelism: 0
   storage:
-    sqlite-path: ./data/dg-jobs.db
-    log-dir: ./data/job-logs
+    sqlite-path: ./data/dg-tasks.db
+    log-dir: ./data/task-run-logs
   ai:
     enabled: true
     remote-base-url: http://localhost:8081

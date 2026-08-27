@@ -5,15 +5,15 @@ import java.util.List;
 
 public class PreviewResponse {
 
-    private JobStatus status = JobStatus.COMPLETED;
+    private TaskRunStatus status = TaskRunStatus.COMPLETED;
     private String duration;
     private List<PreviewTableResponse> tables = new ArrayList<>();
 
-    public JobStatus getStatus() {
+    public TaskRunStatus getStatus() {
         return status;
     }
 
-    public void setStatus(JobStatus status) {
+    public void setStatus(TaskRunStatus status) {
         this.status = status;
     }
 

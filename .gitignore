@@ -7,4 +7,5 @@ output/
 *.db
 **/application-local.yml
 build/
+dg-web/frontend/node_modules/
 dg-web/src/main/resources/configs/jobs/*

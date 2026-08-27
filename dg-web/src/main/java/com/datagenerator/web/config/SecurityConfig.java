@@ -100,7 +100,8 @@ public class SecurityConfig {
 
                                 "/api/v1/health",
 
-                                "/api/v1/schemas/**",
+                                "/api/v1/table-schemas/**",
+                                
 
                                 "/api/v1/config/connections")
 
