@@ -571,7 +571,7 @@ void setUp() {
 }
 
 @Test
-void recover_marksRunningJobCancelledAndWritesLog() {
+void recover_marksRunningTaskRunCancelledAndWritesLog() {
     JobResponse running = sampleJob("job-run", JobStatus.RUNNING);
     jobRepository.insert(running);
 
@@ -584,7 +584,7 @@ void recover_marksRunningJobCancelledAndWritesLog() {
 }
 
 @Test
-void recover_marksPendingJobCancelled() {
+void recover_marksPendingTaskRunCancelled() {
     jobRepository.insert(sampleJob("job-pending", JobStatus.PENDING));
 
     recovery.recover();

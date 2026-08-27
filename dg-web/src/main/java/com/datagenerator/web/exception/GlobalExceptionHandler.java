@@ -53,7 +53,7 @@ public class GlobalExceptionHandler {
 
     public ResponseEntity<ErrorResponse> handleNotFound(TaskRunNotFoundException exception) {
 
-        log.warn("Job not found: {}", exception.getMessage());
+        log.warn("Task run not found: {}", exception.getMessage());
 
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
 

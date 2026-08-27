@@ -3,7 +3,7 @@ package com.datagenerator.web.service;
 import com.datagenerator.web.internal.CollectingWriter;
 import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintLoader;
-import com.datagenerator.core.engine.JobOrchestrator;
+import com.datagenerator.core.engine.TaskRunOrchestrator;
 import com.datagenerator.core.engine.PluginRegistry;
 import com.datagenerator.core.engine.TableGenerator;
 import com.datagenerator.core.reference.ReferenceDataLoader;
@@ -35,13 +35,13 @@ public class PreviewOrchestratorFactory {
         this.readers = readers;
     }
 
-    public JobOrchestrator create(CollectingWriter collectingWriter) {
+    public TaskRunOrchestrator create(CollectingWriter collectingWriter) {
         PluginRegistry previewRegistry = new PluginRegistry(referenceDataLoader);
         for (DataReader reader : readers) {
             previewRegistry.registerReader(reader.type(), reader);
         }
         previewRegistry.registerWriter(CollectingWriter.TYPE, collectingWriter);
-        return new JobOrchestrator(
+        return new TaskRunOrchestrator(
                 configLoader,
                 constraintLoader,
                 new TableGenerator(previewRegistry, configLoader),

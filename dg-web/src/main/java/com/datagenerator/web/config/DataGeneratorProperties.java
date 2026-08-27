@@ -11,7 +11,7 @@ public class DataGeneratorProperties {
     private String configDir = "classpath:configs";
     private String writableConfigDir = "./data/configs";
     private Map<String, Map<String, Object>> connections = new HashMap<>();
-    private JobProperties job = new JobProperties();
+    private TaskRunProperties taskRun = new TaskRunProperties();
     private StorageProperties storage = new StorageProperties();
     private AuthProperties auth = new AuthProperties();
     private AiProperties ai = new AiProperties();
@@ -41,12 +41,12 @@ public class DataGeneratorProperties {
         this.connections = connections;
     }
 
-    public JobProperties getJob() {
-        return job;
+    public TaskRunProperties getTaskRun() {
+        return taskRun;
     }
 
-    public void setJob(JobProperties job) {
-        this.job = job;
+    public void setTaskRun(TaskRunProperties taskRun) {
+        this.taskRun = taskRun;
     }
 
     public StorageProperties getStorage() {
@@ -179,7 +179,7 @@ public class DataGeneratorProperties {
         }
     }
 
-    public static class JobProperties {
+    public static class TaskRunProperties {
 
         private int syncThreshold = 5000;
         private int batchSize = 1000;

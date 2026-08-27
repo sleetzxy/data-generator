@@ -16,7 +16,7 @@ class YamlConfigLoaderContentTest {
     }
 
     @Test
-    void loadJobFromContent_validYaml_parsesTables() {
+    void loadTaskConfigFromContent_validYaml_parsesTables() {
         String yaml = """
                 writer:
                   type: csv
@@ -31,14 +31,14 @@ class YamlConfigLoaderContentTest {
                           type: BIGINT
                           generator: { strategy: sequence, start: 1 }
                 """;
-        TaskConfig job = loader.loadJobFromContent(yaml);
-        assertThat(job.getTables()).hasSize(1);
-        assertThat(job.getTables().get(0).getName()).isEqualTo("t1");
+        TaskConfig taskConfig = loader.loadTaskConfigFromContent(yaml);
+        assertThat(taskConfig.getTables()).hasSize(1);
+        assertThat(taskConfig.getTables().get(0).getName()).isEqualTo("t1");
     }
 
     @Test
-    void loadJobFromContent_missingTables_throws() {
-        assertThatThrownBy(() -> loader.loadJobFromContent("writer: { type: csv }"))
+    void loadTaskConfigFromContent_missingTables_throws() {
+        assertThatThrownBy(() -> loader.loadTaskConfigFromContent("writer: { type: csv }"))
                 .isInstanceOf(ConfigLoadException.class);
     }
 }

@@ -30,14 +30,14 @@ public class TaskRunController {
     }
 
     @GetMapping
-    public TaskRunListResponse listJobs(
+    public TaskRunListResponse listTaskRuns(
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "50") int size) {
         return taskRunService.list(page, size);
     }
 
     @PostMapping
-    public ResponseEntity<TaskRunResponse> submitJob(@RequestBody TaskRunSubmitRequest request) {
+    public ResponseEntity<TaskRunResponse> submitTaskRun(@RequestBody TaskRunSubmitRequest request) {
         TaskRunSubmitResult result = taskRunService.submit(request);
         if (result.async()) {
             return ResponseEntity.accepted().body(result.response());
@@ -46,23 +46,23 @@ public class TaskRunController {
     }
 
     @GetMapping("/{id}")
-    public ResponseEntity<TaskRunResponse> getJob(@PathVariable("id") String runId) {
+    public ResponseEntity<TaskRunResponse> getTaskRun(@PathVariable("id") String runId) {
         return ResponseEntity.ok(taskRunService.getById(runId));
     }
 
     @GetMapping("/{id}/logs")
-    public List<TaskRunLogEntry> getJobLogs(@PathVariable("id") String runId) {
+    public List<TaskRunLogEntry> getTaskRunLogs(@PathVariable("id") String runId) {
         return taskRunService.getLogs(runId);
     }
 
     @DeleteMapping("/{id}")
-    public ResponseEntity<Void> cancelJob(@PathVariable("id") String runId) {
+    public ResponseEntity<Void> cancelTaskRun(@PathVariable("id") String runId) {
         taskRunService.cancel(runId);
         return ResponseEntity.noContent().build();
     }
 
     @DeleteMapping("/{id}/record")
-    public ResponseEntity<Void> removeJobRecord(@PathVariable("id") String runId) {
+    public ResponseEntity<Void> removeTaskRunRecord(@PathVariable("id") String runId) {
         taskRunService.remove(runId);
         return ResponseEntity.noContent().build();
     }

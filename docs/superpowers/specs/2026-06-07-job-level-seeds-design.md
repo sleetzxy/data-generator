@@ -194,7 +194,7 @@ tables:
 | `SeedGenerator` | 实现：从 `GenerationContext.seedSamples()` 取列 |
 | `GenerationContext` | 新增 `Map<String, DataRow> seedSamples` |
 | `TableGenerator` | 移除 `SeedTemplateApplier` 整表短路；每行先 `SeedSampler` 再逐字段生成 |
-| `JobOrchestrator` | 将 `job.getSeeds()` 传入 `TableGenerator` |
+| `TaskRunOrchestrator` | 将 `job.getSeeds()` 传入 `TableGenerator` |
 | `SeedTemplateApplier` | **删除** |
 
 ### 4.2 dg-web / 文档

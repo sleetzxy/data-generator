@@ -26,11 +26,11 @@ class TaskConfigServiceValidateYamlTest {
     @Mock
     private TaskScheduleRepository scheduleRepository;
 
-    private TaskConfigService jobDefinitionService;
+    private TaskConfigService taskConfigService;
 
     @BeforeEach
     void setUp() {
-        jobDefinitionService = new TaskConfigService(
+        taskConfigService = new TaskConfigService(
                 ConfigPathResolver.forClasspath(getClass().getClassLoader()),
                 scheduleService,
                 scheduleManager,
@@ -55,7 +55,7 @@ class TaskConfigServiceValidateYamlTest {
                           generator: { strategy: sequence, start: 1 }
                 """;
 
-        TaskConfigValidationResponse result = jobDefinitionService.validateYaml(yaml);
+        TaskConfigValidationResponse result = taskConfigService.validateYaml(yaml);
 
         assertThat(result.valid()).isTrue();
         assertThat(result.errors()).isEmpty();
@@ -63,7 +63,7 @@ class TaskConfigServiceValidateYamlTest {
 
     @Test
     void validateYaml_invalid_returnsErrors() {
-        TaskConfigValidationResponse result = jobDefinitionService.validateYaml("tables: []");
+        TaskConfigValidationResponse result = taskConfigService.validateYaml("tables: []");
 
         assertThat(result.valid()).isFalse();
         assertThat(result.errors()).isNotEmpty();

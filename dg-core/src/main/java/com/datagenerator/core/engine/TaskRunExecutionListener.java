@@ -3,9 +3,9 @@ package com.datagenerator.core.engine;
 /**
  * 任务执行过程中的进度通知，供 Web 层写入日志与持久化进度。
  */
-public interface JobExecutionListener {
+public interface TaskRunExecutionListener {
 
-    JobExecutionListener NOOP = new JobExecutionListener() {};
+    TaskRunExecutionListener NOOP = new TaskRunExecutionListener() {};
 
     default void onTableStarted(String tableName, int tableIndex, int totalTables, long plannedRows) {
     }
@@ -16,8 +16,8 @@ public interface JobExecutionListener {
             int batchFailed,
             long tableWrittenRows,
             long tableFailedRows,
-            long jobWrittenRows,
-            long jobFailedRows) {
+            long runWrittenRows,
+            long runFailedRows) {
     }
 
     default void onTableCompleted(
@@ -26,7 +26,7 @@ public interface JobExecutionListener {
             long tableFailedRows,
             int completedTables,
             int totalTables,
-            long jobWrittenRows,
-            long jobFailedRows) {
+            long runWrittenRows,
+            long runFailedRows) {
     }
 }

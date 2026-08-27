@@ -19,9 +19,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class JobOrchestratorProgressTest {
+class TaskRunOrchestratorProgressTest {
 
-    private JobOrchestrator orchestrator;
+    private TaskRunOrchestrator orchestrator;
     private AtomicInteger batchCallbacks;
 
     @BeforeEach
@@ -32,7 +32,7 @@ class JobOrchestratorProgressTest {
         PluginRegistry pluginRegistry = new PluginRegistry();
         batchCallbacks = new AtomicInteger();
         pluginRegistry.registerWriter("mock", new BatchCountingWriter(batchCallbacks));
-        orchestrator = new JobOrchestrator(
+        orchestrator = new TaskRunOrchestrator(
                 configLoader,
                 constraintLoader,
                 new TableGenerator(pluginRegistry),
@@ -42,15 +42,15 @@ class JobOrchestratorProgressTest {
 
     @Test
     void run_withListener_notifiesBatchWrites() {
-        var job = new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()))
-                .loadJob("fixtures/jobs/multi_table.yaml");
+        var taskConfig = new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()))
+                .loadTaskConfig("fixtures/jobs/multi_table.yaml");
         AtomicInteger batchEvents = new AtomicInteger();
 
-        JobResult result = orchestrator.run(
-                job,
+        TaskRunResult result = orchestrator.run(
+                taskConfig,
                 Map.of("type", "mock", "mode", "insert"),
                 new GenerationOptions(5, 3, "reject"),
-                new JobExecutionListener() {
+                new TaskRunExecutionListener() {
                     @Override
                     public void onBatchWritten(
                             String tableName,
@@ -58,8 +58,8 @@ class JobOrchestratorProgressTest {
                             int batchFailed,
                             long tableWrittenRows,
                             long tableFailedRows,
-                            long jobWrittenRows,
-                            long jobFailedRows) {
+                            long runWrittenRows,
+                            long runFailedRows) {
                         batchEvents.incrementAndGet();
                     }
                 });

@@ -267,7 +267,7 @@ public class TableGenerator {
                 futures.add(executor.submit(() -> {
                     for (int rowIndex = start; rowIndex < end; rowIndex++) {
                         if (rowIndex % 256 == 0 && Thread.currentThread().isInterrupted()) {
-                            throw new JobCancelledException();
+                            throw new TaskRunCancelledException();
                         }
                         DataRow row = generateValidRow(
                                 schema,
@@ -291,7 +291,7 @@ public class TableGenerator {
                 }));
             }
             awaitParallelFutures(futures, cancellationChecker);
-        } catch (JobCancelledException exception) {
+        } catch (TaskRunCancelledException exception) {
             cancelParallelFutures(futures);
             executor.shutdownNow();
             writerThread.interrupt();
@@ -301,12 +301,12 @@ public class TableGenerator {
             cancelParallelFutures(futures);
             executor.shutdownNow();
             writerThread.interrupt();
-            throw new JobCancelledException();
+            throw new TaskRunCancelledException();
         } catch (ExecutionException exception) {
             cancelParallelFutures(futures);
             executor.shutdownNow();
             writerThread.interrupt();
-            if (exception.getCause() instanceof JobCancelledException cancelled) {
+            if (exception.getCause() instanceof TaskRunCancelledException cancelled) {
                 throw cancelled;
             }
             throw new IllegalStateException("Parallel row generation failed", exception.getCause());
@@ -365,8 +365,8 @@ public class TableGenerator {
             }
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
-            throw new JobCancelledException();
-        } catch (JobCancelledException exception) {
+            throw new TaskRunCancelledException();
+        } catch (TaskRunCancelledException exception) {
             // 任务取消时正常退出写线程
         }
     }
@@ -377,7 +377,7 @@ public class TableGenerator {
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
             writerThread.interrupt();
-            throw new JobCancelledException();
+            throw new TaskRunCancelledException();
         }
         if (writerThread.isAlive()) {
             throw new IllegalStateException("Writer thread did not finish");

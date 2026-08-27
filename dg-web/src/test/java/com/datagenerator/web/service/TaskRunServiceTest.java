@@ -5,7 +5,7 @@ import com.datagenerator.web.dto.TaskRunStatus;
 import com.datagenerator.web.dto.TriggerSource;
 import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintLoader;
-import com.datagenerator.core.engine.JobOrchestrator;
+import com.datagenerator.core.engine.TaskRunOrchestrator;
 import com.datagenerator.core.model.YamlConfigLoader;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -19,12 +19,12 @@ import static org.mockito.Mockito.verify;
 
 class TaskRunServiceTest {
 
-    private JobOrchestrator orchestrator;
+    private TaskRunOrchestrator orchestrator;
     private TaskRunService taskRunService;
 
     @BeforeEach
     void setUp() {
-        orchestrator = mock(JobOrchestrator.class);
+        orchestrator = mock(TaskRunOrchestrator.class);
         TaskRunRuntimeSettings runtimeSettings = new TaskRunRuntimeSettings(5000, 1000, 2);
         TaskRunServiceTestSupport.TaskRunServiceContext context = TaskRunServiceTestSupport.createContext(runtimeSettings);
         taskRunService = new TaskRunService(

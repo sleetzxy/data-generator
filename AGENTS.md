@@ -246,7 +246,7 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 | `docs/superpowers/plans/2026-06-05-data-generator.md` | 整体实现计划 |
 | `docs/superpowers/specs/2026-06-05-job-log-sqlite-design.md` | 任务 SQLite 持久化设计（任务记录；运行日志已改为 `storage.log-dir` 文件） |
 | `docs/superpowers/plans/2026-06-05-job-log-sqlite.md` | 任务 SQLite 持久化实现计划 |
-| `docs/superpowers/specs/2026-06-06-job-schedule-design.md` | Job 定时调度设计规格 |
+| `docs/superpowers/specs/2026-06-06-task-schedule-design.md` | Job 定时调度设计规格 |
 | `docs/superpowers/plans/2026-06-06-job-schedule.md` | Job 定时调度实现计划 |
 | `docs/superpowers/specs/2026-06-07-job-level-seeds-design.md` | Job 级 seeds 设计规格 |
 | `dg-ai/README.md` | dg-ai 模块说明（架构、配置、API、Tool Set、RAG 知识库） |

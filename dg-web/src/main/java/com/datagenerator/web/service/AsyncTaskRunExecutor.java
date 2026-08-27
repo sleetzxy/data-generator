@@ -1,6 +1,6 @@
 package com.datagenerator.web.service;
 
-import com.datagenerator.core.engine.JobCancelledException;
+import com.datagenerator.core.engine.TaskRunCancelledException;
 import com.datagenerator.web.config.TaskRunRuntimeSettings;
 import com.datagenerator.web.dto.TaskRunProgress;
 import com.datagenerator.web.dto.TaskRunResponse;
@@ -77,7 +77,7 @@ public class AsyncTaskRunExecutor {
                     return;
                 }
                 task.run();
-            } catch (JobCancelledException cancelled) {
+            } catch (TaskRunCancelledException cancelled) {
                 markCancelled(runId);
                 taskRunLogRepository.warn(runId, "任务已取消");
             } catch (Exception exception) {

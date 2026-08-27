@@ -26,11 +26,11 @@ public class YamlConfigLoader {
         return YamlMappingUtils.toSchemaDefinition(root);
     }
 
-    public TaskConfig loadJob(String path) {
-        return loadJobFromRoot(loadYamlMap(path));
+    public TaskConfig loadTaskConfig(String path) {
+        return loadTaskConfigFromRoot(loadYamlMap(path));
     }
 
-    public TaskConfig loadJobFromContent(String yamlContent) {
+    public TaskConfig loadTaskConfigFromContent(String yamlContent) {
         if (yamlContent == null || yamlContent.isBlank()) {
             throw new ConfigLoadException("Empty YAML content");
         }
@@ -39,9 +39,9 @@ public class YamlConfigLoader {
             if (loaded == null) {
                 throw new ConfigLoadException("Empty YAML content");
             }
-            TaskConfig job = loadJobFromRoot(YamlMappingUtils.asMap(loaded));
-            validateJobHasTables(job);
-            return job;
+            TaskConfig taskConfig = loadTaskConfigFromRoot(YamlMappingUtils.asMap(loaded));
+            validateTaskConfigHasTables(taskConfig);
+            return taskConfig;
         } catch (ConfigLoadException exception) {
             throw exception;
         } catch (Exception exception) {
@@ -49,54 +49,54 @@ public class YamlConfigLoader {
         }
     }
 
-    private void validateJobHasTables(TaskConfig job) {
-        if (job.getTables() == null || job.getTables().isEmpty()) {
-            throw new ConfigLoadException("Job must define at least one table in 'tables'");
+    private void validateTaskConfigHasTables(TaskConfig taskConfig) {
+        if (taskConfig.getTables() == null || taskConfig.getTables().isEmpty()) {
+            throw new ConfigLoadException("Task config must define at least one table in 'tables'");
         }
     }
 
-    private TaskConfig loadJobFromRoot(Map<String, Object> root) {
-        TaskConfig job = new TaskConfig();
+    private TaskConfig loadTaskConfigFromRoot(Map<String, Object> root) {
+        TaskConfig taskConfig = new TaskConfig();
         String name = YamlMappingUtils.asString(root.get("name"));
         if (name == null || name.isBlank()) {
             name = YamlMappingUtils.asString(root.get("job"));
         }
-        job.setName(name);
+        taskConfig.setName(name);
         String id = YamlMappingUtils.asString(root.get("id"));
         if (id != null && !id.isBlank()) {
-            job.setId(id);
-        } else if (job.getName() != null && !job.getName().isBlank()) {
-            job.setId(job.getName());
+            taskConfig.setId(id);
+        } else if (taskConfig.getName() != null && !taskConfig.getName().isBlank()) {
+            taskConfig.setId(taskConfig.getName());
         }
         Object constraintsValue = root.get("constraints");
         if (constraintsValue instanceof List<?>) {
-            job.setInlineConstraints(YamlMappingUtils.toConstraintDefinitions(constraintsValue));
+            taskConfig.setInlineConstraints(YamlMappingUtils.toConstraintDefinitions(constraintsValue));
         } else {
-            job.setConstraints(YamlMappingUtils.asString(constraintsValue));
+            taskConfig.setConstraints(YamlMappingUtils.asString(constraintsValue));
         }
-        job.setWriter(YamlMappingUtils.asMap(root.get("writer")));
-        job.setWriters(YamlMappingUtils.asMapList(root.get("writers")));
-        job.setConnections(YamlMappingUtils.asNamedConnectionMap(root.get("connections")));
-        WriterConfigResolver.validateJobWriters(job);
+        taskConfig.setWriter(YamlMappingUtils.asMap(root.get("writer")));
+        taskConfig.setWriters(YamlMappingUtils.asMapList(root.get("writers")));
+        taskConfig.setConnections(YamlMappingUtils.asNamedConnectionMap(root.get("connections")));
+        WriterConfigResolver.validateTaskConfigWriters(taskConfig);
 
         List<SeedDefinition> seeds = new ArrayList<>();
         for (Map<String, Object> seedSource : YamlMappingUtils.asMapList(root.get("seeds"))) {
             seeds.add(YamlMappingUtils.toSeedDefinition(seedSource));
         }
-        job.setSeeds(seeds);
+        taskConfig.setSeeds(seeds);
 
         List<TableTask> tables = new ArrayList<>();
         for (Map<String, Object> tableSource : YamlMappingUtils.asMapList(root.get("tables"))) {
             tables.add(YamlMappingUtils.toTableTask(tableSource));
         }
-        job.setTables(tables);
+        taskConfig.setTables(tables);
 
         Object scheduleValue = root.get("schedule");
         if (scheduleValue != null) {
-            job.setSchedule(YamlMappingUtils.toScheduleDefinition(YamlMappingUtils.asMap(scheduleValue)));
+            taskConfig.setSchedule(YamlMappingUtils.toScheduleDefinition(YamlMappingUtils.asMap(scheduleValue)));
         }
-        JobSeedValidator.validate(job, this);
-        return job;
+        TaskSeedValidator.validate(taskConfig, this);
+        return taskConfig;
     }
 
     public ConstraintsDefinition loadConstraints(String path) {

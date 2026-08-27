@@ -20,21 +20,21 @@ public class ConstraintLoader {
         this.configLoader = configLoader;
     }
 
-    public List<ConstraintDefinition> load(TableSchema schema, TaskConfig job, TableTask tableTask) {
+    public List<ConstraintDefinition> load(TableSchema schema, TaskConfig taskConfig, TableTask tableTask) {
         List<ConstraintDefinition> schemaConstraints = loadPath(schema == null ? null : schema.getConstraints());
-        List<ConstraintDefinition> jobConstraints = loadJobConstraints(job);
+        List<ConstraintDefinition> taskConfigConstraints = loadTaskConfigConstraints(taskConfig);
         List<ConstraintDefinition> tableConstraints = loadTableConstraints(tableTask);
-        return merge(schemaConstraints, jobConstraints, tableConstraints);
+        return merge(schemaConstraints, taskConfigConstraints, tableConstraints);
     }
 
-    private List<ConstraintDefinition> loadJobConstraints(TaskConfig job) {
-        if (job == null) {
+    private List<ConstraintDefinition> loadTaskConfigConstraints(TaskConfig taskConfig) {
+        if (taskConfig == null) {
             return List.of();
         }
-        if (!job.getInlineConstraints().isEmpty()) {
-            return new ArrayList<>(job.getInlineConstraints());
+        if (!taskConfig.getInlineConstraints().isEmpty()) {
+            return new ArrayList<>(taskConfig.getInlineConstraints());
         }
-        return loadPath(job.getConstraints());
+        return loadPath(taskConfig.getConstraints());
     }
 
     private List<ConstraintDefinition> loadTableConstraints(TableTask tableTask) {
@@ -49,14 +49,14 @@ public class ConstraintLoader {
 
     public static List<ConstraintDefinition> merge(
             List<ConstraintDefinition> schemaLevel,
-            List<ConstraintDefinition> jobLevel,
+            List<ConstraintDefinition> taskConfigLevel,
             List<ConstraintDefinition> tableLevel) {
         Map<String, ConstraintDefinition> merged = new LinkedHashMap<>();
 
         for (ConstraintDefinition constraint : schemaLevel) {
             merged.put(constraintKey(constraint), constraint);
         }
-        for (ConstraintDefinition constraint : jobLevel) {
+        for (ConstraintDefinition constraint : taskConfigLevel) {
             merged.put(constraintKey(constraint), constraint);
         }
         for (ConstraintDefinition constraint : tableLevel) {

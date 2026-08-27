@@ -63,8 +63,8 @@ public class KnowledgeTools {
         }
     }
 
-    @Tool(name = "getDocSection", description = "按章节标题语义搜索，获取配置文档的指定章节完整内容（如「选择生成策略」「约束规则」「Job 级 seeds」）")
-    public String getDocSection(@ToolParam(name = "title", description = "章节标题或主题描述，如「选择生成策略」「约束规则」「Job 级 seeds」") String title,
+    @Tool(name = "getDocSection", description = "按章节标题语义搜索，获取配置文档的指定章节完整内容（如「选择生成策略」「约束规则」「Task 级 seeds」）")
+    public String getDocSection(@ToolParam(name = "title", description = "章节标题或主题描述，如「选择生成策略」「约束规则」「Task 级 seeds」") String title,
             ToolEmitter emitter) {
         try {
             List<Document> docs = knowledge.retrieve(title,

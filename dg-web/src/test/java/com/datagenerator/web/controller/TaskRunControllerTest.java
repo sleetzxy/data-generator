@@ -44,7 +44,7 @@ class TaskRunControllerTest {
     private DataGeneratorProperties dataGeneratorProperties;
 
     @Test
-    void submitJob_validRequest_delegatesToService() throws Exception {
+    void submitTaskRun_validRequest_delegatesToService() throws Exception {
         when(taskRunService.submit(any(TaskRunSubmitRequest.class)))
                 .thenReturn(new TaskRunSubmitResult(TaskRunResponse.completed("job-1", 100), false));
 
@@ -59,7 +59,7 @@ class TaskRunControllerTest {
     }
 
     @Test
-    void submitJob_whenQueued_returns202WithJobId() throws Exception {
+    void submitTaskRun_whenQueued_returns202WithRunId() throws Exception {
         TaskRunResponse pending = new TaskRunResponse();
         pending.setRunId("job-queued-1");
         pending.setStatus(TaskRunStatus.PENDING);
@@ -78,7 +78,7 @@ class TaskRunControllerTest {
     }
 
     @Test
-    void submitJob_immediateRun_returns200Or202() throws Exception {
+    void submitTaskRun_immediateRun_returns200Or202() throws Exception {
         when(taskRunService.submit(any(TaskRunSubmitRequest.class)))
                 .thenReturn(new TaskRunSubmitResult(TaskRunResponse.completed("job-sync-1", 50), false));
 

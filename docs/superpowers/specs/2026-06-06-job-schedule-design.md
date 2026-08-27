@@ -397,7 +397,7 @@ AsyncJobExecutor 任务结束路径同样经由 JobService finally 触发。
 
 | 测试类 | 覆盖 |
 |--------|------|
-| `YamlConfigLoaderTest` | `loadJob_withSchedule_parsesEnabledAndCron` |
+| `YamlConfigLoaderTest` | `loadTaskConfig_withSchedule_parsesEnabledAndCron` |
 | `JobScheduleServiceTest` | cron 校验、YAML/DB 合并、内置只读、nextRunAt、`enabled=false` 保留 cron |
 | `JobScheduleExecutorTest` | 排队：运行中 enqueue → 202 + jobId；第一个完成后第二个 `executeAccepted` |
 | `JobScheduleExecutorTest` | `cancelRunningJob_dequeuesNext` |

@@ -56,7 +56,7 @@ public class TaskConfigService {
 
     public TaskConfigValidationResponse validateYaml(String yaml) {
         try {
-            configLoader.loadJobFromContent(yaml);
+            configLoader.loadTaskConfigFromContent(yaml);
             return TaskConfigValidationResponse.ok();
         } catch (ConfigLoadException exception) {
             return TaskConfigValidationResponse.fail(List.of(exception.getMessage()));
@@ -72,8 +72,8 @@ public class TaskConfigService {
         for (String relativePath : listIncludedJobRelativePaths()) {
             String fileName = toDefinitionName(relativePath);
             String configPath = toConfigPath(relativePath);
-            TaskConfig job = configLoader.loadJob(configPath);
-            results.add(toResponse(fileName, configPath, job, null, isBuiltin(configPath)));
+            TaskConfig taskConfig = configLoader.loadTaskConfig(configPath);
+            results.add(toResponse(fileName, configPath, taskConfig, null, isBuiltin(configPath)));
         }
         results.sort(this::compareForList);
         if (nameKeyword == null || nameKeyword.isBlank()) {
@@ -116,8 +116,8 @@ public class TaskConfigService {
     public TaskConfigResponse get(String name) {
         String configPath = toConfigPath(name);
         String content = stripNameFromContent(readContent(configPath));
-        TaskConfig job = configLoader.loadJob(configPath);
-        return toResponse(name, configPath, job, content, isBuiltin(configPath));
+        TaskConfig taskConfig = configLoader.loadTaskConfig(configPath);
+        return toResponse(name, configPath, taskConfig, content, isBuiltin(configPath));
     }
 
     public TaskConfigResponse create(TaskConfigRequest request) {
@@ -128,7 +128,7 @@ public class TaskConfigService {
         String fileName = resolveCreateFileName(request, generatedId);
         String configPath = toConfigPath(fileName);
         if (exists(configPath)) {
-            throw new IllegalArgumentException("Job definition already exists: " + fileName);
+            throw new IllegalArgumentException("Task config already exists: " + fileName);
         }
         String content = injectDisplayName(contentWithId, displayName);
         validateContent(content, null);
@@ -136,8 +136,8 @@ public class TaskConfigService {
         scheduleRepository.ensureCreatedAt(configPath, Instant.now().toString());
         try {
             applySchedule(configPath, normalizedSchedule);
-            TaskConfig job = configLoader.loadJob(configPath);
-            return toResponse(fileName, configPath, job, stripNameFromContent(content), false);
+            TaskConfig taskConfig = configLoader.loadTaskConfig(configPath);
+            return toResponse(fileName, configPath, taskConfig, stripNameFromContent(content), false);
         } catch (RuntimeException exception) {
             rollbackOverlayDefinition(configPath);
             throw exception;
@@ -147,10 +147,10 @@ public class TaskConfigService {
     public TaskConfigResponse update(String name, TaskConfigRequest request) {
         String configPath = toConfigPath(name);
         if (!exists(configPath)) {
-            throw new ConfigLoadException("Job definition not found: " + name);
+            throw new ConfigLoadException("Task config not found: " + name);
         }
         if (isBuiltin(configPath)) {
-            throw new IllegalArgumentException("Built-in job definition cannot be modified: " + name);
+            throw new IllegalArgumentException("Built-in task config cannot be modified: " + name);
         }
         String displayName = requireDisplayName(request.getDisplayName());
         TaskScheduleRequest normalizedSchedule = normalizeScheduleIfPresent(request.getSchedule());
@@ -158,18 +158,18 @@ public class TaskConfigService {
         validateContent(content, configPath);
         writeContent(configPath, content);
         applySchedule(configPath, normalizedSchedule);
-        TaskConfig job = configLoader.loadJob(configPath);
-        return toResponse(name, configPath, job, stripNameFromContent(content), false);
+        TaskConfig taskConfig = configLoader.loadTaskConfig(configPath);
+        return toResponse(name, configPath, taskConfig, stripNameFromContent(content), false);
     }
 
     public void delete(String name) {
         String configPath = toConfigPath(name);
         if (isBuiltin(configPath)) {
-            throw new IllegalArgumentException("Built-in job definition cannot be deleted: " + name);
+            throw new IllegalArgumentException("Built-in task config cannot be deleted: " + name);
         }
         Path overlayFile = pathResolver.resolveOverlay(configPath);
         if (overlayFile == null || !Files.isRegularFile(overlayFile)) {
-            throw new IllegalArgumentException("Job definition not found: " + name);
+            throw new IllegalArgumentException("Task config not found: " + name);
         }
         scheduleManager.cancel(configPath);
         scheduleExecutor.clearQueue(configPath);
@@ -177,21 +177,21 @@ public class TaskConfigService {
         try {
             Files.delete(overlayFile);
         } catch (IOException exception) {
-            throw new ConfigLoadException("Failed to delete job definition: " + name, exception);
+            throw new ConfigLoadException("Failed to delete task config: " + name, exception);
         }
     }
 
     private TaskConfigResponse toResponse(
             String fileName,
             String configPath,
-            TaskConfig job,
+            TaskConfig taskConfig,
             String content,
             boolean builtin) {
-        String id = job.getId();
+        String id = taskConfig.getId();
         if (id == null || id.isBlank()) {
-            throw new ConfigLoadException("Job definition missing id: " + configPath);
+            throw new ConfigLoadException("Task config missing id: " + configPath);
         }
-        String displayName = job.getName();
+        String displayName = taskConfig.getName();
         if (displayName == null || displayName.isBlank()) {
             displayName = fileName;
         }
@@ -238,12 +238,12 @@ public class TaskConfigService {
 
     private void validateContent(String content, String excludeConfigPath) {
         if (content == null || content.isBlank()) {
-            throw new IllegalArgumentException("Job content is required");
+            throw new IllegalArgumentException("Task config content is required");
         }
         Map<?, ?> root = parseRootMapping(content);
         boolean custom = excludeConfigPath == null || !isBuiltin(excludeConfigPath);
         if (custom && root.containsKey("schedule")) {
-            throw new IllegalArgumentException("Custom job YAML must not contain schedule block");
+            throw new IllegalArgumentException("Custom task config YAML must not contain schedule block");
         }
         String id = requireId(root);
         validateIdFormat(id);
@@ -253,7 +253,7 @@ public class TaskConfigService {
     private Map<?, ?> parseRootMapping(String content) {
         Object loaded = yaml.load(content);
         if (!(loaded instanceof Map<?, ?> root)) {
-            throw new IllegalArgumentException("Job YAML must be a mapping");
+            throw new IllegalArgumentException("Task config YAML must be a mapping");
         }
         return root;
     }
@@ -281,7 +281,7 @@ public class TaskConfigService {
         try {
             Files.delete(overlayFile);
         } catch (IOException exception) {
-            throw new ConfigLoadException("Failed to rollback job definition: " + configPath, exception);
+            throw new ConfigLoadException("Failed to rollback task config: " + configPath, exception);
         }
         scheduleRepository.deleteByConfigPath(configPath);
         scheduleManager.cancel(configPath);
@@ -308,7 +308,7 @@ public class TaskConfigService {
 
     private String requireDisplayName(String displayName) {
         if (displayName == null || displayName.isBlank()) {
-            throw new IllegalArgumentException("Job display name is required");
+            throw new IllegalArgumentException("Task config display name is required");
         }
         return displayName.trim();
     }
@@ -326,7 +326,7 @@ public class TaskConfigService {
     private void validateAsciiFileName(String name) {
         if (!name.matches("[a-zA-Z][a-zA-Z0-9_-]*")) {
             throw new IllegalArgumentException(
-                    "Job file name must use ASCII letters, digits, underscore, hyphen: " + name);
+                    "Task config file name must use ASCII letters, digits, underscore, hyphen: " + name);
         }
     }
 
@@ -341,12 +341,12 @@ public class TaskConfigService {
     private String generateUniqueJobId() {
         for (int attempt = 0; attempt < 100; attempt++) {
             String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
-            String id = "job" + suffix;
+            String id = "task" + suffix;
             if (validateIdFormatQuiet(id) && !idExists(id)) {
                 return id;
             }
         }
-        throw new IllegalStateException("Failed to generate unique job id");
+        throw new IllegalStateException("Failed to generate unique task config id");
     }
 
     private boolean validateIdFormatQuiet(String id) {
@@ -355,7 +355,7 @@ public class TaskConfigService {
 
     private boolean idExists(String id) {
         for (String relativePath : listIncludedJobRelativePaths()) {
-            TaskConfig existing = configLoader.loadJob(toConfigPath(relativePath));
+            TaskConfig existing = configLoader.loadTaskConfig(toConfigPath(relativePath));
             if (id.equals(existing.getId())) {
                 return true;
             }
@@ -366,7 +366,7 @@ public class TaskConfigService {
     private String requireId(Map<?, ?> root) {
         Object idValue = root.get("id");
         if (idValue == null || String.valueOf(idValue).isBlank()) {
-            throw new IllegalArgumentException("Job YAML id field is required");
+            throw new IllegalArgumentException("Task config YAML id field is required");
         }
         return String.valueOf(idValue).trim();
     }
@@ -374,7 +374,7 @@ public class TaskConfigService {
     private void validateIdFormat(String id) {
         if (!id.matches("[a-zA-Z][a-zA-Z0-9_-]*")) {
             throw new IllegalArgumentException(
-                    "Invalid job id: " + id + " (use letters, digits, underscore, hyphen; start with letter)");
+                    "Invalid task config id: " + id + " (use letters, digits, underscore, hyphen; start with letter)");
         }
     }
 
@@ -384,9 +384,9 @@ public class TaskConfigService {
             if (configPath.equals(excludeConfigPath)) {
                 continue;
             }
-            TaskConfig existing = configLoader.loadJob(configPath);
+            TaskConfig existing = configLoader.loadTaskConfig(configPath);
             if (id.equals(existing.getId())) {
-                throw new IllegalArgumentException("Job id already exists: " + id);
+                throw new IllegalArgumentException("Task config id already exists: " + id);
             }
         }
     }
@@ -400,7 +400,7 @@ public class TaskConfigService {
         } catch (ConfigLoadException exception) {
             return false;
         } catch (IOException exception) {
-            throw new ConfigLoadException("Failed to check job definition: " + configPath, exception);
+            throw new ConfigLoadException("Failed to check task config: " + configPath, exception);
         }
     }
 
@@ -427,7 +427,7 @@ public class TaskConfigService {
         try (InputStream inputStream = pathResolver.open(configPath)) {
             return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException exception) {
-            throw new ConfigLoadException("Failed to read job definition: " + configPath, exception);
+            throw new ConfigLoadException("Failed to read task config: " + configPath, exception);
         }
     }
 
@@ -437,7 +437,7 @@ public class TaskConfigService {
             Files.createDirectories(overlayFile.getParent());
             Files.writeString(overlayFile, content, StandardCharsets.UTF_8);
         } catch (IOException exception) {
-            throw new ConfigLoadException("Failed to write job definition: " + configPath, exception);
+            throw new ConfigLoadException("Failed to write task config: " + configPath, exception);
         }
     }
 
@@ -451,10 +451,10 @@ public class TaskConfigService {
 
     private void validateName(String name) {
         if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("Job name is required");
+            throw new IllegalArgumentException("Task config name is required");
         }
         if (name.contains("..") || name.startsWith("/") || name.startsWith("\\")) {
-            throw new IllegalArgumentException("Invalid job name: " + name);
+            throw new IllegalArgumentException("Invalid task config name: " + name);
         }
     }
 

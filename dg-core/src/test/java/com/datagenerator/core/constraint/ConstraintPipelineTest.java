@@ -89,13 +89,13 @@ class ConstraintPipelineTest {
         TableSchema schema = new TableSchema();
         schema.setConstraints("fixtures/constraints/schema_rules.yaml");
 
-        TaskConfig job = new TaskConfig();
-        job.setConstraints("fixtures/constraints/job_rules.yaml");
+        TaskConfig taskConfig = new TaskConfig();
+        taskConfig.setConstraints("fixtures/constraints/job_rules.yaml");
 
         TableTask tableTask = new TableTask();
         tableTask.setConstraints("fixtures/constraints/table_rules.yaml");
 
-        List<ConstraintDefinition> merged = constraintLoader.load(schema, job, tableTask);
+        List<ConstraintDefinition> merged = constraintLoader.load(schema, taskConfig, tableTask);
 
         assertThat(merged).hasSize(2);
 

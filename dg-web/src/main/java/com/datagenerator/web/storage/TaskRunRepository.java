@@ -28,8 +28,8 @@ public class TaskRunRepository {
         this.objectMapper = objectMapper;
     }
 
-    public void insert(TaskRunResponse job) {
-        TaskRunProgress progress = progressOrEmpty(job);
+    public void insert(TaskRunResponse taskRun) {
+        TaskRunProgress progress = progressOrEmpty(taskRun);
         jdbcTemplate.update("""
                 INSERT INTO task_runs (
                     run_id, status, config_path, submitted_at, duration, error_message,
@@ -37,23 +37,23 @@ public class TaskRunRepository {
                     details_json, trigger_source
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                job.getRunId(),
-                job.getStatus().name(),
-                job.getConfigPath(),
-                job.getSubmittedAt(),
-                job.getDuration(),
-                job.getErrorMessage(),
+                taskRun.getRunId(),
+                taskRun.getStatus().name(),
+                taskRun.getConfigPath(),
+                taskRun.getSubmittedAt(),
+                taskRun.getDuration(),
+                taskRun.getErrorMessage(),
                 progress.getTotalTables(),
                 progress.getCompletedTables(),
                 progress.getTotalRows(),
                 progress.getWrittenRows(),
                 progress.getFailedRows(),
-                serializeDetails(job.getDetails()),
-                triggerSourceName(job.getTriggerSource()));
+                serializeDetails(taskRun.getDetails()),
+                triggerSourceName(taskRun.getTriggerSource()));
     }
 
-    public void update(TaskRunResponse job) {
-        TaskRunProgress progress = progressOrEmpty(job);
+    public void update(TaskRunResponse taskRun) {
+        TaskRunProgress progress = progressOrEmpty(taskRun);
         jdbcTemplate.update("""
                 UPDATE task_runs SET
                     status = ?,
@@ -70,19 +70,19 @@ public class TaskRunRepository {
                     trigger_source = ?
                 WHERE run_id = ?
                 """,
-                job.getStatus().name(),
-                job.getConfigPath(),
-                job.getSubmittedAt(),
-                job.getDuration(),
-                job.getErrorMessage(),
+                taskRun.getStatus().name(),
+                taskRun.getConfigPath(),
+                taskRun.getSubmittedAt(),
+                taskRun.getDuration(),
+                taskRun.getErrorMessage(),
                 progress.getTotalTables(),
                 progress.getCompletedTables(),
                 progress.getTotalRows(),
                 progress.getWrittenRows(),
                 progress.getFailedRows(),
-                serializeDetails(job.getDetails()),
-                triggerSourceName(job.getTriggerSource()),
-                job.getRunId());
+                serializeDetails(taskRun.getDetails()),
+                triggerSourceName(taskRun.getTriggerSource()),
+                taskRun.getRunId());
     }
 
     public Optional<TaskRunResponse> findById(String runId) {
@@ -168,8 +168,8 @@ public class TaskRunRepository {
         return response;
     }
 
-    private static TaskRunProgress progressOrEmpty(TaskRunResponse job) {
-        return job.getProgress() == null ? new TaskRunProgress(0, 0, 0, 0, 0) : job.getProgress();
+    private static TaskRunProgress progressOrEmpty(TaskRunResponse taskRun) {
+        return taskRun.getProgress() == null ? new TaskRunProgress(0, 0, 0, 0, 0) : taskRun.getProgress();
     }
 
     private static String triggerSourceName(TriggerSource triggerSource) {
@@ -183,7 +183,7 @@ public class TaskRunRepository {
         try {
             return objectMapper.writeValueAsString(details);
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Failed to serialize job details", exception);
+            throw new IllegalStateException("Failed to serialize task run details", exception);
         }
     }
 
@@ -194,7 +194,7 @@ public class TaskRunRepository {
         try {
             return objectMapper.readValue(json, TABLE_DETAIL_LIST);
         } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("Failed to deserialize job details", exception);
+            throw new IllegalStateException("Failed to deserialize task run details", exception);
         }
     }
 }

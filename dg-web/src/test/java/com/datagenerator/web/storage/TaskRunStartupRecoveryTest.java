@@ -35,8 +35,8 @@ class TaskRunStartupRecoveryTest {
     }
 
     @Test
-    void recover_marksRunningJobCancelledAndWritesLog() {
-        taskRunRepository.insert(sampleJob("job-run", TaskRunStatus.RUNNING));
+    void recover_marksRunningTaskRunCancelledAndWritesLog() {
+        taskRunRepository.insert(sampleTaskRun("job-run", TaskRunStatus.RUNNING));
 
         recovery.recover();
 
@@ -47,8 +47,8 @@ class TaskRunStartupRecoveryTest {
     }
 
     @Test
-    void recover_marksPendingJobCancelled() {
-        taskRunRepository.insert(sampleJob("job-pending", TaskRunStatus.PENDING));
+    void recover_marksPendingTaskRunCancelled() {
+        taskRunRepository.insert(sampleTaskRun("job-pending", TaskRunStatus.PENDING));
 
         recovery.recover();
 
@@ -56,7 +56,7 @@ class TaskRunStartupRecoveryTest {
                 .isEqualTo(TaskRunStatus.CANCELLED);
     }
 
-    private static TaskRunResponse sampleJob(String runId, TaskRunStatus status) {
+    private static TaskRunResponse sampleTaskRun(String runId, TaskRunStatus status) {
         return new TaskRunResponse(
                 runId,
                 status,

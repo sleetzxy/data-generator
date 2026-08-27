@@ -12,7 +12,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
- * Resolves job/table writer configuration into one or more writer maps.
+ * 解析任务配置/表级 writer 配置，展开为一条或多条 writer map。
  * {@code writer} is single-write; {@code writers} is multi-write.
  */
 public final class WriterConfigResolver {
@@ -43,12 +43,12 @@ public final class WriterConfigResolver {
     }
 
     public static List<Map<String, Object>> resolveDefaultWriters(
-            TaskConfig job, List<Map<String, Object>> runtimeWriters) {
-        if (!job.getWriters().isEmpty()) {
-            return copyWriterMaps(job.getWriters());
+            TaskConfig taskConfig, List<Map<String, Object>> runtimeWriters) {
+        if (!taskConfig.getWriters().isEmpty()) {
+            return copyWriterMaps(taskConfig.getWriters());
         }
-        if (!job.getWriter().isEmpty()) {
-            return List.of(new HashMap<>(job.getWriter()));
+        if (!taskConfig.getWriter().isEmpty()) {
+            return List.of(new HashMap<>(taskConfig.getWriter()));
         }
         return copyWriterMaps(runtimeWriters);
     }
@@ -67,16 +67,16 @@ public final class WriterConfigResolver {
     public static void validateWriterMapsConfigured(String tableName, List<Map<String, Object>> writerMaps) {
         if (writerMaps == null || writerMaps.isEmpty()) {
             throw new IllegalArgumentException(
-                    "表 '" + tableName + "' 缺少 writer 配置，请在表级或 job 级指定 writer 或 writers");
+                    "表 '" + tableName + "' 缺少 writer 配置，请在表级或任务配置级指定 writer 或 writers");
         }
         for (int index = 0; index < writerMaps.size(); index++) {
             validateWriterEntry(writerMaps.get(index), "表 '" + tableName + "' writers[" + index + "]");
         }
     }
 
-    public static void validateJobWriters(TaskConfig job) {
-        validateScopeWriters(job.getWriter(), job.getWriters(), "job '" + job.getId() + "'");
-        for (TableTask table : job.getTables()) {
+    public static void validateTaskConfigWriters(TaskConfig taskConfig) {
+        validateScopeWriters(taskConfig.getWriter(), taskConfig.getWriters(), "task config '" + taskConfig.getId() + "'");
+        for (TableTask table : taskConfig.getTables()) {
             validateScopeWriters(
                     table.getWriter(),
                     table.getWriters(),

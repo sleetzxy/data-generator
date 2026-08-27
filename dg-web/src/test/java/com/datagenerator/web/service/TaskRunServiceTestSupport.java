@@ -7,7 +7,7 @@ import com.datagenerator.web.storage.TaskRunRepository;
 import com.datagenerator.web.storage.SqliteTestSupport;
 import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintLoader;
-import com.datagenerator.core.engine.JobOrchestrator;
+import com.datagenerator.core.engine.TaskRunOrchestrator;
 import com.datagenerator.core.model.YamlConfigLoader;
 import org.springframework.jdbc.core.JdbcTemplate;
 
@@ -55,7 +55,7 @@ public final class TaskRunServiceTestSupport {
 
     public static TaskRunService createTaskRunService(
             TaskRunRuntimeSettings runtimeSettings,
-            JobOrchestrator orchestrator,
+            TaskRunOrchestrator orchestrator,
             YamlConfigLoader configLoader) {
         TaskRunServiceContext context = createContext(runtimeSettings);
         TaskRunService taskRunService = new TaskRunService(

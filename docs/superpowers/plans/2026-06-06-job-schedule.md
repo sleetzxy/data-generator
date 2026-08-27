@@ -8,7 +8,7 @@
 
 **Tech Stack:** Java 21, Spring Boot 3.3, Spring Scheduling, Spring JDBC, sqlite-jdbc, SnakeYAML, JUnit 5, Mockito, AssertJ
 
-**Spec:** `docs/superpowers/specs/2026-06-06-job-schedule-design.md`
+**Spec:** `docs/superpowers/specs/2026-06-06-task-schedule-design.md`
 
 ---
 
@@ -86,8 +86,8 @@ dg-web/
 
 ```java
 @Test
-void loadJob_withSchedule_parsesEnabledAndCron() {
-    JobDefinition job = loader.loadJob("fixtures/jobs/scheduled_job.yaml");
+void loadTaskConfig_withSchedule_parsesEnabledAndCron() {
+    JobDefinition job = loader.loadTaskConfig("fixtures/jobs/scheduled_job.yaml");
     assertThat(job.getSchedule()).isPresent();
     ScheduleDefinition schedule = job.getSchedule().orElseThrow();
     assertThat(schedule.isEnabled()).isTrue();
@@ -111,10 +111,10 @@ tables:
 
 - [ ] **Step 2: 运行测试确认失败**
 
-Run: `mvn -pl dg-core test -Dtest=YamlConfigLoaderTest#loadJob_withSchedule_parsesEnabledAndCron -q`
+Run: `mvn -pl dg-core test -Dtest=YamlConfigLoaderTest#loadTaskConfig_withSchedule_parsesEnabledAndCron -q`
 Expected: FAIL（`getSchedule` 不存在）
 
-- [ ] **Step 3: 实现 ScheduleDefinition + JobDefinition + loadJob 解析**
+- [ ] **Step 3: 实现 ScheduleDefinition + JobDefinition + loadTaskConfig 解析**
 
 `ScheduleDefinition.java`：
 
@@ -143,7 +143,7 @@ public java.util.Optional<ScheduleDefinition> getSchedule() {
 public void setSchedule(ScheduleDefinition schedule) { this.schedule = schedule; }
 ```
 
-在 `YamlConfigLoader.loadJob` 末尾解析：
+在 `YamlConfigLoader.loadTaskConfig` 末尾解析：
 
 ```java
 Object scheduleValue = root.get("schedule");
@@ -363,7 +363,7 @@ git commit -m "feat(web): 新增调度 DTO 与 ReadOnlyScheduleException"
 - [ ] **Step 2–4: TDD 实现**
 
 核心逻辑：
-- 内置（`isBuiltin(configPath)`）：从 `YamlConfigLoader.loadJob` 读 `schedule`，`editable=false`
+- 内置（`isBuiltin(configPath)`）：从 `YamlConfigLoader.loadTaskConfig` 读 `schedule`，`editable=false`
 - 自定义：从 `JobScheduleRepository`，`editable=true`
 - Cron 校验：`CronExpression.isValid(cron)`
 - `nextRunAt`：`CronExpression.parse(cron).next(LocalDateTime.now())` 转 ISO-8601
@@ -406,7 +406,7 @@ public JobResponse createQueuedJob(String configPath, TriggerSource triggerSourc
 }
 
 public void executeAccepted(String jobId) {
-    // 从 repository 加载，load job definition，走 executeAndStore / async
+    // 从 repository 加载，load task config，走 executeAndStore / async
 }
 
 private JobSubmitResult doSubmit(JobSubmitRequest request, TriggerSource triggerSource) {
@@ -491,10 +491,10 @@ git commit -m "feat(web): 新增 JobScheduleExecutor FIFO 排队"
 @EnableScheduling
 public class SchedulingConfig {
     @Bean
-    ThreadPoolTaskScheduler jobTaskScheduler() {
+    ThreadPoolTaskScheduler taskScheduleScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(2);
-        scheduler.setThreadNamePrefix("job-schedule-");
+        scheduler.setThreadNamePrefix("task-schedule-");
         scheduler.initialize();
         return scheduler;
     }
@@ -536,7 +536,7 @@ git commit -m "feat(web): 新增 JobScheduleManager Cron 注册与启动加载"
 
 ```java
 if (!isBuiltin(configPath) && root.containsKey("schedule")) {
-    throw new IllegalArgumentException("Custom job YAML must not contain schedule block");
+    throw new IllegalArgumentException("Custom task config YAML must not contain schedule block");
 }
 ```
 
@@ -644,7 +644,7 @@ git commit -m "feat(web): 控制台支持 Job 调度配置与展示"
 ## Task 13: 全量测试与 Spec 状态更新
 
 **Files:**
-- Modify: `docs/superpowers/specs/2026-06-06-job-schedule-design.md`（状态 → 已批准）
+- Modify: `docs/superpowers/specs/2026-06-06-task-schedule-design.md`（状态 → 已批准）
 
 - [ ] **Step 1: 全量测试**
 
@@ -664,7 +664,7 @@ Expected: BUILD SUCCESS
 - [ ] **Step 4: Commit**
 
 ```bash
-git add docs/superpowers/specs/2026-06-06-job-schedule-design.md
+git add docs/superpowers/specs/2026-06-06-task-schedule-design.md
 git commit -m "test: Job 定时调度全量测试通过"
 ```
 

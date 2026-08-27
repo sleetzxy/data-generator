@@ -38,7 +38,7 @@ class TaskConfigControllerTest {
     private MockMvc mockMvc;
 
     @MockBean
-    private TaskConfigService jobDefinitionService;
+    private TaskConfigService taskConfigService;
 
     @MockBean
     private TaskScheduleService jobScheduleService;
@@ -51,7 +51,7 @@ class TaskConfigControllerTest {
 
     @Test
     void listDefinitions_withNameFilter_delegatesToService() throws Exception {
-        when(jobDefinitionService.list("演示"))
+        when(taskConfigService.list("演示"))
                 .thenReturn(List.of(new TaskConfigResponse(
                         "demo_job",
                         "jobs/demo_job.yaml",
@@ -68,7 +68,7 @@ class TaskConfigControllerTest {
 
     @Test
     void getDefinition_byName_returnsContent() throws Exception {
-        when(jobDefinitionService.get("single_customer"))
+        when(taskConfigService.get("single_customer"))
                 .thenReturn(new TaskConfigResponse(
                         "single_customer",
                         "jobs/single_customer.yaml",
@@ -90,7 +90,7 @@ class TaskConfigControllerTest {
 
     @Test
     void getSchedule_byName_returnsSchedule() throws Exception {
-        when(jobDefinitionService.get("demo_job"))
+        when(taskConfigService.get("demo_job"))
                 .thenReturn(new TaskConfigResponse(
                         "demo_job",
                         "jobs/demo_job.yaml",
@@ -112,7 +112,7 @@ class TaskConfigControllerTest {
 
     @Test
     void getSchedule_builtinJob_returnsReadOnlySchedule() throws Exception {
-        when(jobDefinitionService.get("builtin"))
+        when(taskConfigService.get("builtin"))
                 .thenReturn(new TaskConfigResponse(
                         "builtin",
                         "jobs/builtin.yaml",
@@ -133,7 +133,7 @@ class TaskConfigControllerTest {
 
     @Test
     void updateSchedule_builtinJob_returns403() throws Exception {
-        when(jobDefinitionService.get("builtin"))
+        when(taskConfigService.get("builtin"))
                 .thenReturn(new TaskConfigResponse(
                         "builtin",
                         "jobs/builtin.yaml",
@@ -149,12 +149,12 @@ class TaskConfigControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"enabled\":true,\"cron\":\"0 0 2 * * ?\"}"))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("Schedule is read-only for builtin job: jobs/builtin.yaml"));
+                .andExpect(jsonPath("$.message").value("Schedule is read-only for builtin task config: jobs/builtin.yaml"));
     }
 
     @Test
     void updateSchedule_customJob_returnsSchedule() throws Exception {
-        when(jobDefinitionService.get("demo_job"))
+        when(taskConfigService.get("demo_job"))
                 .thenReturn(new TaskConfigResponse(
                         "demo_job",
                         "jobs/demo_job.yaml",

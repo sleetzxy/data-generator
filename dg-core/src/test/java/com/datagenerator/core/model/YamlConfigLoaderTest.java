@@ -42,25 +42,25 @@ class YamlConfigLoaderTest {
     }
 
     @Test
-    void loadJob_parsesId() {
-        TaskConfig job = loader.loadJob("fixtures/jobs/ecommerce_seed.yaml");
-        assertThat(job.getId()).isEqualTo("ecommerce_seed");
-        assertThat(job.getName()).isEqualTo("电商种子数据造数");
+    void loadTaskConfig_parsesId() {
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/ecommerce_seed.yaml");
+        assertThat(taskConfig.getId()).isEqualTo("ecommerce_seed");
+        assertThat(taskConfig.getName()).isEqualTo("电商种子数据造数");
     }
 
     @Test
-    void loadJob_parsesDependsOn() {
-        TaskConfig job = loader.loadJob("fixtures/jobs/ecommerce_seed.yaml");
-        assertThat(job.getName()).isEqualTo("电商种子数据造数");
-        assertThat(job.getConstraints()).contains("constraints/global_rules.yaml");
+    void loadTaskConfig_parsesDependsOn() {
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/ecommerce_seed.yaml");
+        assertThat(taskConfig.getName()).isEqualTo("电商种子数据造数");
+        assertThat(taskConfig.getConstraints()).contains("constraints/global_rules.yaml");
 
-        TableTask orders = job.findTable("orders").orElseThrow();
+        TableTask orders = taskConfig.findTable("orders").orElseThrow();
         assertThat(orders.getDependsOn()).containsExactly("customers");
         assertThat(orders.getCount()).isEqualTo(5000);
         assertThat(orders.getSchema()).isEqualTo("schemas/order.yaml");
         assertThat(orders.getConstraints()).contains("constraints/order_rules.yaml");
 
-        TableTask orderItems = job.findTable("order_items").orElseThrow();
+        TableTask orderItems = taskConfig.findTable("order_items").orElseThrow();
         assertThat(orderItems.getDependsOn()).containsExactly("orders");
     }
 
@@ -91,33 +91,33 @@ class YamlConfigLoaderTest {
     }
 
     @Test
-    void loadJob_parsesJobLevelConnections() {
-        TaskConfig job = loader.loadJob("fixtures/jobs/job_level_connections.yaml");
+    void loadTaskConfig_parsesJobLevelConnections() {
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/job_level_connections.yaml");
 
-        assertThat(job.getConnections()).containsKey("my-pg");
-        assertThat(job.getConnections().get("my-pg")).containsEntry(
+        assertThat(taskConfig.getConnections()).containsKey("my-pg");
+        assertThat(taskConfig.getConnections().get("my-pg")).containsEntry(
                 "url", "jdbc:postgresql://job-host:5432/jobdb");
-        assertThat(job.getWriter()).containsEntry("connection", "my-pg");
+        assertThat(taskConfig.getWriter()).containsEntry("connection", "my-pg");
     }
 
     @Test
-    void loadJob_parsesWriters() {
-        TaskConfig job = loader.loadJob("fixtures/jobs/multi_write.yaml");
-        assertThat(job.getWriter()).isEmpty();
-        assertThat(job.getWriters()).hasSize(2);
-        assertThat(job.getWriters().get(0)).containsEntry("type", "postgresql");
-        assertThat(job.getWriters().get(1)).containsEntry("type", "clickhouse");
+    void loadTaskConfig_parsesWriters() {
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/multi_write.yaml");
+        assertThat(taskConfig.getWriter()).isEmpty();
+        assertThat(taskConfig.getWriters()).hasSize(2);
+        assertThat(taskConfig.getWriters().get(0)).containsEntry("type", "postgresql");
+        assertThat(taskConfig.getWriters().get(1)).containsEntry("type", "clickhouse");
     }
 
     @Test
-    void loadJob_inlineSchemaAndConstraints_parsesTableDefinition() {
-        TaskConfig job = loader.loadJob("fixtures/jobs/inline_single.yaml");
-        assertThat(job.getName()).isEqualTo("内联 Schema 单表造数");
-        assertThat(job.getWriter()).containsEntry("type", "csv");
-        assertThat(job.getWriter()).containsEntry("connection", "local-csv");
-        assertThat(job.getWriter()).containsEntry("mode", "insert");
+    void loadTaskConfig_inlineSchemaAndConstraints_parsesTableDefinition() {
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/inline_single.yaml");
+        assertThat(taskConfig.getName()).isEqualTo("内联 Schema 单表造数");
+        assertThat(taskConfig.getWriter()).containsEntry("type", "csv");
+        assertThat(taskConfig.getWriter()).containsEntry("connection", "local-csv");
+        assertThat(taskConfig.getWriter()).containsEntry("mode", "insert");
 
-        TableTask customers = job.findTable("customers").orElseThrow();
+        TableTask customers = taskConfig.findTable("customers").orElseThrow();
         assertThat(customers.getSchema()).isNull();
         assertThat(customers.getSchemaDefinition()).isNotNull();
         assertThat(customers.getSchemaDefinition().getTable()).isEqualTo("customers");
@@ -127,50 +127,50 @@ class YamlConfigLoaderTest {
     }
 
     @Test
-    void loadJob_withSchedule_parsesEnabledAndCron() {
-        TaskConfig job = loader.loadJob("fixtures/jobs/scheduled_job.yaml");
-        assertThat(job.getId()).isEqualTo("scheduled_job");
-        assertThat(job.getName()).isEqualTo("定时任务示例");
+    void loadTaskConfig_withSchedule_parsesEnabledAndCron() {
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/scheduled_job.yaml");
+        assertThat(taskConfig.getId()).isEqualTo("scheduled_job");
+        assertThat(taskConfig.getName()).isEqualTo("定时任务示例");
 
-        ScheduleDefinition schedule = job.getSchedule().orElseThrow();
+        ScheduleDefinition schedule = taskConfig.getSchedule().orElseThrow();
         assertThat(schedule.isEnabled()).isTrue();
         assertThat(schedule.getCron()).isEqualTo("0 0 2 * * ?");
     }
 
     @Test
-    void loadJob_legacyJobField_fallsBackToName() {
-        TaskConfig job = loader.loadJob("fixtures/jobs/legacy_job_field.yaml");
-        assertThat(job.getName()).isEqualTo("legacy_name");
-        assertThat(job.getId()).isEqualTo("legacy_job_field");
+    void loadTaskConfig_legacyJobField_fallsBackToName() {
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/legacy_job_field.yaml");
+        assertThat(taskConfig.getName()).isEqualTo("legacy_name");
+        assertThat(taskConfig.getId()).isEqualTo("legacy_job_field");
     }
 
     @Test
-    void loadJob_withJobLevelSeeds_parsesAndValidates() {
-        TaskConfig job = loader.loadJob("fixtures/jobs/job_level_seeds.yaml");
-        assertThat(job.getId()).isEqualTo("job_level_seeds");
-        assertThat(job.getSeeds()).hasSize(2);
-        assertThat(job.getSeeds().get(0).getName()).isEqualTo("header");
-        assertThat(job.getSeeds().get(1).getLink().getSeed()).isEqualTo("header");
+    void loadTaskConfig_withJobLevelSeeds_parsesAndValidates() {
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/job_level_seeds.yaml");
+        assertThat(taskConfig.getId()).isEqualTo("job_level_seeds");
+        assertThat(taskConfig.getSeeds()).hasSize(2);
+        assertThat(taskConfig.getSeeds().get(0).getName()).isEqualTo("header");
+        assertThat(taskConfig.getSeeds().get(1).getLink().getSeed()).isEqualTo("header");
     }
 
     @Test
-    void loadJob_unquotedOnKeyword_parsesLinkParentColumn() {
-        TaskConfig job = loader.loadJob("fixtures/jobs/seed_link_on_keyword.yaml");
+    void loadTaskConfig_unquotedOnKeyword_parsesLinkParentColumn() {
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/seed_link_on_keyword.yaml");
 
-        assertThat(job.getSeeds().get(1).getLink().resolveParentColumn()).isEqualTo("id");
+        assertThat(taskConfig.getSeeds().get(1).getLink().resolveParentColumn()).isEqualTo("id");
     }
 
     @Test
     void overridePath_resolvesTableByName() {
-        TaskConfig job = loader.loadJob("fixtures/jobs/ecommerce_seed.yaml");
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/ecommerce_seed.yaml");
 
-        Optional<TableTask> customers = job.findTable("customers");
-        Optional<TableTask> orders = job.findTable("orders");
+        Optional<TableTask> customers = taskConfig.findTable("customers");
+        Optional<TableTask> orders = taskConfig.findTable("orders");
 
         assertThat(customers).isPresent();
         assertThat(orders).isPresent();
-        assertThat(OverridePathResolver.resolveTable(job, "tables.customers.count")).isSameAs(customers.get());
-        assertThat(OverridePathResolver.resolveTable(job, "tables.orders.count")).isSameAs(orders.get());
+        assertThat(OverridePathResolver.resolveTable(taskConfig, "tables.customers.count")).isSameAs(customers.get());
+        assertThat(OverridePathResolver.resolveTable(taskConfig, "tables.orders.count")).isSameAs(orders.get());
         assertThat(OverridePathResolver.resolveField(customers.get(), "tables.customers.count")).isEqualTo("count");
     }
 }

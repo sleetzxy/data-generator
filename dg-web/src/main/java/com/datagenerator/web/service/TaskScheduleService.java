@@ -31,8 +31,8 @@ public class TaskScheduleService {
 
     public TaskScheduleResponse resolveSchedule(String configPath, boolean builtin) {
         if (builtin) {
-            TaskConfig job = configLoader.loadJob(configPath);
-            Optional<ScheduleDefinition> schedule = job.getSchedule();
+            TaskConfig taskConfig = configLoader.loadTaskConfig(configPath);
+            Optional<ScheduleDefinition> schedule = taskConfig.getSchedule();
             if (schedule.isEmpty()) {
                 return toResponse(false, null, false);
             }

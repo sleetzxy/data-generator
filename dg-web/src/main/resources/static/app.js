@@ -33,6 +33,7 @@ tables:
 let editingDefinition = null;
 let editingScheduleEditable = false;
 let allRunsCache = [];
+let allDefinitionsCache = [];
 let definitionsCache = [];
 let definitionsPage = 1;
 let definitionSearchQuery = '';
@@ -160,7 +161,8 @@ function computeRunStats(runs) {
 }
 
 function resolveConfigDisplayName(configPath) {
-    const def = definitionsCache.find(item => item.path === configPath);
+    const cache = allDefinitionsCache.length ? allDefinitionsCache : definitionsCache;
+    const def = cache.find(item => item.path === configPath);
     return def?.name || configPath?.split('/').pop()?.replace(/\.yaml$/, '') || configPath || '-';
 }
 
@@ -250,17 +252,15 @@ function renderOverviewRecentRuns(runs) {
 
 async function loadOverview() {
     const [configs, runs] = await Promise.all([
-        definitionsCache.length ? Promise.resolve(definitionsCache) : api('/task-configs'),
-        fetchAllJobs()
+        api('/task-configs'),
+        fetchAllTaskRuns()
     ]);
-    if (!definitionsCache.length) {
-        definitionsCache = configs;
-    }
+    allDefinitionsCache = configs;
     allRunsCache = runs;
     rebuildRunIndexes();
 
     const stats = computeRunStats(runs);
-    renderOverviewStats(stats, configs.length);
+    renderOverviewStats(stats, allDefinitionsCache.length);
     renderOverviewActiveRuns(runs);
     renderOverviewRecentRuns(runs);
     overviewLoaded = true;
@@ -270,7 +270,7 @@ async function viewOverviewRun(runId, configPath) {
     const name = resolveConfigDisplayName(configPath);
     try {
         if (!allRunsCache.length) {
-            allRunsCache = await fetchAllJobs();
+            allRunsCache = await fetchAllTaskRuns();
         }
         const runs = allRunsCache
             .filter(run => run.configPath === configPath)
@@ -291,7 +291,7 @@ function syncOverviewInPlace() {
         return;
     }
     const stats = computeRunStats(allRunsCache);
-    renderOverviewStats(stats, definitionsCache.length);
+    renderOverviewStats(stats, allDefinitionsCache.length);
     renderOverviewActiveRuns(allRunsCache);
     renderOverviewRecentRuns(allRunsCache);
 }
@@ -420,14 +420,14 @@ function applyScrollState(element, state) {
     }
 }
 
-function buildLogDetailSummaryHtml(job, progress) {
+function buildLogDetailSummaryHtml(taskRun, progress) {
     return `
             <div class="detail-summary log-detail-summary">
-                <div class="detail-item"><label>状态</label>${statusBadge(job.status)}</div>
-                <div class="detail-item"><label>提交时间</label>${formatTime(job.submittedAt)}</div>
-                <div class="detail-item"><label>耗时</label>${escapeHtml(job.duration || '-')}</div>
+                <div class="detail-item"><label>状态</label>${statusBadge(taskRun.status)}</div>
+                <div class="detail-item"><label>提交时间</label>${formatTime(taskRun.submittedAt)}</div>
+                <div class="detail-item"><label>耗时</label>${escapeHtml(taskRun.duration || '-')}</div>
                 <div class="detail-item"><label>写入行数</label>${progress.writtenRows ?? 0} / ${progress.totalRows ?? 0}</div>
-                ${job.errorMessage ? `<div class="detail-item detail-item-wide"><label>错误</label>${escapeHtml(job.errorMessage)}</div>` : ''}
+                ${taskRun.errorMessage ? `<div class="detail-item detail-item-wide"><label>错误</label>${escapeHtml(taskRun.errorMessage)}</div>` : ''}
             </div>`;
 }
 
@@ -458,13 +458,13 @@ function applyLogModalScrollState(state) {
     applyScrollState(logView, state.logView);
 }
 
-function updateRunRowCells(runId, job, progress) {
+function updateRunRowCells(runId, taskRun, progress) {
     const row = document.querySelector(`#log-runs-body tr.log-run-row[data-run-id="${cssEscape(runId)}"]`);
     if (!row) {
         return;
     }
-    row.cells[1].innerHTML = statusBadge(job.status);
-    row.cells[3].textContent = job.duration || '-';
+    row.cells[1].innerHTML = statusBadge(taskRun.status);
+    row.cells[3].textContent = taskRun.duration || '-';
     row.cells[4].textContent = `${progress.writtenRows ?? 0} / ${progress.totalRows ?? 0}`;
 }
 
@@ -508,7 +508,7 @@ function resolveAutoRefreshIntervalMs() {
 }
 
 async function refreshRuntimeSnapshot() {
-    allRunsCache = await fetchAllJobs();
+    allRunsCache = await fetchAllTaskRuns();
     rebuildRunIndexes();
 
     if (currentView === 'overview') {
@@ -579,7 +579,7 @@ function findActiveRun(path) {
     return activeRunByPath.get(path) || null;
 }
 
-async function fetchAllJobs() {
+async function fetchAllTaskRuns() {
     const all = [];
     let page = 1;
     const size = 100;
@@ -606,11 +606,13 @@ async function loadDefinitions(options = {}) {
     const fullRender = options.fullRender === true;
     const tbody = document.getElementById('definitions-body');
     try {
-        const [items, runs] = await Promise.all([
+        const [items, allItems, runs] = await Promise.all([
             api(buildTaskConfigListUrl()),
-            fetchAllJobs()
+            api('/task-configs'),
+            fetchAllTaskRuns()
         ]);
         allRunsCache = runs;
+        allDefinitionsCache = allItems;
         definitionsCache = items;
         rebuildRunIndexes();
 
@@ -871,7 +873,7 @@ function toggleGuidePanel() {
     const button = document.getElementById('guide-toggle');
     const hidden = panel.classList.toggle('hidden');
     button.setAttribute('aria-expanded', String(!hidden));
-    button.textContent = hidden ? '显示参考' : '配置参考';
+    button.textContent = hidden ? '显示指南' : '配置指南';
 }
 
 async function ensureGuideLoaded() {
@@ -1172,7 +1174,7 @@ async function runDefinition(path, scheduleEnabled = false) {
 async function viewDefinitionLogs(name, path) {
     try {
         if (!allRunsCache.length) {
-            allRunsCache = await fetchAllJobs();
+            allRunsCache = await fetchAllTaskRuns();
         }
         const runs = allRunsCache
             .filter(run => run.configPath === path)
@@ -1341,22 +1343,22 @@ async function loadRunLogDetailContent(runId) {
     }
 
     try {
-        const job = await api(`/task-runs/${encodeURIComponent(runId)}`);
-        const run = logModalContext.runs.find(item => item.runId === runId) || job;
-        const progress = job.progress || {};
+        const taskRun = await api(`/task-runs/${encodeURIComponent(runId)}`);
+        const run = logModalContext.runs.find(item => item.runId === runId) || taskRun;
+        const progress = taskRun.progress || {};
 
         const logs = await api(`/task-runs/${encodeURIComponent(runId)}/logs`);
         logModalContext.logDetailLines[runId] = logs;
         panel.innerHTML = `
-            ${buildLogDetailSummaryHtml(job, progress)}
+            ${buildLogDetailSummaryHtml(taskRun, progress)}
             <pre class="log-view scrollbar-overlay">${renderLogLines(logs)}</pre>
         `;
         window.initOverlayScrollbars?.(panel);
 
-        if (run && run.status !== job.status) {
-            run.status = job.status;
+        if (run && run.status !== taskRun.status) {
+            run.status = taskRun.status;
         }
-        updateRunRowCells(runId, job, progress);
+        updateRunRowCells(runId, taskRun, progress);
     } catch (err) {
         panel.textContent = '加载失败: ' + err.message;
     }
@@ -1375,17 +1377,17 @@ async function refreshLogDetailContent(runId, previousLogScrollState) {
         : null);
 
     try {
-        const job = await api(`/task-runs/${encodeURIComponent(runId)}`);
-        const progress = job.progress || {};
+        const taskRun = await api(`/task-runs/${encodeURIComponent(runId)}`);
+        const progress = taskRun.progress || {};
         const logs = await api(`/task-runs/${encodeURIComponent(runId)}/logs`);
         logModalContext.logDetailLines[runId] = logs;
 
         const summary = panel.querySelector('.log-detail-summary');
         if (summary) {
-            summary.outerHTML = buildLogDetailSummaryHtml(job, progress);
+            summary.outerHTML = buildLogDetailSummaryHtml(taskRun, progress);
         } else {
             panel.innerHTML = `
-                ${buildLogDetailSummaryHtml(job, progress)}
+                ${buildLogDetailSummaryHtml(taskRun, progress)}
                 <pre class="log-view scrollbar-overlay">${renderLogLines(logs)}</pre>
             `;
             window.initOverlayScrollbars?.(panel);
@@ -1399,12 +1401,12 @@ async function refreshLogDetailContent(runId, previousLogScrollState) {
 
         const run = logModalContext.runs.find(item => item.runId === runId);
         if (run) {
-            run.status = job.status;
-            run.duration = job.duration;
+            run.status = taskRun.status;
+            run.duration = taskRun.duration;
             run.writtenRows = progress.writtenRows;
             run.totalRows = progress.totalRows;
         }
-        updateRunRowCells(runId, job, progress);
+        updateRunRowCells(runId, taskRun, progress);
     } catch (_) {
         // 自动刷新失败时不打断当前阅读
     }
@@ -1466,7 +1468,7 @@ async function stopRun(runId) {
     }
     if (!confirm(`确定停止任务 ${runId}？`)) return;
     try {
-        const runs = await fetchAllJobs();
+        const runs = await fetchAllTaskRuns();
         allRunsCache = runs;
         const current = runs.find(run => run.runId === runId);
         if (!current || !isActiveRun(current.status)) {

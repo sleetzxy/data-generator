@@ -7,10 +7,10 @@ final class CancellationChecks {
 
     static void throwIfCancelled(CancellationChecker checker) {
         if (checker != null && checker.isCancelled()) {
-            throw new JobCancelledException();
+            throw new TaskRunCancelledException();
         }
         if (Thread.currentThread().isInterrupted()) {
-            throw new JobCancelledException();
+            throw new TaskRunCancelledException();
         }
     }
 }

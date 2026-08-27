@@ -51,7 +51,7 @@ class TaskConfigServiceTest {
 
         assertThat(created.getFileName()).isEqualTo("demo_job");
         assertThat(created.getName()).isEqualTo("演示任务");
-        assertThat(created.getId()).matches("job[a-f0-9]{8}");
+        assertThat(created.getId()).matches("task[a-f0-9]{8}");
         assertThat(created.isBuiltin()).isFalse();
         assertThat(created.isReadOnly()).isFalse();
 
@@ -251,7 +251,7 @@ class TaskConfigServiceTest {
     void create_withoutId_generatesUniqueId() {
         var created = service.create(request("demo_job", "演示任务", "tables: []"));
 
-        assertThat(created.getId()).matches("job[a-f0-9]{8}");
+        assertThat(created.getId()).matches("task[a-f0-9]{8}");
         assertThat(created.getContent()).contains("id: " + created.getId());
     }
 
@@ -260,7 +260,7 @@ class TaskConfigServiceTest {
         var created = service.create(request("demo_job", "演示任务", "id: user_id\ntables: []"));
 
         assertThat(created.getId()).isNotEqualTo("user_id");
-        assertThat(created.getId()).matches("job[a-f0-9]{8}");
+        assertThat(created.getId()).matches("task[a-f0-9]{8}");
     }
 
     @Test
@@ -346,7 +346,7 @@ class TaskConfigServiceTest {
         var created = service.create(request(null, "我的测试任务", "tables: []"));
 
         assertThat(created.getFileName()).isEqualTo(created.getId());
-        assertThat(created.getFileName()).matches("job[a-f0-9]{8}");
+        assertThat(created.getFileName()).matches("task[a-f0-9]{8}");
         assertThat(created.getName()).isEqualTo("我的测试任务");
     }
 

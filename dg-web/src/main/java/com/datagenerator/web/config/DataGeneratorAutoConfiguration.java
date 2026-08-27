@@ -4,7 +4,7 @@ import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintLoader;
 import com.datagenerator.core.constraint.ConstraintPipeline;
 import com.datagenerator.core.constraint.ConstraintValidatorRegistry;
-import com.datagenerator.core.engine.JobOrchestrator;
+import com.datagenerator.core.engine.TaskRunOrchestrator;
 import com.datagenerator.core.engine.PluginRegistry;
 import com.datagenerator.core.engine.TableGenerator;
 import com.datagenerator.core.generator.GeneratorRegistry;
@@ -45,12 +45,12 @@ public class DataGeneratorAutoConfiguration {
 
     @Bean
     TaskRunRuntimeSettings taskRunRuntimeSettings(DataGeneratorProperties properties) {
-        DataGeneratorProperties.JobProperties job = properties.getJob();
+        DataGeneratorProperties.TaskRunProperties taskRunProps = properties.getTaskRun();
         return new TaskRunRuntimeSettings(
-                job.getSyncThreshold(),
-                job.getBatchSize(),
-                job.getThreadPoolSize(),
-                job.getGenerationParallelism());
+                taskRunProps.getSyncThreshold(),
+                taskRunProps.getBatchSize(),
+                taskRunProps.getThreadPoolSize(),
+                taskRunProps.getGenerationParallelism());
     }
 
     @Bean
@@ -108,13 +108,13 @@ public class DataGeneratorAutoConfiguration {
     }
 
     @Bean
-    JobOrchestrator jobOrchestrator(
+    TaskRunOrchestrator taskRunOrchestrator(
             YamlConfigLoader yamlConfigLoader,
             ConstraintLoader constraintLoader,
             TableGenerator tableGenerator,
             PluginRegistry pluginRegistry,
             ConnectionRegistry connectionRegistry) {
-        return new JobOrchestrator(
+        return new TaskRunOrchestrator(
                 yamlConfigLoader,
                 constraintLoader,
                 tableGenerator,
@@ -123,10 +123,10 @@ public class DataGeneratorAutoConfiguration {
     }
 
     @Bean
-    ThreadPoolTaskScheduler jobTaskScheduler() {
+    ThreadPoolTaskScheduler taskScheduleScheduler() {
         ThreadPoolTaskScheduler scheduler = new ThreadPoolTaskScheduler();
         scheduler.setPoolSize(2);
-        scheduler.setThreadNamePrefix("job-schedule-");
+        scheduler.setThreadNamePrefix("task-schedule-");
         scheduler.initialize();
         return scheduler;
     }

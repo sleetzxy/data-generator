@@ -16,13 +16,13 @@ class WriterConfigResolverTest {
 
     @Test
     void resolveDefaultWriters_jobWritersOverrideRuntime() {
-        TaskConfig job = new TaskConfig();
-        job.setWriters(List.of(
+        TaskConfig taskConfig = new TaskConfig();
+        taskConfig.setWriters(List.of(
                 Map.of("type", "postgresql", "connection", "pg"),
                 Map.of("type", "clickhouse", "connection", "ck")));
 
         List<Map<String, Object>> resolved = WriterConfigResolver.resolveDefaultWriters(
-                job, List.of(Map.of("type", "csv", "connection", "local")));
+                taskConfig, List.of(Map.of("type", "csv", "connection", "local")));
 
         assertThat(resolved).hasSize(2);
         assertThat(resolved.get(0)).containsEntry("type", "postgresql");
@@ -43,13 +43,13 @@ class WriterConfigResolverTest {
     }
 
     @Test
-    void validateJobWriters_bothWriterAndWritersAtJobLevel_throws() {
-        TaskConfig job = new TaskConfig();
-        job.setId("demo");
-        job.setWriter(Map.of("type", "postgresql"));
-        job.setWriters(List.of(Map.of("type", "clickhouse")));
+    void validateTaskConfigWriters_bothWriterAndWritersAtJobLevel_throws() {
+        TaskConfig taskConfig = new TaskConfig();
+        taskConfig.setId("demo");
+        taskConfig.setWriter(Map.of("type", "postgresql"));
+        taskConfig.setWriters(List.of(Map.of("type", "clickhouse")));
 
-        assertThatThrownBy(() -> WriterConfigResolver.validateJobWriters(job))
+        assertThatThrownBy(() -> WriterConfigResolver.validateTaskConfigWriters(taskConfig))
                 .isInstanceOf(ConfigLoadException.class)
                 .hasMessageContaining("writer 与 writers");
     }

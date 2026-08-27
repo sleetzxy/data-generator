@@ -5,12 +5,12 @@ public final class OverridePathResolver {
     private OverridePathResolver() {
     }
 
-    public static TableTask resolveTable(TaskConfig job, String overridePath) {
+    public static TableTask resolveTable(TaskConfig taskConfig, String overridePath) {
         String[] parts = overridePath.split("\\.", 3);
         if (parts.length < 3 || !"tables".equals(parts[0])) {
             throw new ConfigLoadException("Invalid override path (expected tables.{name}.{field}): " + overridePath);
         }
-        return job.findTable(parts[1])
+        return taskConfig.findTable(parts[1])
                 .orElseThrow(() -> new ConfigLoadException("Unknown table in override path: " + parts[1]));
     }
 

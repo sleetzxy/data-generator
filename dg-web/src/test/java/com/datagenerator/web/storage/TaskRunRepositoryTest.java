@@ -25,8 +25,8 @@ class TaskRunRepositoryTest {
 
     @Test
     void insert_and_findById_returnsJob() {
-        TaskRunResponse job = sampleJob("job-1", TaskRunStatus.PENDING);
-        repository.insert(job);
+        TaskRunResponse taskRun = sampleTaskRun("job-1", TaskRunStatus.PENDING);
+        repository.insert(taskRun);
 
         Optional<TaskRunResponse> found = repository.findById("job-1");
         assertThat(found).isPresent();
@@ -36,8 +36,8 @@ class TaskRunRepositoryTest {
 
     @Test
     void update_persistsStatusAndProgress() {
-        repository.insert(sampleJob("job-2", TaskRunStatus.PENDING));
-        TaskRunResponse running = sampleJob("job-2", TaskRunStatus.RUNNING);
+        repository.insert(sampleTaskRun("job-2", TaskRunStatus.PENDING));
+        TaskRunResponse running = sampleTaskRun("job-2", TaskRunStatus.RUNNING);
         running.setProgress(new TaskRunProgress(2, 1, 100, 50, 0));
         running.setDuration("1.2s");
 
@@ -51,9 +51,9 @@ class TaskRunRepositoryTest {
 
     @Test
     void listAll_ordersBySubmittedAtDesc() {
-        TaskRunResponse older = sampleJob("job-old", TaskRunStatus.COMPLETED);
+        TaskRunResponse older = sampleTaskRun("job-old", TaskRunStatus.COMPLETED);
         older.setSubmittedAt("2026-01-01T00:00:00Z");
-        TaskRunResponse newer = sampleJob("job-new", TaskRunStatus.COMPLETED);
+        TaskRunResponse newer = sampleTaskRun("job-new", TaskRunStatus.COMPLETED);
         newer.setSubmittedAt("2026-06-01T00:00:00Z");
         repository.insert(older);
         repository.insert(newer);
@@ -64,7 +64,7 @@ class TaskRunRepositoryTest {
 
     @Test
     void delete_removesJob() {
-        repository.insert(sampleJob("job-del", TaskRunStatus.COMPLETED));
+        repository.insert(sampleTaskRun("job-del", TaskRunStatus.COMPLETED));
         repository.delete("job-del");
         assertThat(repository.findById("job-del")).isEmpty();
     }
@@ -81,8 +81,8 @@ class TaskRunRepositoryTest {
 
     @Test
     void findByStatusIn_returnsMatchingJobs() {
-        repository.insert(sampleJob("job-run", TaskRunStatus.RUNNING));
-        repository.insert(sampleJob("job-done", TaskRunStatus.COMPLETED));
+        repository.insert(sampleTaskRun("job-run", TaskRunStatus.RUNNING));
+        repository.insert(sampleTaskRun("job-done", TaskRunStatus.COMPLETED));
 
         assertThat(repository.findByStatusIn(List.of(TaskRunStatus.RUNNING, TaskRunStatus.PENDING)))
                 .extracting(TaskRunResponse::getRunId)
@@ -92,9 +92,9 @@ class TaskRunRepositoryTest {
     @Test
     void listPage_and_countAll_supportPagination() {
         for (int index = 0; index < 5; index++) {
-            TaskRunResponse job = sampleJob("job-" + index, TaskRunStatus.COMPLETED);
-            job.setSubmittedAt("2026-06-0" + (index + 1) + "T00:00:00Z");
-            repository.insert(job);
+            TaskRunResponse taskRun = sampleTaskRun("job-" + index, TaskRunStatus.COMPLETED);
+            taskRun.setSubmittedAt("2026-06-0" + (index + 1) + "T00:00:00Z");
+            repository.insert(taskRun);
         }
 
         assertThat(repository.countAll()).isEqualTo(5);
@@ -103,12 +103,12 @@ class TaskRunRepositoryTest {
     }
 
     private void insertJob(String runId, String configPath, TaskRunStatus status) {
-        TaskRunResponse job = sampleJob(runId, status);
-        job.setConfigPath(configPath);
-        repository.insert(job);
+        TaskRunResponse taskRun = sampleTaskRun(runId, status);
+        taskRun.setConfigPath(configPath);
+        repository.insert(taskRun);
     }
 
-    private static TaskRunResponse sampleJob(String runId, TaskRunStatus status) {
+    private static TaskRunResponse sampleTaskRun(String runId, TaskRunStatus status) {
         return new TaskRunResponse(
                 runId,
                 status,

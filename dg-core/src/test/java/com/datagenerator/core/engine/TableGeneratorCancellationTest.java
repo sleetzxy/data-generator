@@ -47,7 +47,7 @@ class TableGeneratorCancellationTest {
                         writer,
                         List.of(),
                         options))
-                .isInstanceOf(JobCancelledException.class);
+                .isInstanceOf(TaskRunCancelledException.class);
 
         assertThat(writer.rows()).hasSizeLessThan(2_000);
         assertThat(writer.rows().size()).isGreaterThanOrEqualTo(500);
@@ -69,7 +69,7 @@ class TableGeneratorCancellationTest {
                         writer,
                         List.of(),
                         options))
-                .isInstanceOf(JobCancelledException.class);
+                .isInstanceOf(TaskRunCancelledException.class);
 
         assertThat(writer.rows()).hasSizeLessThan(12_000);
     }

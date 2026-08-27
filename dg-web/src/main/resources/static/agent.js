@@ -20,7 +20,7 @@ let aiCurrentMessages = [];
 const AGENT_WELCOME_TEXT = `我是 Data Generator 的 AI 配置顾问，基于 ReAct（推理-行动）范式工作。
 
 我可以帮你：
-· 创建新的数据生成 Job 配置（表结构、生成策略、Writer、约束、Seed）
+· 创建新的数据生成任务配置（表结构、生成策略、Writer、约束、Seed）
 · 编辑已有配置
 · 查询和删除配置
 · 校验 YAML 语法
@@ -541,9 +541,9 @@ function stripInternalAgentHints(text) {
     }
     return text
         .replace(/<!--\s*dg-(?:intent|ref):[^>]*-->/g, '')
-        .replace(/\[Job YAML 草稿已存入会话[\s\S]*?\]/g, '')
+        .replace(/\[任务配置 YAML 草稿已存入会话[\s\S]*?\]/g, '')
         .replace(/\[意图快照已存入会话[\s\S]*?\]/g, '')
-        .replace(/\[参考 Job「[\s\S]*?\]/g, '')
+        .replace(/\[参考任务配置「[\s\S]*?\]/g, '')
         .replace(/\n\[提示\][^\n]*/g, '');
 }
 
@@ -703,7 +703,7 @@ function setToolResult(toolCallId, text) {
     }
 }
 
-function handleAgentJobSaved() {
+function handleAgentTaskConfigSaved() {
     if (typeof loadDefinitions === 'function') {
         loadDefinitions({ fullRender: true });
     }
@@ -775,7 +775,7 @@ function handleSseEvent(eventName, data) {
                     createToolBlock(toolName, toolCallId);
                 }
                 if (parsed.name === 'saveConfig') {
-                    handleAgentJobSaved();
+                    handleAgentTaskConfigSaved();
                 }
             } catch (_) {
                 createToolBlock(data, Date.now().toString());
@@ -791,7 +791,7 @@ function handleSseEvent(eventName, data) {
             break;
         }
         case 'job_saved':
-            handleAgentJobSaved();
+            handleAgentTaskConfigSaved();
             break;
         case 'validation_error': {
             try {

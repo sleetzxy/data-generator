@@ -293,7 +293,7 @@ tables:
 | 随机邮箱 | `email` | `{ strategy: email, domain: example.com }` |
 | 18 位身份证号及派生 | `idcard` | `{ strategy: idcard, areaCode: '440115' }` / `{ strategy: idcard, from: sfzh, part: age }` |
 | 引用上游表某列 | `reference` | `{ strategy: reference, source: orders, field: id }` |
-| 从 Job seeds 采样 | `seed` | `{ strategy: seed, source: location_sample }`（见 [Job 级 seeds](#job-级-seeds从真实数据出发)） |
+| 从 Task seeds 采样 | `seed` | `{ strategy: seed, source: location_sample }`（见 [Job 级 seeds](#job-级-seeds从真实数据出发)） |
 | 表达式计算列值 | `expression` | `{ strategy: expression, expression: "price * qty", language: spel }` |
 
 ### 通用 generator 参数

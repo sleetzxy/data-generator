@@ -20,9 +20,9 @@ import java.util.stream.Collectors;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class JobOrchestratorTest {
+class TaskRunOrchestratorTest {
 
-    private JobOrchestrator orchestrator;
+    private TaskRunOrchestrator orchestrator;
     private CollectingWriter writer;
 
     @BeforeEach
@@ -33,7 +33,7 @@ class JobOrchestratorTest {
         PluginRegistry pluginRegistry = new PluginRegistry();
         writer = new CollectingWriter();
         pluginRegistry.registerWriter("mock", writer);
-        orchestrator = new JobOrchestrator(
+        orchestrator = new TaskRunOrchestrator(
                 configLoader,
                 constraintLoader,
                 new TableGenerator(pluginRegistry),
@@ -42,12 +42,12 @@ class JobOrchestratorTest {
     }
 
     @Test
-    void jobOrchestrator_multiTableWithForeignKeyReference() {
-        var job = new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()))
-                .loadJob("fixtures/jobs/multi_table.yaml");
+    void taskRunOrchestrator_multiTableWithForeignKeyReference() {
+        var taskConfig = new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()))
+                .loadTaskConfig("fixtures/jobs/multi_table.yaml");
 
-        JobResult result = orchestrator.run(
-                job,
+        TaskRunResult result = orchestrator.run(
+                taskConfig,
                 Map.of("type", "mock", "mode", "insert"),
                 GenerationOptions.defaults());
 
@@ -67,7 +67,7 @@ class JobOrchestratorTest {
     }
 
     @Test
-    void jobOrchestrator_multiWrite_writesToAllTargets() {
+    void taskRunOrchestrator_multiWrite_writesToAllTargets() {
         CollectingWriter pgWriter = new CollectingWriter();
         CollectingWriter ckWriter = new CollectingWriter();
         PluginRegistry pluginRegistry = new PluginRegistry();
@@ -75,20 +75,20 @@ class JobOrchestratorTest {
         pluginRegistry.registerWriter("mock-ck", ckWriter);
         YamlConfigLoader configLoader =
                 new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()));
-        JobOrchestrator multiWriteOrchestrator = new JobOrchestrator(
+        TaskRunOrchestrator multiWriteOrchestrator = new TaskRunOrchestrator(
                 configLoader,
                 new ConstraintLoader(configLoader),
                 new TableGenerator(pluginRegistry),
                 pluginRegistry,
                 new ConnectionRegistry());
 
-        var job = configLoader.loadJob("fixtures/jobs/multi_table.yaml");
-        job.setWriters(List.of(
+        var taskConfig = configLoader.loadTaskConfig("fixtures/jobs/multi_table.yaml");
+        taskConfig.setWriters(List.of(
                 Map.of("type", "mock-pg", "mode", "insert"),
                 Map.of("type", "mock-ck", "mode", "insert")));
 
-        JobResult result = multiWriteOrchestrator.run(
-                job, List.<Map<String, Object>>of(), GenerationOptions.defaults());
+        TaskRunResult result = multiWriteOrchestrator.run(
+                taskConfig, List.<Map<String, Object>>of(), GenerationOptions.defaults());
 
         assertThat(result.writtenRows()).isEqualTo(15);
         assertThat(pgWriter.rowsByTable("customers")).hasSize(5);
@@ -98,13 +98,13 @@ class JobOrchestratorTest {
     }
 
     @Test
-    void jobOrchestrator_jobWriterOverridesRuntimeWriter() {
-        var job = new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()))
-                .loadJob("fixtures/jobs/multi_table.yaml");
-        job.setWriter(Map.of("type", "mock", "mode", "insert"));
+    void taskRunOrchestrator_taskConfigWriterOverridesRuntimeWriter() {
+        var taskConfig = new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()))
+                .loadTaskConfig("fixtures/jobs/multi_table.yaml");
+        taskConfig.setWriter(Map.of("type", "mock", "mode", "insert"));
 
-        JobResult result = orchestrator.run(
-                job,
+        TaskRunResult result = orchestrator.run(
+                taskConfig,
                 Map.of("type", "postgresql", "mode", "insert"),
                 GenerationOptions.defaults());
 
@@ -113,7 +113,7 @@ class JobOrchestratorTest {
     }
 
     @Test
-    void jobOrchestrator_jobLevelConnections_resolvesNamedWriter() {
+    void taskRunOrchestrator_taskLevelConnections_resolvesNamedWriter() {
         CapturingWriter capturingWriter = new CapturingWriter();
         PluginRegistry pluginRegistry = new PluginRegistry();
         pluginRegistry.registerWriter("postgresql", capturingWriter);
@@ -125,16 +125,16 @@ class JobOrchestratorTest {
                         "url", "jdbc:postgresql://global:5432/globaldb",
                         "username", "global",
                         "password", "global-pass")));
-        JobOrchestrator jobOrchestrator = new JobOrchestrator(
+        TaskRunOrchestrator taskRunOrchestrator = new TaskRunOrchestrator(
                 configLoader,
                 new ConstraintLoader(configLoader),
                 new TableGenerator(pluginRegistry, configLoader),
                 pluginRegistry,
                 globalRegistry);
 
-        var job = configLoader.loadJob("fixtures/jobs/job_level_connections.yaml");
+        var taskConfig = configLoader.loadTaskConfig("fixtures/jobs/job_level_connections.yaml");
 
-        JobResult result = jobOrchestrator.run(job, List.of(), GenerationOptions.defaults());
+        TaskRunResult result = taskRunOrchestrator.run(taskConfig, List.of(), GenerationOptions.defaults());
 
         assertThat(result.writtenRows()).isEqualTo(1);
         assertThat(capturingWriter.config().url()).isEqualTo("jdbc:postgresql://job-host:5432/jobdb");

@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public class JobOrchestrator {
+public class TaskRunOrchestrator {
 
     private final YamlConfigLoader configLoader;
     private final ConstraintLoader constraintLoader;
@@ -27,7 +27,7 @@ public class JobOrchestrator {
     private final PluginRegistry pluginRegistry;
     private final ConnectionRegistry connectionRegistry;
 
-    public JobOrchestrator(
+    public TaskRunOrchestrator(
             YamlConfigLoader configLoader,
             ConstraintLoader constraintLoader,
             TableGenerator tableGenerator,
@@ -40,31 +40,31 @@ public class JobOrchestrator {
         this.connectionRegistry = connectionRegistry;
     }
 
-    public JobResult run(TaskConfig job, Map<String, Object> writerConfigMap, GenerationOptions options) {
-        return run(job, writerConfigMap, options, JobExecutionListener.NOOP);
+    public TaskRunResult run(TaskConfig taskConfig, Map<String, Object> writerConfigMap, GenerationOptions options) {
+        return run(taskConfig, writerConfigMap, options, TaskRunExecutionListener.NOOP);
     }
 
-    public JobResult run(
-            TaskConfig job,
+    public TaskRunResult run(
+            TaskConfig taskConfig,
             Map<String, Object> writerConfigMap,
             GenerationOptions options,
-            JobExecutionListener listener) {
-        return run(job, WriterConfigResolver.fromRuntimeOverride(writerConfigMap), options, listener);
+            TaskRunExecutionListener listener) {
+        return run(taskConfig, WriterConfigResolver.fromRuntimeOverride(writerConfigMap), options, listener);
     }
 
-    public JobResult run(
-            TaskConfig job,
+    public TaskRunResult run(
+            TaskConfig taskConfig,
             List<Map<String, Object>> runtimeWriters,
             GenerationOptions options) {
-        return run(job, runtimeWriters, options, JobExecutionListener.NOOP);
+        return run(taskConfig, runtimeWriters, options, TaskRunExecutionListener.NOOP);
     }
 
-    public JobResult run(
-            TaskConfig job,
+    public TaskRunResult run(
+            TaskConfig taskConfig,
             List<Map<String, Object>> runtimeWriters,
             GenerationOptions options,
-            JobExecutionListener listener) {
-        List<TableTask> sortedTables = DagSorter.sort(new ArrayList<>(job.getTables()));
+            TaskRunExecutionListener listener) {
+        List<TableTask> sortedTables = DagSorter.sort(new ArrayList<>(taskConfig.getTables()));
         Map<String, List<DataRow>> upstreamTables = new HashMap<>();
         List<TableResult> details = new ArrayList<>();
         long totalRows = 0;
@@ -73,8 +73,8 @@ public class JobOrchestrator {
         int totalTables = sortedTables.size();
 
         List<Map<String, Object>> defaultWriters =
-                WriterConfigResolver.resolveDefaultWriters(job, runtimeWriters);
-        ConnectionRegistry effectiveRegistry = connectionRegistry.withOverlay(job.getConnections());
+                WriterConfigResolver.resolveDefaultWriters(taskConfig, runtimeWriters);
+        ConnectionRegistry effectiveRegistry = connectionRegistry.withOverlay(taskConfig.getConnections());
         DataWriter writer = null;
         String activeWriterKey = null;
         SeedRowSnapshotStore seedRowSnapshots = new SeedRowSnapshotStore();
@@ -100,20 +100,20 @@ public class JobOrchestrator {
 
                 TableSchema schema = resolveSchema(tableTask);
                 List<com.datagenerator.core.model.ConstraintDefinition> constraints =
-                        constraintLoader.load(schema, job, tableTask);
+                        constraintLoader.load(schema, taskConfig, tableTask);
 
-                long jobWrittenBeforeTable = writtenRows;
-                long jobFailedBeforeTable = failedRows;
-                JobExecutionListener jobListener = listener;
+                long runWrittenBeforeTable = writtenRows;
+                long runFailedBeforeTable = failedRows;
+                TaskRunExecutionListener runListener = listener;
                 BatchWrittenCallback batchCallback = (tableName, batchWritten, batchFailed, tableWrittenRows, tableFailedRows) ->
-                        jobListener.onBatchWritten(
+                        runListener.onBatchWritten(
                                 tableName,
                                 batchWritten,
                                 batchFailed,
                                 tableWrittenRows,
                                 tableFailedRows,
-                                jobWrittenBeforeTable + tableWrittenRows,
-                                jobFailedBeforeTable + tableFailedRows);
+                                runWrittenBeforeTable + tableWrittenRows,
+                                runFailedBeforeTable + tableFailedRows);
 
                 TableGenerationResult result = tableGenerator.generate(
                         schema,
@@ -122,7 +122,7 @@ public class JobOrchestrator {
                         pluginRegistry.getConstraintRegistry(),
                         upstreamTables,
                         writer,
-                        job.getSeeds(),
+                        taskConfig.getSeeds(),
                         options,
                         batchCallback,
                         seedRowSnapshots,
@@ -130,7 +130,7 @@ public class JobOrchestrator {
 
                 List<DataRow> upstreamRows = result.generatedRows();
                 Set<String> requiredFields = collectUpstreamFields(
-                        tableTask.getName(), sortedTables, tableIndex, job);
+                        tableTask.getName(), sortedTables, tableIndex, taskConfig);
                 if (!requiredFields.isEmpty()) {
                     upstreamRows = UpstreamFieldCollector.slimRows(upstreamRows, requiredFields);
                 }
@@ -157,7 +157,7 @@ public class JobOrchestrator {
             }
         }
 
-        return new JobResult(totalRows, writtenRows, failedRows, details);
+        return new TaskRunResult(totalRows, writtenRows, failedRows, details);
     }
 
     private DataWriter createWriter(List<Map<String, Object>> writerMaps, ConnectionRegistry registry) {
@@ -191,7 +191,7 @@ public class JobOrchestrator {
             String upstreamTableName,
             List<TableTask> sortedTables,
             int currentTableIndex,
-            TaskConfig job) {
+            TaskConfig taskConfig) {
         Set<String> fields = new HashSet<>();
         for (int i = currentTableIndex + 1; i < sortedTables.size(); i++) {
             TableTask downstream = sortedTables.get(i);
@@ -200,7 +200,7 @@ public class JobOrchestrator {
             }
             TableSchema downstreamSchema = resolveSchema(downstream);
             List<com.datagenerator.core.model.ConstraintDefinition> downstreamConstraints =
-                    constraintLoader.load(downstreamSchema, job, downstream);
+                    constraintLoader.load(downstreamSchema, taskConfig, downstream);
             fields.addAll(UpstreamFieldCollector.collectRequiredFields(
                     upstreamTableName, downstreamSchema, downstreamConstraints));
         }

@@ -49,7 +49,7 @@ data-generator/
 │       ├── expression/
 │       │   └── SpelExpressionEvaluator.java
 │       ├── engine/
-│       │   ├── DagSorter.java, JobOrchestrator.java
+│       │   ├── DagSorter.java, TaskRunOrchestrator.java
 │       │   ├── TableGenerator.java, GenerationPipeline.java
 │       │   └── PluginRegistry.java
 │       └── config/
@@ -324,7 +324,7 @@ Run: `mvn -pl dg-core test -Dtest=YamlConfigLoaderTest -q`
 // JobDefinition — job, constraints, tables(List<TableTask>)
 // TableTask — name, schema(path), count, dependsOn, constraints
 // ConstraintDefinition — level, field, type, expression, language, min, max, ...
-// YamlConfigLoader — loadSchema(path), loadJob(path), loadConstraints(path), loadReference(name)
+// YamlConfigLoader — loadSchema(path), loadTaskConfig(path), loadConstraints(path), loadReference(name)
 //   使用 SnakeYAML + 自定义 Constructor 或 Map 转 POJO
 // ConfigPathResolver — 相对 config-dir 解析路径
 ```
@@ -546,7 +546,7 @@ git commit -m "feat(core): add constraint pipeline with field and SpEL composite
 // TableGenerator — 对单表：逐行 generate fields → field constraints → row constraints
 //   约束失败时按 maxRetries 重试（reject 策略），超限则跳过该行并计入 failedRows
 // GenerationPipeline — 批量收集 → Writer.write(batch)，默认 batchSize=1000
-// JobOrchestrator — sort DAG → 逐表 TableGenerator → 汇总 JobResult（含 failedRows）
+// TaskRunOrchestrator — sort DAG → 逐表 TableGenerator → 汇总 TaskRunResult（含 failedRows）
 // ConnectionRegistry — 在 dg-core 层解析 connection 名 → JDBC URL/凭证
 //   将已解析参数写入 ReaderConfig/WriterConfig 后再调用 plugin.init()；插件不依赖 dg-core
 ```
@@ -697,7 +697,7 @@ class JobControllerTest {
 // JobSubmitRequest — jobConfig, overrides, writer, options
 // JobResponse — jobId, status, progress, details, duration
 // PreviewRequest — 继承 JobSubmitRequest + preview(limit, tables)
-// JobService — 调用 JobOrchestrator，P1 仅同步模式（忽略 asyncThreshold 大于实际量即可）
+// JobService — 调用 TaskRunOrchestrator，P1 仅同步模式（忽略 asyncThreshold 大于实际量即可）
 // JobController — POST /api/v1/jobs, GET /api/v1/jobs/{id}（P1 同步模式：内存 Map 存近期 job，供查询）
 // PreviewController — POST /api/v1/preview
 // SchemaController — GET /api/v1/schemas, GET /api/v1/schemas/{name}
@@ -747,7 +747,7 @@ class EndToEndTest {
 
 ```java
 // DataGeneratorApplication — @SpringBootApplication
-// DataGeneratorAutoConfiguration — @Bean JobOrchestrator, YamlConfigLoader, ConnectionRegistry, PluginRegistry
+// DataGeneratorAutoConfiguration — @Bean TaskRunOrchestrator, YamlConfigLoader, ConnectionRegistry, PluginRegistry
 //   注入 List<DataReader>/List<DataWriter>（来自 PluginsAutoConfiguration）并注册到 PluginRegistry
 // application.yml:
 data-generator:

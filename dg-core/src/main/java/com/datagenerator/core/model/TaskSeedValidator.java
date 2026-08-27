@@ -7,15 +7,15 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-public final class JobSeedValidator {
+public final class TaskSeedValidator {
 
-    private JobSeedValidator() {
+    private TaskSeedValidator() {
     }
 
-    public static void validate(TaskConfig job, YamlConfigLoader configLoader) {
-        List<SeedDefinition> seeds = job.getSeeds();
+    public static void validate(TaskConfig taskConfig, YamlConfigLoader configLoader) {
+        List<SeedDefinition> seeds = taskConfig.getSeeds();
         if (seeds.isEmpty()) {
-            validateInlineSchemasWithoutJobSeeds(job);
+            validateInlineSchemasWithoutTaskSeeds(taskConfig);
             return;
         }
 
@@ -27,14 +27,14 @@ public final class JobSeedValidator {
             seedNames.add(seed.getName());
         }
 
-        for (TableTask table : job.getTables()) {
+        for (TableTask table : taskConfig.getTables()) {
             TableSchema schema = resolveSchema(table, configLoader);
             validateSchemaSeedFields(schema, seedNames);
         }
     }
 
-    private static void validateInlineSchemasWithoutJobSeeds(TaskConfig job) {
-        for (TableTask table : job.getTables()) {
+    private static void validateInlineSchemasWithoutTaskSeeds(TaskConfig taskConfig) {
+        for (TableTask table : taskConfig.getTables()) {
             if (table.getSchemaDefinition() == null) {
                 continue;
             }
@@ -42,7 +42,7 @@ public final class JobSeedValidator {
                 Map<String, Object> generator = field.getGenerator();
                 if ("seed".equals(String.valueOf(generator.get("strategy")))) {
                     throw new ConfigLoadException(
-                            "Field '" + field.getName() + "' uses strategy seed but job defines no seeds");
+                            "Field '" + field.getName() + "' uses strategy seed but task config defines no seeds");
                 }
             }
         }

@@ -2,7 +2,7 @@ package com.datagenerator.core.engine;
 
 import java.util.List;
 
-public record JobResult(
+public record TaskRunResult(
         long totalRows,
         long writtenRows,
         long failedRows,

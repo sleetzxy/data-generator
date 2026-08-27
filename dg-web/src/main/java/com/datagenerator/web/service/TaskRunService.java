@@ -22,10 +22,10 @@ import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.config.WriterConfigResolver;
 import com.datagenerator.core.constraint.ConstraintLoader;
 import com.datagenerator.core.engine.GenerationOptions;
-import com.datagenerator.core.engine.JobCancelledException;
-import com.datagenerator.core.engine.JobExecutionListener;
-import com.datagenerator.core.engine.JobOrchestrator;
-import com.datagenerator.core.engine.JobResult;
+import com.datagenerator.core.engine.TaskRunCancelledException;
+import com.datagenerator.core.engine.TaskRunExecutionListener;
+import com.datagenerator.core.engine.TaskRunOrchestrator;
+import com.datagenerator.core.engine.TaskRunResult;
 import com.datagenerator.core.engine.TableResult;
 import com.datagenerator.core.model.ConfigLoadException;
 import com.datagenerator.core.model.FieldDefinition;
@@ -60,7 +60,7 @@ public class TaskRunService {
     private static final int PREVIEW_MAX_LIMIT = 100;
     private static final int MAX_PAGE_SIZE = 200;
 
-    private final JobOrchestrator jobOrchestrator;
+    private final TaskRunOrchestrator taskRunOrchestrator;
     private final PreviewOrchestratorFactory previewOrchestratorFactory;
     private final YamlConfigLoader configLoader;
     private final ConstraintLoader constraintLoader;
@@ -73,7 +73,7 @@ public class TaskRunService {
     private final TaskRunQueueExecutor scheduleExecutor;
 
     public TaskRunService(
-            JobOrchestrator jobOrchestrator,
+            TaskRunOrchestrator taskRunOrchestrator,
             PreviewOrchestratorFactory previewOrchestratorFactory,
             YamlConfigLoader configLoader,
             ConstraintLoader constraintLoader,
@@ -84,7 +84,7 @@ public class TaskRunService {
             AsyncTaskRunExecutor asyncTaskRunExecutor,
             TaskRunCancellationRegistry cancellationRegistry,
             @Lazy TaskRunQueueExecutor scheduleExecutor) {
-        this.jobOrchestrator = jobOrchestrator;
+        this.taskRunOrchestrator = taskRunOrchestrator;
         this.previewOrchestratorFactory = previewOrchestratorFactory;
         this.configLoader = configLoader;
         this.constraintLoader = constraintLoader;
@@ -124,10 +124,10 @@ public class TaskRunService {
     public void executeAccepted(String runId, TaskRunSubmitRequest request) {
         TaskRunResponse stored = taskRunRepository.findById(runId)
                 .orElseThrow(() -> new TaskRunNotFoundException(runId));
-        TaskConfig job = loadAndApplyOverrides(request);
+        TaskConfig taskConfig = loadAndApplyOverrides(request);
         GenerationOptions options = toGenerationOptions(request.getOptions());
-        List<Map<String, Object>> writers = resolveRuntimeWriters(job, request);
-        long estimatedRows = estimateTotalRows(job);
+        List<Map<String, Object>> writers = resolveRuntimeWriters(taskConfig, request);
+        long estimatedRows = estimateTotalRows(taskConfig);
 
         taskRunLogRepository.info(runId, "任务已提交，配置文件: " + request.getConfigPath());
         taskRunLogRepository.info(runId, "预估生成行数: " + estimatedRows);
@@ -135,29 +135,29 @@ public class TaskRunService {
         boolean forceAsync = stored.getTriggerSource() == TriggerSource.SCHEDULED;
         int syncThreshold = resolveSyncThreshold(request.getOptions());
         if (forceAsync || estimatedRows > syncThreshold) {
-            log.info("Executing accepted job {} async (forceAsync={}, estimatedRows={}, threshold={})",
+            log.info("Executing accepted task run {} async (forceAsync={}, estimatedRows={}, threshold={})",
                     runId, forceAsync, estimatedRows, syncThreshold);
             if (forceAsync) {
                 taskRunLogRepository.info(runId, "定时触发，转为异步执行");
             } else {
                 taskRunLogRepository.info(runId, "超过同步阈值 " + syncThreshold + "，转为异步执行");
             }
-            asyncTaskRunExecutor.submit(runId, () -> executeAndStore(runId, job, writers, options));
+            asyncTaskRunExecutor.submit(runId, () -> executeAndStore(runId, taskConfig, writers, options));
             return;
         }
 
-        log.info("Executing accepted job {} sync (estimatedRows={})", runId, estimatedRows);
+        log.info("Executing accepted task run {} sync (estimatedRows={})", runId, estimatedRows);
         taskRunLogRepository.info(runId, "同步执行中");
-        executeAndStore(runId, job, writers, options);
+        executeAndStore(runId, taskConfig, writers, options);
     }
 
     TaskRunSubmitResult doSubmit(TaskRunSubmitRequest request, TriggerSource triggerSource) {
         validateConfigPath(request.getConfigPath());
         String runId = generateRunId();
         String submittedAt = Instant.now().toString();
-        TaskConfig job = loadAndApplyOverrides(request);
+        TaskConfig taskConfig = loadAndApplyOverrides(request);
         GenerationOptions options = toGenerationOptions(request.getOptions());
-        long estimatedRows = estimateTotalRows(job);
+        long estimatedRows = estimateTotalRows(taskConfig);
 
         TaskRunResponse placeholder = new TaskRunResponse(
                 runId,
@@ -177,21 +177,21 @@ public class TaskRunService {
         boolean forceAsync = triggerSource == TriggerSource.SCHEDULED;
         int syncThreshold = resolveSyncThreshold(request.getOptions());
         if (forceAsync || estimatedRows > syncThreshold) {
-            log.info("Submitting async job {} (forceAsync={}, estimatedRows={}, threshold={})",
+            log.info("Submitting async task run {} (forceAsync={}, estimatedRows={}, threshold={})",
                     runId, forceAsync, estimatedRows, syncThreshold);
             if (forceAsync) {
                 taskRunLogRepository.info(runId, "定时触发，转为异步执行");
             } else {
                 taskRunLogRepository.info(runId, "超过同步阈值 " + syncThreshold + "，转为异步执行");
             }
-            asyncTaskRunExecutor.submit(runId, () -> executeAndStore(runId, job, resolveRuntimeWriters(job, request), options));
+            asyncTaskRunExecutor.submit(runId, () -> executeAndStore(runId, taskConfig, resolveRuntimeWriters(taskConfig, request), options));
             TaskRunResponse pending = taskRunRepository.findById(runId).orElseThrow();
             return new TaskRunSubmitResult(pending, true);
         }
 
-        log.info("Submitting sync job {} (estimatedRows={})", runId, estimatedRows);
+        log.info("Submitting sync task run {} (estimatedRows={})", runId, estimatedRows);
         taskRunLogRepository.info(runId, "同步执行中");
-        TaskRunResponse response = executeAndStore(runId, job, resolveRuntimeWriters(job, request), options);
+        TaskRunResponse response = executeAndStore(runId, taskConfig, resolveRuntimeWriters(taskConfig, request), options);
         return new TaskRunSubmitResult(response, false);
     }
 
@@ -224,7 +224,7 @@ public class TaskRunService {
         if (isTerminalStatus(response.getStatus())) {
             return;
         }
-        String jobConfig = response.getConfigPath();
+        String configPath = response.getConfigPath();
         cancellationRegistry.markCancelled(runId);
         boolean asyncCancelled = asyncTaskRunExecutor.cancel(runId);
         boolean interrupted = cancellationRegistry.interruptRunning(runId);
@@ -237,7 +237,7 @@ public class TaskRunService {
                     taskRunLogRepository.warn(runId, "任务已被用户取消");
                 }
             }
-            scheduleExecutor.onRunTerminal(jobConfig);
+            scheduleExecutor.onRunTerminal(configPath);
             return;
         }
         TaskRunResponse current = taskRunRepository.findById(runId).orElseThrow();
@@ -245,10 +245,10 @@ public class TaskRunService {
             current.setStatus(TaskRunStatus.CANCELLED);
             taskRunRepository.update(current);
             taskRunLogRepository.warn(runId, "任务已被用户取消");
-            scheduleExecutor.onRunTerminal(jobConfig);
+            scheduleExecutor.onRunTerminal(configPath);
             return;
         }
-        throw new IllegalArgumentException("Job cannot be cancelled in status: " + response.getStatus());
+        throw new IllegalArgumentException("Task run cannot be cancelled in status: " + response.getStatus());
     }
 
     private static boolean isTerminalStatus(TaskRunStatus status) {
@@ -262,7 +262,7 @@ public class TaskRunService {
         TaskRunResponse response = taskRunRepository.findById(runId)
                 .orElseThrow(() -> new TaskRunNotFoundException(runId));
         if (response.getStatus() == TaskRunStatus.PENDING || response.getStatus() == TaskRunStatus.RUNNING) {
-            throw new IllegalArgumentException("Running job cannot be removed: " + runId);
+            throw new IllegalArgumentException("Running task run cannot be removed: " + runId);
         }
         taskRunLogRepository.remove(runId);
         taskRunRepository.delete(runId);
@@ -272,28 +272,28 @@ public class TaskRunService {
         validateConfigPath(request.getConfigPath());
         long start = System.currentTimeMillis();
 
-        TaskConfig job = loadAndApplyOverrides(request);
-        TaskConfig previewJob = preparePreviewJob(job, request.getPreview());
+        TaskConfig taskConfig = loadAndApplyOverrides(request);
+        TaskConfig previewTaskConfig = preparePreviewTaskConfig(taskConfig, request.getPreview());
 
         CollectingWriter collectingWriter = new CollectingWriter();
-        JobOrchestrator previewOrchestrator = previewOrchestratorFactory.create(collectingWriter);
+        TaskRunOrchestrator previewOrchestrator = previewOrchestratorFactory.create(collectingWriter);
 
         GenerationOptions options = toGenerationOptions(request.getOptions());
-        JobResult jobResult = previewOrchestrator.run(
-                previewJob,
+        TaskRunResult taskRunResult = previewOrchestrator.run(
+                previewTaskConfig,
                 Map.of("type", CollectingWriter.TYPE),
                 options);
-        validatePreviewResults(previewJob, jobResult);
+        validatePreviewResults(previewTaskConfig, taskRunResult);
 
         PreviewResponse response = new PreviewResponse();
         response.setStatus(TaskRunStatus.COMPLETED);
         response.setDuration(formatDuration(System.currentTimeMillis() - start));
-        response.setTables(buildPreviewTables(previewJob, collectingWriter.toRowMaps()));
+        response.setTables(buildPreviewTables(previewTaskConfig, collectingWriter.toRowMaps()));
         return response;
     }
 
-    private void validatePreviewResults(TaskConfig previewJob, JobResult jobResult) {
-        for (TableResult detail : jobResult.details()) {
+    private void validatePreviewResults(TaskConfig previewTaskConfig, TaskRunResult taskRunResult) {
+        for (TableResult detail : taskRunResult.details()) {
             if (detail.rows() > 0) {
                 continue;
             }
@@ -304,16 +304,16 @@ public class TaskRunService {
 
     private TaskRunResponse executeAndStore(
             String runId,
-            TaskConfig job,
+            TaskConfig taskConfig,
             List<Map<String, Object>> runtimeWriters,
             GenerationOptions options) {
         long start = System.currentTimeMillis();
         TaskRunResponse current = taskRunRepository.findById(runId).orElse(null);
-        String jobConfig = current == null ? null : current.getConfigPath();
+        String configPath = current == null ? null : current.getConfigPath();
         String submittedAt = current == null ? null : current.getSubmittedAt();
         cancellationRegistry.registerRunning(runId);
-        int totalTables = job.getTables().size();
-        long totalRows = estimateTotalRows(job);
+        int totalTables = taskConfig.getTables().size();
+        long totalRows = estimateTotalRows(taskConfig);
         Map<String, TableDetail> runningDetails = new LinkedHashMap<>();
         try {
             if (current != null) {
@@ -322,12 +322,12 @@ public class TaskRunService {
                 taskRunRepository.update(current);
             }
             taskRunLogRepository.info(runId, "开始生成数据，共 " + totalTables + " 张表，目标 " + totalRows + " 行");
-            logJobContext(runId, job, runtimeWriters, options);
-            JobExecutionListener progressListener = createProgressListener(
-                    runId, jobConfig, submittedAt, totalTables, totalRows, runningDetails);
+            logTaskRunContext(runId, taskConfig, runtimeWriters, options);
+            TaskRunExecutionListener progressListener = createProgressListener(
+                    runId, configPath, submittedAt, totalTables, totalRows, runningDetails);
             GenerationOptions executionOptions =
-                    options.withCancellationChecker(() -> isJobCancelledInMemory(runId));
-            JobResult result = jobOrchestrator.run(job, runtimeWriters, executionOptions, progressListener);
+                    options.withCancellationChecker(() -> isTaskRunCancelledInMemory(runId));
+            TaskRunResult result = taskRunOrchestrator.run(taskConfig, runtimeWriters, executionOptions, progressListener);
             for (TableResult tableResult : result.details()) {
                 taskRunLogRepository.info(
                         runId,
@@ -335,10 +335,10 @@ public class TaskRunService {
                                 + tableResult.rows() + " 行, 失败 " + tableResult.failedRows() + " 行, 状态 "
                                 + tableResult.status());
             }
-            if (isJobCancelled(runId)) {
+            if (isTaskRunCancelled(runId)) {
                 taskRunLogRepository.warn(runId, "任务执行完毕但已被取消，保持 CANCELLED 状态");
                 return taskRunRepository.findById(runId).orElseThrow(
-                        () -> new IllegalStateException("Job not found: " + runId));
+                        () -> new IllegalStateException("Task run not found: " + runId));
             }
             TaskRunResponse response = toTaskRunResponse(
                     runId,
@@ -355,9 +355,9 @@ public class TaskRunService {
                     "任务完成，耗时 " + response.getDuration()
                             + "，共写入 " + result.writtenRows() + " 行");
             return response;
-        } catch (JobCancelledException cancelled) {
+        } catch (TaskRunCancelledException cancelled) {
             TaskRunResponse latest = taskRunRepository.findById(runId).orElseThrow(
-                    () -> new IllegalStateException("Job not found: " + runId));
+                    () -> new IllegalStateException("Task run not found: " + runId));
             if (!isTerminalStatus(latest.getStatus())) {
                 latest.setStatus(TaskRunStatus.CANCELLED);
                 taskRunRepository.update(latest);
@@ -365,7 +365,7 @@ public class TaskRunService {
             }
             return latest;
         } catch (Exception exception) {
-            if (isJobCancelled(runId)) {
+            if (isTaskRunCancelled(runId)) {
                 throw exception;
             }
             taskRunLogRepository.error(runId, "任务执行失败: " + exception.getClass().getSimpleName() + " - " + exception.getMessage());
@@ -382,46 +382,46 @@ public class TaskRunService {
             throw exception;
         } finally {
             cancellationRegistry.unregisterRunning(runId);
-            if (jobConfig != null) {
-                scheduleExecutor.onRunTerminal(jobConfig);
+            if (configPath != null) {
+                scheduleExecutor.onRunTerminal(configPath);
             }
         }
     }
 
     private TaskConfig loadAndApplyOverrides(TaskRunSubmitRequest request) {
-        TaskConfig job = configLoader.loadJob(request.getConfigPath());
-        applyOverrides(job, request.getOverrides());
-        return job;
+        TaskConfig taskConfig = configLoader.loadTaskConfig(request.getConfigPath());
+        applyOverrides(taskConfig, request.getOverrides());
+        return taskConfig;
     }
 
     /**
-     * 请求体 writer/writers 作为运行时默认值；Job YAML 中的 writer/writers 优先。
+     * 请求体 writer/writers 作为运行时默认值；任务配置 YAML 中的 writer/writers 优先。
      */
-    private List<Map<String, Object>> resolveRuntimeWriters(TaskConfig job, TaskRunSubmitRequest request) {
+    private List<Map<String, Object>> resolveRuntimeWriters(TaskConfig taskConfig, TaskRunSubmitRequest request) {
         List<Map<String, Object>> runtimeWriters = WriterConfigResolver.fromRuntimeOverride(request.getWriters());
         if (runtimeWriters.isEmpty()) {
             runtimeWriters = WriterConfigResolver.fromRuntimeOverride(request.getWriter());
         }
-        validateWriterConfigured(job, runtimeWriters);
+        validateWriterConfigured(taskConfig, runtimeWriters);
         return runtimeWriters;
     }
 
-    private void validateWriterConfigured(TaskConfig job, List<Map<String, Object>> runtimeWriters) {
+    private void validateWriterConfigured(TaskConfig taskConfig, List<Map<String, Object>> runtimeWriters) {
         List<Map<String, Object>> defaultWriters =
-                WriterConfigResolver.resolveDefaultWriters(job, runtimeWriters);
-        for (TableTask table : job.getTables()) {
+                WriterConfigResolver.resolveDefaultWriters(taskConfig, runtimeWriters);
+        for (TableTask table : taskConfig.getTables()) {
             List<Map<String, Object>> effective =
                     WriterConfigResolver.resolveTableWriters(table, defaultWriters);
             WriterConfigResolver.validateWriterMapsConfigured(table.getName(), effective);
         }
     }
 
-    private void applyOverrides(TaskConfig job, Map<String, Object> overrides) {
+    private void applyOverrides(TaskConfig taskConfig, Map<String, Object> overrides) {
         if (overrides == null || overrides.isEmpty()) {
             return;
         }
         for (Map.Entry<String, Object> entry : overrides.entrySet()) {
-            TableTask table = OverridePathResolver.resolveTable(job, entry.getKey());
+            TableTask table = OverridePathResolver.resolveTable(taskConfig, entry.getKey());
             String field = OverridePathResolver.resolveField(table, entry.getKey());
             if ("count".equals(field)) {
                 table.setCount(toLong(entry.getValue()));
@@ -431,21 +431,21 @@ public class TaskRunService {
         }
     }
 
-    private TaskConfig preparePreviewJob(TaskConfig job, PreviewOptions previewOptions) {
+    private TaskConfig preparePreviewTaskConfig(TaskConfig taskConfig, PreviewOptions previewOptions) {
         PreviewOptions options = previewOptions == null ? new PreviewOptions() : previewOptions;
         int limit = Math.min(Math.max(options.getLimit(), 1), PREVIEW_MAX_LIMIT);
         List<String> selectedTables = options.getTables();
 
-        TaskConfig previewJob = new TaskConfig();
-        previewJob.setName(job.getName());
-        previewJob.setConstraints(job.getConstraints());
-        previewJob.setInlineConstraints(new ArrayList<>(job.getInlineConstraints()));
-        previewJob.setSeeds(new ArrayList<>(job.getSeeds()));
-        previewJob.setWriter(Map.of());
-        previewJob.setWriters(List.of());
+        TaskConfig previewTaskConfig = new TaskConfig();
+        previewTaskConfig.setName(taskConfig.getName());
+        previewTaskConfig.setConstraints(taskConfig.getConstraints());
+        previewTaskConfig.setInlineConstraints(new ArrayList<>(taskConfig.getInlineConstraints()));
+        previewTaskConfig.setSeeds(new ArrayList<>(taskConfig.getSeeds()));
+        previewTaskConfig.setWriter(Map.of());
+        previewTaskConfig.setWriters(List.of());
 
         List<TableTask> tables = new ArrayList<>();
-        for (TableTask tableTask : job.getTables()) {
+        for (TableTask tableTask : taskConfig.getTables()) {
             if (!selectedTables.isEmpty() && !selectedTables.contains(tableTask.getName())) {
                 continue;
             }
@@ -455,8 +455,8 @@ public class TaskRunService {
             copy.setWriters(List.of());
             tables.add(copy);
         }
-        previewJob.setTables(tables);
-        return previewJob;
+        previewTaskConfig.setTables(tables);
+        return previewTaskConfig;
     }
 
     private TableTask copyTableTask(TableTask source) {
@@ -474,10 +474,10 @@ public class TaskRunService {
     }
 
     private List<PreviewTableResponse> buildPreviewTables(
-            TaskConfig previewJob,
+            TaskConfig previewTaskConfig,
             Map<String, List<Map<String, Object>>> rowMaps) {
         List<PreviewTableResponse> tables = new ArrayList<>();
-        for (TableTask tableTask : previewJob.getTables()) {
+        for (TableTask tableTask : previewTaskConfig.getTables()) {
             TableSchema schema = resolveSchema(tableTask);
             List<String> columns = schema.getFields().stream()
                     .map(FieldDefinition::getName)
@@ -513,17 +513,17 @@ public class TaskRunService {
         return configLoader.loadSchema(tableTask.getSchema());
     }
 
-    private JobExecutionListener createProgressListener(
+    private TaskRunExecutionListener createProgressListener(
             String runId,
-            String jobConfig,
+            String configPath,
             String submittedAt,
             int totalTables,
             long totalRows,
             Map<String, TableDetail> runningDetails) {
-        return new JobExecutionListener() {
-            private final long[] jobWrittenRows = {0};
-            private final long[] jobFailedRows = {0};
-            private long lastLoggedJobWrittenRows = 0;
+        return new TaskRunExecutionListener() {
+            private final long[] runWrittenRows = {0};
+            private final long[] runFailedRows = {0};
+            private long lastLoggedRunWrittenRows = 0;
             private long lastProgressPersistMs = 0;
             private int batchesSincePersist = 0;
             private static final long PROGRESS_THROTTLE_MS = 3_000;
@@ -539,13 +539,13 @@ public class TaskRunService {
                                 + plannedRows + " 行");
                 persistRunningProgress(
                         runId,
-                        jobConfig,
+                        configPath,
                         submittedAt,
                         totalTables,
                         completedTables,
                         totalRows,
-                        jobWrittenRows[0],
-                        jobFailedRows[0],
+                        runWrittenRows[0],
+                        runFailedRows[0],
                         runningDetails);
             }
 
@@ -556,31 +556,31 @@ public class TaskRunService {
                     int batchFailed,
                     long tableWrittenRows,
                     long tableFailedRows,
-                    long jobWrittenRows,
-                    long jobFailedRows) {
-                this.jobWrittenRows[0] = jobWrittenRows;
-                this.jobFailedRows[0] = jobFailedRows;
+                    long runWrittenRows,
+                    long runFailedRows) {
+                this.runWrittenRows[0] = runWrittenRows;
+                this.runFailedRows[0] = runFailedRows;
                 runningDetails.put(
                         tableName, new TableDetail(tableName, tableWrittenRows, tableFailedRows, "running"));
                 batchesSincePersist++;
                 if (shouldPersistProgress()) {
-                    long recentWritten = jobWrittenRows - lastLoggedJobWrittenRows;
+                    long recentWritten = runWrittenRows - lastLoggedRunWrittenRows;
                     taskRunLogRepository.info(
                             runId,
                             "表 [" + tableName + "] 近期写入 " + recentWritten + " 行（"
                                     + batchesSincePersist + " 批），任务累计 "
-                                    + jobWrittenRows + " / " + totalRows + " 行");
+                                    + runWrittenRows + " / " + totalRows + " 行");
                     persistRunningProgress(
                             runId,
-                            jobConfig,
+                            configPath,
                             submittedAt,
                             totalTables,
                             countFinishedTables(runningDetails),
                             totalRows,
-                            jobWrittenRows,
-                            jobFailedRows,
+                            runWrittenRows,
+                            runFailedRows,
                             runningDetails);
-                    lastLoggedJobWrittenRows = jobWrittenRows;
+                    lastLoggedRunWrittenRows = runWrittenRows;
                     lastProgressPersistMs = System.currentTimeMillis();
                     batchesSincePersist = 0;
                 }
@@ -601,10 +601,10 @@ public class TaskRunService {
                     long tableFailedRows,
                     int completedTables,
                     int totalTables,
-                    long jobWrittenRows,
-                    long jobFailedRows) {
-                this.jobWrittenRows[0] = jobWrittenRows;
-                this.jobFailedRows[0] = jobFailedRows;
+                    long runWrittenRows,
+                    long runFailedRows) {
+                this.runWrittenRows[0] = runWrittenRows;
+                this.runFailedRows[0] = runFailedRows;
                 String status = tableFailedRows > 0 ? "partial" : "ok";
                 runningDetails.put(tableName, new TableDetail(tableName, tableWrittenRows, tableFailedRows, status));
                 taskRunLogRepository.info(
@@ -613,13 +613,13 @@ public class TaskRunService {
                                 + tableFailedRows + " 行");
                 persistRunningProgress(
                         runId,
-                        jobConfig,
+                        configPath,
                         submittedAt,
                         totalTables,
                         completedTables,
                         totalRows,
-                        jobWrittenRows,
-                        jobFailedRows,
+                        runWrittenRows,
+                        runFailedRows,
                         runningDetails);
                 lastProgressPersistMs = System.currentTimeMillis();
                 batchesSincePersist = 0;
@@ -639,7 +639,7 @@ public class TaskRunService {
 
     private void persistRunningProgress(
             String runId,
-            String jobConfig,
+            String configPath,
             String submittedAt,
             int totalTables,
             int completedTables,
@@ -647,7 +647,7 @@ public class TaskRunService {
             long writtenRows,
             long failedRows,
             Map<String, TableDetail> runningDetails) {
-        if (jobConfig == null) {
+        if (configPath == null) {
             return;
         }
         TaskRunResponse response = new TaskRunResponse(
@@ -656,21 +656,21 @@ public class TaskRunService {
                 new TaskRunProgress(totalTables, completedTables, totalRows, writtenRows, failedRows),
                 new ArrayList<>(runningDetails.values()),
                 null,
-                jobConfig,
+                configPath,
                 submittedAt,
                 null,
                 null);
         taskRunRepository.update(response);
     }
 
-    private void logJobContext(
+    private void logTaskRunContext(
             String runId,
-            TaskConfig job,
+            TaskConfig taskConfig,
             List<Map<String, Object>> runtimeWriters,
             GenerationOptions options) {
-        ConnectionRegistry effectiveRegistry = connectionRegistry.withOverlay(job.getConnections());
+        ConnectionRegistry effectiveRegistry = connectionRegistry.withOverlay(taskConfig.getConnections());
         List<Map<String, Object>> defaultWriters =
-                WriterConfigResolver.resolveDefaultWriters(job, runtimeWriters);
+                WriterConfigResolver.resolveDefaultWriters(taskConfig, runtimeWriters);
         taskRunLogRepository.info(runId, "Writer 配置: " + summarizeResolvedWriters(defaultWriters, effectiveRegistry));
         taskRunLogRepository.info(
                 runId,
@@ -679,8 +679,8 @@ public class TaskRunService {
                         + ", onConstraintFail=" + options.onConstraintFail()
                         + ", generationParallelism=" + options.generationParallelism()
                         + " (并行阈值=" + GenerationOptions.PARALLEL_ROW_THRESHOLD + " 行)");
-        taskRunLogRepository.info(runId, "Job seeds 数量: " + job.getSeeds().size());
-        for (SeedDefinition seed : job.getSeeds()) {
+        taskRunLogRepository.info(runId, "Task seeds 数量: " + taskConfig.getSeeds().size());
+        for (SeedDefinition seed : taskConfig.getSeeds()) {
             if (seed.getReader().isEmpty()) {
                 continue;
             }
@@ -689,7 +689,7 @@ public class TaskRunService {
                     "Seed [" + seed.getName() + "] reader: "
                             + summarizeReaderConfig(effectiveRegistry.resolveReader(seed.getReader())));
         }
-        for (TableTask table : job.getTables()) {
+        for (TableTask table : taskConfig.getTables()) {
             String schemaRef = table.getSchemaDefinition() != null
                     ? "inline"
                     : table.getSchema();
@@ -757,9 +757,9 @@ public class TaskRunService {
     private TaskRunResponse toTaskRunResponse(
             String runId,
             TaskRunStatus status,
-            JobResult result,
+            TaskRunResult result,
             long startMillis,
-            String jobConfig,
+            String configPath,
             String submittedAt,
             String errorMessage,
             Map<String, List<Map<String, Object>>> rows) {
@@ -778,7 +778,7 @@ public class TaskRunService {
                 progress,
                 details,
                 formatDuration(System.currentTimeMillis() - startMillis),
-                jobConfig,
+                configPath,
                 submittedAt,
                 errorMessage,
                 rows);
@@ -841,12 +841,12 @@ public class TaskRunService {
         return runtimeSettings.syncThreshold();
     }
 
-    private static long estimateTotalRows(TaskConfig job) {
-        return job.getTables().stream().mapToLong(TableTask::getCount).sum();
+    private static long estimateTotalRows(TaskConfig taskConfig) {
+        return taskConfig.getTables().stream().mapToLong(TableTask::getCount).sum();
     }
 
-    private void validateConfigPath(String jobConfig) {
-        if (jobConfig == null || jobConfig.isBlank()) {
+    private void validateConfigPath(String configPath) {
+        if (configPath == null || configPath.isBlank()) {
             throw new IllegalArgumentException("configPath is required");
         }
     }
@@ -876,16 +876,16 @@ public class TaskRunService {
     /**
      * 热路径取消探测：仅查内存标记，避免每行触发 SQLite 查询。
      */
-    private boolean isJobCancelledInMemory(String runId) {
+    private boolean isTaskRunCancelledInMemory(String runId) {
         return cancellationRegistry.isCancelled(runId) || asyncTaskRunExecutor.isCancelled(runId);
     }
 
-    private boolean isJobCancelled(String runId) {
-        if (isJobCancelledInMemory(runId)) {
+    private boolean isTaskRunCancelled(String runId) {
+        if (isTaskRunCancelledInMemory(runId)) {
             return true;
         }
         return taskRunRepository.findById(runId)
-                .map(job -> job.getStatus() == TaskRunStatus.CANCELLED)
+                .map(taskRun -> taskRun.getStatus() == TaskRunStatus.CANCELLED)
                 .orElse(false);
     }
 }

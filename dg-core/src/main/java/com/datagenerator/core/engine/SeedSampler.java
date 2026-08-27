@@ -34,7 +34,7 @@ import java.util.Set;
 
 /**
 
- * 按拓扑序采样 job 级 seeds；link seed 在启动阶段一次性加载并在内存中按关联列匹配。
+ * 按拓扑序采样任务级 seeds；link seed 在启动阶段一次性加载并在内存中按关联列匹配。
 
  */
 

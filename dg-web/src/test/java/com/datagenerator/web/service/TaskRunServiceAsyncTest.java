@@ -6,8 +6,8 @@ import com.datagenerator.web.dto.TaskRunSubmitRequest;
 import com.datagenerator.web.dto.TaskRunSubmitResult;
 import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintLoader;
-import com.datagenerator.core.engine.JobOrchestrator;
-import com.datagenerator.core.engine.JobResult;
+import com.datagenerator.core.engine.TaskRunOrchestrator;
+import com.datagenerator.core.engine.TaskRunResult;
 import com.datagenerator.core.engine.TableResult;
 import com.datagenerator.core.model.TaskConfig;
 import com.datagenerator.core.model.TableTask;
@@ -45,14 +45,14 @@ class TaskRunServiceAsyncTest {
 
     @Test
     void cancel_runningJob_staysCancelledNotCompleted() {
-        JobOrchestrator orchestrator = mock(JobOrchestrator.class);
+        TaskRunOrchestrator orchestrator = mock(TaskRunOrchestrator.class);
         when(orchestrator.run(any(), anyList(), any(), any())).thenAnswer(invocation -> {
             try {
                 Thread.sleep(800);
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
             }
-            return new JobResult(10_000, 10_000, 0, List.of(new TableResult("customers", 10_000, 0, "ok")));
+            return new TaskRunResult(10_000, 10_000, 0, List.of(new TableResult("customers", 10_000, 0, "ok")));
         });
 
         TaskRunService taskRunService = createTaskRunService(orchestrator);
@@ -91,7 +91,7 @@ class TaskRunServiceAsyncTest {
     @Test
     void cancel_syncRunningJob_staysCancelled() throws Exception {
         CountDownLatch running = new CountDownLatch(1);
-        JobOrchestrator orchestrator = mock(JobOrchestrator.class);
+        TaskRunOrchestrator orchestrator = mock(TaskRunOrchestrator.class);
         when(orchestrator.run(any(), anyList(), any(), any())).thenAnswer(invocation -> {
             running.countDown();
             try {
@@ -99,16 +99,16 @@ class TaskRunServiceAsyncTest {
             } catch (InterruptedException exception) {
                 Thread.currentThread().interrupt();
             }
-            return new JobResult(100, 100, 0, List.of(new TableResult("customers", 100, 0, "ok")));
+            return new TaskRunResult(100, 100, 0, List.of(new TableResult("customers", 100, 0, "ok")));
         });
 
         YamlConfigLoader configLoader = mock(YamlConfigLoader.class);
-        TaskConfig job = new TaskConfig();
+        TaskConfig taskConfig = new TaskConfig();
         TableTask table = new TableTask();
         table.setName("customers");
         table.setCount(100);
-        job.setTables(List.of(table));
-        when(configLoader.loadJob("jobs/small.yaml")).thenReturn(job);
+        taskConfig.setTables(List.of(table));
+        when(configLoader.loadTaskConfig("jobs/small.yaml")).thenReturn(taskConfig);
 
         ConnectionRegistry connectionRegistry = new ConnectionRegistry();
 
@@ -172,26 +172,26 @@ class TaskRunServiceAsyncTest {
         assertThat(taskRunService.getById(result.response().getRunId()).getStatus()).isEqualTo(TaskRunStatus.COMPLETED);
     }
 
-    private static TaskRunService createTaskRunService(JobOrchestrator orchestrator) {
+    private static TaskRunService createTaskRunService(TaskRunOrchestrator orchestrator) {
         YamlConfigLoader configLoader = mock(YamlConfigLoader.class);
         ConstraintLoader constraintLoader = mock(ConstraintLoader.class);
         ConnectionRegistry connectionRegistry = new ConnectionRegistry();
 
-        TaskConfig job = new TaskConfig();
+        TaskConfig taskConfig = new TaskConfig();
         TableTask table = new TableTask();
         table.setName("customers");
         table.setCount(10_000);
-        job.setTables(List.of(table));
-        when(configLoader.loadJob("jobs/large.yaml")).thenReturn(job);
+        taskConfig.setTables(List.of(table));
+        when(configLoader.loadTaskConfig("jobs/large.yaml")).thenReturn(taskConfig);
 
         TaskRunRuntimeSettings runtimeSettings = new TaskRunRuntimeSettings(100, 1000, 2);
         return TaskRunServiceTestSupport.createTaskRunService(runtimeSettings, orchestrator, configLoader);
     }
 
-    private static JobOrchestrator mockOrchestratorReturningSuccess() {
-        JobOrchestrator orchestrator = mock(JobOrchestrator.class);
+    private static TaskRunOrchestrator mockOrchestratorReturningSuccess() {
+        TaskRunOrchestrator orchestrator = mock(TaskRunOrchestrator.class);
         when(orchestrator.run(any(), anyList(), any(), any()))
-                .thenReturn(new JobResult(10_000, 10_000, 0, List.of(new TableResult("customers", 10_000, 0, "ok"))));
+                .thenReturn(new TaskRunResult(10_000, 10_000, 0, List.of(new TableResult("customers", 10_000, 0, "ok"))));
         return orchestrator;
     }
 
