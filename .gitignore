@@ -8,4 +8,4 @@ output/
 **/application-local.yml
 build/
 dg-web/frontend/node_modules/
-dg-web/src/main/resources/configs/jobs/*
+dg-web/src/main/resources/configs/task-configs/*

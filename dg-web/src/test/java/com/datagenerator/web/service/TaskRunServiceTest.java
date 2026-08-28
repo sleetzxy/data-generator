@@ -44,10 +44,10 @@ class TaskRunServiceTest {
     @Test
     void createQueuedJob_insertsPendingWithoutExecuting() {
         com.datagenerator.web.dto.TaskRunResponse response =
-                taskRunService.createQueuedJob("jobs/demo.yaml", TriggerSource.MANUAL);
+                taskRunService.createQueuedJob("task-configs/demo.yaml", TriggerSource.MANUAL);
 
         assertThat(response.getStatus()).isEqualTo(TaskRunStatus.PENDING);
-        assertThat(response.getConfigPath()).isEqualTo("jobs/demo.yaml");
+        assertThat(response.getConfigPath()).isEqualTo("task-configs/demo.yaml");
         assertThat(response.getTriggerSource()).isEqualTo(TriggerSource.MANUAL);
         assertThat(taskRunService.getById(response.getRunId()).getStatus()).isEqualTo(TaskRunStatus.PENDING);
         verify(orchestrator, never()).run(any(), anyList(), any());

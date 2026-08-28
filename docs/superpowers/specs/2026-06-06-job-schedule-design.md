@@ -16,7 +16,7 @@
 
 当前实现：
 
-- Job 定义以 YAML 存放于 `configs/jobs/`（内置 classpath + 自定义 overlay 文件）
+- Job 定义以 YAML 存放于 `configs/task-configs/`（内置 classpath + 自定义 overlay 文件）
 - Job 执行通过 `POST /api/v1/jobs` 手动提交，每次产生独立 `jobId` 与 SQLite 运行记录
 - Web 控制台任务列表已有「运行」按钮（`runDefinition(path)`）
 - **无** Cron / `@Scheduled` / 调度元数据
@@ -121,7 +121,7 @@ dg-web/
 | **fileName** | YAML 文件名（无扩展名） | `my_job` | REST 路径参数 `{fileName}` |
 | **id** | YAML `id:` 字段 | `prod_daily_sync` | 业务唯一标识 |
 | **name** | YAML `name:` 字段 | `生产日同步` | 展示名称 |
-| **config_path** | 配置相对路径 | `jobs/my_job.yaml` | 排队键、SQLite 主键、`JobResponse.jobConfig` |
+| **config_path** | 配置相对路径 | `task-configs/my_task.yaml` | 排队键、SQLite 主键、`JobResponse.jobConfig` |
 
 **约定：** 调度端点 `/api/v1/job-definitions/{fileName}/schedule` 中的 `{fileName}` 与现有 `GET/PUT/DELETE /api/v1/job-definitions/{fileName}` 一致，指配置文件名，**不是** YAML `id`。`fileName` 与 `id` 可以不同。
 
@@ -134,7 +134,7 @@ dg-web/
 ### 4.1 内置 Job — YAML `schedule` 块
 
 ```yaml
-id: my_scheduled_job
+id: my_scheduled_task
 name: 城市交通事故预览造数
 schedule:
   enabled: true
@@ -153,7 +153,7 @@ tables:
 
 | 列 | 类型 | 说明 |
 |----|------|------|
-| config_path | TEXT PRIMARY KEY | 如 `jobs/my_job.yaml` |
+| config_path | TEXT PRIMARY KEY | 如 `task-configs/my_task.yaml` |
 | enabled | INTEGER NOT NULL DEFAULT 0 | 0/1 |
 | cron | TEXT | Cron 表达式，enabled=1 时必填 |
 | updated_at | TEXT NOT NULL | ISO-8601 |
@@ -231,7 +231,7 @@ PUT  /api/v1/job-definitions/{fileName}/schedule
 保留 `POST /api/v1/jobs`，请求体不变：
 
 ```json
-{ "jobConfig": "jobs/my_job.yaml" }
+{ "jobConfig": "task-configs/my_job.yaml" }
 ```
 
 内部改为 `JobScheduleExecutor.enqueue(configPath, MANUAL)`，与定时触发共用排队。

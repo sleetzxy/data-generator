@@ -21,8 +21,8 @@ dg-core/
 │   └── JobDefinition.java                   # 修改：新增 schedule 字段
 ├── src/test/java/com/datagenerator/core/schema/
 │   ├── YamlConfigLoaderTest.java            # 修改：schedule 解析测试
-│   └── fixtures/jobs/
-│       └── scheduled_job.yaml               # 新建：含 schedule 块的 fixture
+│   └── fixtures/task-configs/
+│       └── scheduled_task.yaml               # 新建：含 schedule 块的 fixture
 
 dg-web/
 ├── src/main/java/com/datagenerator/web/
@@ -77,7 +77,7 @@ dg-web/
 - Create: `dg-core/src/main/java/com/datagenerator/core/schema/ScheduleDefinition.java`
 - Modify: `dg-core/src/main/java/com/datagenerator/core/schema/JobDefinition.java`
 - Modify: `dg-core/src/main/java/com/datagenerator/core/schema/YamlConfigLoader.java`
-- Create: `dg-core/src/test/resources/fixtures/jobs/scheduled_job.yaml`
+- Create: `dg-core/src/test/resources/fixtures/task-configs/scheduled_task.yaml`
 - Modify: `dg-core/src/test/java/com/datagenerator/core/schema/YamlConfigLoaderTest.java`
 
 - [ ] **Step 1: 编写失败测试**
@@ -87,7 +87,7 @@ dg-web/
 ```java
 @Test
 void loadTaskConfig_withSchedule_parsesEnabledAndCron() {
-    JobDefinition job = loader.loadTaskConfig("fixtures/jobs/scheduled_job.yaml");
+    JobDefinition job = loader.loadTaskConfig("fixtures/task-configs/scheduled_task.yaml");
     assertThat(job.getSchedule()).isPresent();
     ScheduleDefinition schedule = job.getSchedule().orElseThrow();
     assertThat(schedule.isEnabled()).isTrue();
@@ -95,10 +95,10 @@ void loadTaskConfig_withSchedule_parsesEnabledAndCron() {
 }
 ```
 
-Fixture `scheduled_job.yaml`：
+Fixture `scheduled_task.yaml`：
 
 ```yaml
-id: scheduled_job
+id: scheduled_task
 name: 定时任务示例
 schedule:
   enabled: true
@@ -166,7 +166,7 @@ Expected: BUILD SUCCESS
 git add dg-core/src/main/java/com/datagenerator/core/schema/ScheduleDefinition.java \
         dg-core/src/main/java/com/datagenerator/core/schema/JobDefinition.java \
         dg-core/src/main/java/com/datagenerator/core/schema/YamlConfigLoader.java \
-        dg-core/src/test/resources/fixtures/jobs/scheduled_job.yaml \
+        dg-core/src/test/resources/fixtures/task-configs/scheduled_task.yaml \
         dg-core/src/test/java/com/datagenerator/core/schema/YamlConfigLoaderTest.java
 git commit -m "feat(core): 解析 Job YAML schedule 块"
 ```
@@ -244,9 +244,9 @@ git commit -m "feat(web): SQLite 新增 job_schedules 表与 trigger_source 列"
 ```java
 @Test
 void findRunningByJobConfig_returnsOnlyRunning() {
-    insertJob("j1", "jobs/a.yaml", JobStatus.RUNNING);
-    insertJob("j2", "jobs/a.yaml", JobStatus.COMPLETED);
-    assertThat(repository.findRunningByJobConfig("jobs/a.yaml"))
+    insertJob("j1", "task-configs/a.yaml", JobStatus.RUNNING);
+    insertJob("j2", "task-configs/a.yaml", JobStatus.COMPLETED);
+    assertThat(repository.findRunningByJobConfig("task-configs/a.yaml"))
             .extracting(JobResponse::getJobId)
             .containsExactly("j1");
 }
@@ -286,8 +286,8 @@ git commit -m "feat(web): JobRepository 支持 trigger_source 与按 config 查 
 ```java
 @Test
 void upsertAndFind_roundTrip() {
-    repo.upsert("jobs/my.yaml", true, "0 0 2 * * ?", Instant.now().toString());
-    Optional<JobScheduleRecord> found = repo.findByConfigPath("jobs/my.yaml");
+    repo.upsert("task-configs/my.yaml", true, "0 0 2 * * ?", Instant.now().toString());
+    Optional<JobScheduleRecord> found = repo.findByConfigPath("task-configs/my.yaml");
     assertThat(found).isPresent();
     assertThat(found.get().enabled()).isTrue();
     assertThat(found.get().cron()).isEqualTo("0 0 2 * * ?");
@@ -295,9 +295,9 @@ void upsertAndFind_roundTrip() {
 
 @Test
 void deleteByConfigPath_removesRow() {
-    repo.upsert("jobs/x.yaml", false, null, Instant.now().toString());
-    repo.deleteByConfigPath("jobs/x.yaml");
-    assertThat(repo.findByConfigPath("jobs/x.yaml")).isEmpty();
+    repo.upsert("task-configs/x.yaml", false, null, Instant.now().toString());
+    repo.deleteByConfigPath("task-configs/x.yaml");
+    assertThat(repo.findByConfigPath("task-configs/x.yaml")).isEmpty();
 }
 ```
 

@@ -277,10 +277,10 @@ configs/                    # 或你指定的 config-dir 根目录
 ├── schemas/                # 可复用的表/数据集 Schema
 ├── references/             # 参考数据（维表）读取配置
 ├── constraints/            # 可复用约束规则集
-└── jobs/                   # 自行编写的多表编排 Job（YAML）
+└── task-configs/                   # 自行编写的多表编排 Job（YAML）
 ```
 
-控制台新建的自定义 Job 写入 `writable-config-dir`（默认 `./data/configs/jobs/`），与 `config-dir` 下的定义合并展示。
+控制台新建的自定义 Job 写入 `writable-config-dir`（默认 `./data/configs/task-configs/`），与 `config-dir` 下的定义合并展示。
 
 ### application.yml 主要配置项
 
@@ -370,7 +370,7 @@ curl -b cookies.txt http://localhost:8080/api/v1/config/connections
 curl -b cookies.txt -X POST http://localhost:8080/api/v1/preview \
   -H "Content-Type: application/json" \
   -d '{
-    "configPath": "jobs/my_job.yaml",
+    "configPath": "task-configs/my_job.yaml",
     "overrides": { "tables.customers.count": 5 },
     "preview": { "limit": 5 }
   }'
@@ -423,7 +423,7 @@ curl -b cookies.txt http://localhost:8080/api/v1/task-configs/my_builtin/schedul
 curl -b cookies.txt -X POST http://localhost:8080/api/v1/task-runs \
   -H "Content-Type: application/json" \
   -d '{
-    "configPath": "jobs/my_job.yaml",
+    "configPath": "task-configs/my_job.yaml",
     "overrides": { "tables.customers.count": 100 },
     "writer": {
       "type": "csv",
@@ -439,7 +439,7 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/task-runs \
 curl -b cookies.txt -X POST http://localhost:8080/api/v1/task-runs \
   -H "Content-Type: application/json" \
   -d '{
-    "configPath": "jobs/my_job.yaml",
+    "configPath": "task-configs/my_job.yaml",
     "writers": [
       { "type": "postgresql", "connection": "dev-pg", "mode": "insert" },
       { "type": "clickhouse", "connection": "dev-ck", "mode": "insert" }

@@ -43,6 +43,25 @@ public final class SqliteSchemaInitializer {
                 """);
         ensureColumn(jdbcTemplate, "task_runs", "trigger_source", "TEXT");
         ensureColumn(jdbcTemplate, "task_schedules", "created_at", "TEXT");
+        migrateLegacyConfigPaths(jdbcTemplate);
+    }
+
+    /** 将旧版 jobs/ 配置路径迁移为 task-configs/ */
+    private static void migrateLegacyConfigPaths(JdbcTemplate jdbcTemplate) {
+        if (tableExists(jdbcTemplate, "task_runs")) {
+            jdbcTemplate.update("""
+                    UPDATE task_runs
+                    SET config_path = REPLACE(config_path, 'jobs/', 'task-configs/')
+                    WHERE config_path LIKE 'jobs/%'
+                    """);
+        }
+        if (tableExists(jdbcTemplate, "task_schedules")) {
+            jdbcTemplate.update("""
+                    UPDATE task_schedules
+                    SET config_path = REPLACE(config_path, 'jobs/', 'task-configs/')
+                    WHERE config_path LIKE 'jobs/%'
+                    """);
+        }
     }
 
     private static void migrateLegacySchema(JdbcTemplate jdbcTemplate) {

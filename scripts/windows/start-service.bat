@@ -15,7 +15,7 @@ set "LOG_FILE=%LOG_DIR%\%APP_LOG_NAME%"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
 if not exist "%RUN_DIR%" mkdir "%RUN_DIR%"
 if /I "%APP_ROLE%"=="web" (
-    if not exist "%APP_HOME%\data\configs\jobs" mkdir "%APP_HOME%\data\configs\jobs"
+    if not exist "%APP_HOME%\data\configs\task-configs" mkdir "%APP_HOME%\data\configs\task-configs"
     if not exist "%APP_HOME%\data\task-run-logs" mkdir "%APP_HOME%\data\task-run-logs"
 )
 

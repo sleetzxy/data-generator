@@ -77,9 +77,9 @@ class TaskConfigServiceTest {
 
     @Test
     void update_builtinDefinition_rejectsModification() throws Exception {
-        Files.createDirectories(primaryDir.resolve("jobs"));
+        Files.createDirectories(primaryDir.resolve("task-configs"));
         Files.writeString(
-                primaryDir.resolve("jobs/builtin.yaml"),
+                primaryDir.resolve("task-configs/builtin.yaml"),
                 "id: builtin\nname: 内置任务\ntables: []");
         ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlayDir);
         TaskConfigService builtinService = createService(resolver);
@@ -94,13 +94,13 @@ class TaskConfigServiceTest {
 
     @Test
     void list_builtinWithOverlayCopy_stillBuiltin() throws Exception {
-        Files.createDirectories(primaryDir.resolve("jobs"));
-        Files.createDirectories(overlayDir.resolve("jobs"));
+        Files.createDirectories(primaryDir.resolve("task-configs"));
+        Files.createDirectories(overlayDir.resolve("task-configs"));
         Files.writeString(
-                primaryDir.resolve("jobs/builtin.yaml"),
+                primaryDir.resolve("task-configs/builtin.yaml"),
                 "id: builtin\nname: 内置任务\ntables: []");
         Files.writeString(
-                overlayDir.resolve("jobs/builtin.yaml"),
+                overlayDir.resolve("task-configs/builtin.yaml"),
                 "id: builtin\nname: 覆盖副本\ntables: []");
         ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlayDir);
         TaskConfigService builtinService = createService(resolver);
@@ -118,16 +118,16 @@ class TaskConfigServiceTest {
 
         assertThatThrownBy(() -> service.get("demo_job"))
                 .isInstanceOf(com.datagenerator.core.model.ConfigLoadException.class);
-        verify(scheduleManager).cancel("jobs/demo_job.yaml");
-        verify(scheduleExecutor).clearQueue("jobs/demo_job.yaml");
-        assertThat(scheduleRepository.findByConfigPath("jobs/demo_job.yaml")).isEmpty();
+        verify(scheduleManager).cancel("task-configs/demo_job.yaml");
+        verify(scheduleExecutor).clearQueue("task-configs/demo_job.yaml");
+        assertThat(scheduleRepository.findByConfigPath("task-configs/demo_job.yaml")).isEmpty();
     }
 
     @Test
     void delete_builtinDefinition_rejectsDeletion() throws Exception {
-        Files.createDirectories(primaryDir.resolve("jobs"));
+        Files.createDirectories(primaryDir.resolve("task-configs"));
         Files.writeString(
-                primaryDir.resolve("jobs/builtin.yaml"),
+                primaryDir.resolve("task-configs/builtin.yaml"),
                 "id: builtin\nname: 内置任务\ntables: []");
         ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlayDir);
         TaskConfigService builtinService = createService(resolver);
@@ -139,9 +139,9 @@ class TaskConfigServiceTest {
 
     @Test
     void list_filterByNameKeyword_returnsMatchingDefinitions() throws Exception {
-        Files.createDirectories(primaryDir.resolve("jobs"));
-        Files.writeString(primaryDir.resolve("jobs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
-        Files.writeString(primaryDir.resolve("jobs/beta.yaml"), "id: beta\nname: Beta 演示\ntables: []");
+        Files.createDirectories(primaryDir.resolve("task-configs"));
+        Files.writeString(primaryDir.resolve("task-configs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
+        Files.writeString(primaryDir.resolve("task-configs/beta.yaml"), "id: beta\nname: Beta 演示\ntables: []");
 
         assertThat(service.list("alpha"))
                 .extracting("fileName", "name")
@@ -150,8 +150,8 @@ class TaskConfigServiceTest {
 
     @Test
     void list_filterByNameKeyword_caseInsensitive() throws Exception {
-        Files.createDirectories(primaryDir.resolve("jobs"));
-        Files.writeString(primaryDir.resolve("jobs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
+        Files.createDirectories(primaryDir.resolve("task-configs"));
+        Files.writeString(primaryDir.resolve("task-configs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
 
         assertThat(service.list("ALPHA"))
                 .extracting("fileName")
@@ -160,9 +160,9 @@ class TaskConfigServiceTest {
 
     @Test
     void list_filterByNameKeyword_blankReturnsAll() throws Exception {
-        Files.createDirectories(primaryDir.resolve("jobs"));
-        Files.writeString(primaryDir.resolve("jobs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
-        Files.writeString(primaryDir.resolve("jobs/beta.yaml"), "id: beta\nname: Beta 演示\ntables: []");
+        Files.createDirectories(primaryDir.resolve("task-configs"));
+        Files.writeString(primaryDir.resolve("task-configs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
+        Files.writeString(primaryDir.resolve("task-configs/beta.yaml"), "id: beta\nname: Beta 演示\ntables: []");
 
         assertThat(service.list("   "))
                 .extracting("fileName")
@@ -171,8 +171,8 @@ class TaskConfigServiceTest {
 
     @Test
     void list_returnsYamlNameAndFileName() throws Exception {
-        Files.createDirectories(primaryDir.resolve("jobs"));
-        Files.writeString(primaryDir.resolve("jobs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
+        Files.createDirectories(primaryDir.resolve("task-configs"));
+        Files.writeString(primaryDir.resolve("task-configs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
 
         assertThat(service.list())
                 .extracting("fileName", "name", "id", "builtin")
@@ -181,9 +181,9 @@ class TaskConfigServiceTest {
 
     @Test
     void list_nestedBuiltinJob_excludedFromList() throws Exception {
-        Files.createDirectories(primaryDir.resolve("jobs/nested"));
+        Files.createDirectories(primaryDir.resolve("task-configs/nested"));
         Files.writeString(
-                primaryDir.resolve("jobs/top.yaml"),
+                primaryDir.resolve("task-configs/top.yaml"),
                 """
                 id: top
                 name: 顶层任务
@@ -192,7 +192,7 @@ class TaskConfigServiceTest {
                     count: 1
                 """);
         Files.writeString(
-                primaryDir.resolve("jobs/nested/hidden.yaml"),
+                primaryDir.resolve("task-configs/nested/hidden.yaml"),
                 """
                 id: hidden
                 name: 子目录任务
@@ -208,9 +208,9 @@ class TaskConfigServiceTest {
 
     @Test
     void list_updateDoesNotChangeCustomSortOrder() throws Exception {
-        Files.createDirectories(primaryDir.resolve("jobs"));
+        Files.createDirectories(primaryDir.resolve("task-configs"));
         Files.writeString(
-                primaryDir.resolve("jobs/builtin.yaml"),
+                primaryDir.resolve("task-configs/builtin.yaml"),
                 "id: builtin\nname: 内置任务\ntables: []");
 
         service.create(request("older_job", "旧任务", "tables: []"));
@@ -233,9 +233,9 @@ class TaskConfigServiceTest {
 
     @Test
     void list_builtinFirst_customSortedByCreatedAtDesc() throws Exception {
-        Files.createDirectories(primaryDir.resolve("jobs"));
+        Files.createDirectories(primaryDir.resolve("task-configs"));
         Files.writeString(
-                primaryDir.resolve("jobs/builtin.yaml"),
+                primaryDir.resolve("task-configs/builtin.yaml"),
                 "id: builtin\nname: 内置任务\ntables: []");
 
         service.create(request("older_job", "旧任务", "tables: []"));
@@ -312,7 +312,7 @@ class TaskConfigServiceTest {
     @Test
     void create_withValidSchedule_persistsDefinitionAndSchedule() {
         var created = service.create(requestWithSchedule(
-                "scheduled_job",
+                "scheduled_task",
                 "定时任务",
                 "tables: []",
                 true,
@@ -321,7 +321,7 @@ class TaskConfigServiceTest {
         assertThat(created.getSchedule()).isNotNull();
         assertThat(created.getSchedule().isEnabled()).isTrue();
         assertThat(created.getSchedule().getCron()).isEqualTo("0 0 2 * * ?");
-        assertThat(scheduleRepository.findByConfigPath("jobs/scheduled_job.yaml")).isPresent();
+        assertThat(scheduleRepository.findByConfigPath("task-configs/scheduled_task.yaml")).isPresent();
     }
 
     private static com.datagenerator.web.dto.TaskConfigRequest requestWithSchedule(

@@ -51,7 +51,7 @@ class TaskRunControllerTest {
         mockMvc.perform(post("/api/v1/task-runs")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"configPath":"jobs/single_customer.yaml",
+                                {"configPath":"task-configs/single_customer.yaml",
                                  "writer":{"type":"csv","connection":"local-csv","mode":"insert"}}
                                 """))
                 .andExpect(status().isOk())
@@ -69,7 +69,7 @@ class TaskRunControllerTest {
         mockMvc.perform(post("/api/v1/task-runs")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"configPath":"jobs/single_customer.yaml",
+                                {"configPath":"task-configs/single_customer.yaml",
                                  "writer":{"type":"csv","connection":"local-csv","mode":"insert"}}
                                 """))
                 .andExpect(status().isAccepted())
@@ -85,7 +85,7 @@ class TaskRunControllerTest {
         mockMvc.perform(post("/api/v1/task-runs")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
-                                {"configPath":"jobs/single_customer.yaml"}
+                                {"configPath":"task-configs/single_customer.yaml"}
                                 """))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.runId").value("job-sync-1"))

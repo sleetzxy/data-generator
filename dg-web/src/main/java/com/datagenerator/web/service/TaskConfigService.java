@@ -9,6 +9,8 @@ import com.datagenerator.core.model.ConfigLoadException;
 import com.datagenerator.core.model.ConfigPathResolver;
 import com.datagenerator.core.model.TaskConfig;
 import com.datagenerator.core.model.YamlConfigLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
@@ -30,7 +32,8 @@ import java.util.UUID;
 @Service
 public class TaskConfigService {
 
-    private static final String JOBS_DIR = "jobs";
+    private static final Logger log = LoggerFactory.getLogger(TaskConfigService.class);
+    private static final String TASK_CONFIGS_DIR = "task-configs";
 
     private final ConfigPathResolver pathResolver;
     private final YamlConfigLoader configLoader;
@@ -72,8 +75,12 @@ public class TaskConfigService {
         for (String relativePath : listIncludedJobRelativePaths()) {
             String fileName = toDefinitionName(relativePath);
             String configPath = toConfigPath(relativePath);
-            TaskConfig taskConfig = configLoader.loadTaskConfig(configPath);
-            results.add(toResponse(fileName, configPath, taskConfig, null, isBuiltin(configPath)));
+            try {
+                TaskConfig taskConfig = configLoader.loadTaskConfig(configPath);
+                results.add(toResponse(fileName, configPath, taskConfig, null, isBuiltin(configPath)));
+            } catch (RuntimeException exception) {
+                log.warn("跳过无法加载的任务配置 {}: {}", configPath, exception.getMessage());
+            }
         }
         results.sort(this::compareForList);
         if (nameKeyword == null || nameKeyword.isBlank()) {
@@ -410,7 +417,7 @@ public class TaskConfigService {
 
     private List<String> listIncludedJobRelativePaths() {
         List<String> included = new ArrayList<>();
-        for (String relativePath : pathResolver.listYamlRelativePaths(JOBS_DIR)) {
+        for (String relativePath : pathResolver.listYamlRelativePaths(TASK_CONFIGS_DIR)) {
             if (isListedJobPath(relativePath, toConfigPath(relativePath))) {
                 included.add(relativePath);
             }
@@ -418,7 +425,7 @@ public class TaskConfigService {
         return included;
     }
 
-    /** 内置任务仅扫描 jobs 目录直属 YAML，忽略子目录。 */
+    /** 内置任务仅扫描 task-configs 目录直属 YAML，忽略子目录。 */
     private boolean isListedJobPath(String relativePath, String configPath) {
         return !relativePath.contains("/") || !isBuiltin(configPath);
     }
@@ -463,13 +470,13 @@ public class TaskConfigService {
         while (normalized.startsWith("/")) {
             normalized = normalized.substring(1);
         }
-            if (normalized.startsWith(JOBS_DIR + "/")) {
-            normalized = normalized.substring(JOBS_DIR.length() + 1);
+            if (normalized.startsWith(TASK_CONFIGS_DIR + "/")) {
+            normalized = normalized.substring(TASK_CONFIGS_DIR.length() + 1);
         }
         if (normalized.endsWith(".yaml") || normalized.endsWith(".yml")) {
-            return JOBS_DIR + "/" + normalized;
+            return TASK_CONFIGS_DIR + "/" + normalized;
         }
-        return JOBS_DIR + "/" + normalized + ".yaml";
+        return TASK_CONFIGS_DIR + "/" + normalized + ".yaml";
     }
 
     private String toDefinitionName(String relativePath) {

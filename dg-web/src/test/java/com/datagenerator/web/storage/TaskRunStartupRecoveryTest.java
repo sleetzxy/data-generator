@@ -63,7 +63,7 @@ class TaskRunStartupRecoveryTest {
                 new TaskRunProgress(0, 0, 0, 0, 0),
                 List.of(new TableDetail("t1", 0, "pending")),
                 null,
-                "jobs/test.yaml",
+                "task-configs/test.yaml",
                 "2026-06-05T00:00:00Z",
                 null,
                 null);

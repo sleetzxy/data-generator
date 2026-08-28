@@ -112,18 +112,18 @@ class ConnectionRegistryTest {
         ConnectionRegistry effective = registry.withOverlay(Map.of(
                 "my-pg", Map.of(
                         "type", "postgresql",
-                        "url", "jdbc:postgresql://job:5432/jobdb",
-                        "username", "jobuser",
-                        "password", "jobpass")));
+                        "url", "jdbc:postgresql://task-host:5432/taskdb",
+                        "username", "taskuser",
+                        "password", "taskpass")));
 
         WriterConfig resolved = effective.resolveWriter(Map.of(
                 "type", "postgresql",
                 "connection", "my-pg",
                 "mode", "insert"));
 
-        assertThat(resolved.url()).isEqualTo("jdbc:postgresql://job:5432/jobdb");
-        assertThat(resolved.username()).isEqualTo("jobuser");
-        assertThat(resolved.password()).isEqualTo("jobpass");
+        assertThat(resolved.url()).isEqualTo("jdbc:postgresql://task-host:5432/taskdb");
+        assertThat(resolved.username()).isEqualTo("taskuser");
+        assertThat(resolved.password()).isEqualTo("taskpass");
     }
 
     @Test

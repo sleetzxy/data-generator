@@ -52,7 +52,7 @@ class SqliteSchemaInitializerTest {
                 """,
                 "legacy-1",
                 "COMPLETED",
-                "jobs/demo.yaml",
+                "task-configs/demo.yaml",
                 "2026-01-01T00:00:00Z",
                 "1s",
                 null,
@@ -70,7 +70,7 @@ class SqliteSchemaInitializerTest {
         assertThat(tableExists(jdbc, "task_runs")).isTrue();
         Map<String, Object> row = jdbc.queryForMap("SELECT run_id, config_path FROM task_runs WHERE run_id = ?", "legacy-1");
         assertThat(row.get("run_id")).isEqualTo("legacy-1");
-        assertThat(row.get("config_path")).isEqualTo("jobs/demo.yaml");
+        assertThat(row.get("config_path")).isEqualTo("task-configs/demo.yaml");
     }
 
     private static boolean columnExists(JdbcTemplate jdbc, String table, String column) {

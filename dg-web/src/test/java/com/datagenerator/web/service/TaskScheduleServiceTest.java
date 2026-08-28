@@ -42,9 +42,9 @@ class TaskScheduleServiceTest {
 
     @Test
     void resolveSchedule_builtinJob_readsYaml() throws Exception {
-        Files.createDirectories(primaryDir.resolve("jobs"));
+        Files.createDirectories(primaryDir.resolve("task-configs"));
         Files.writeString(
-                primaryDir.resolve("jobs/scheduled.yaml"),
+                primaryDir.resolve("task-configs/scheduled.yaml"),
                 """
                         id: scheduled
                         name: 定时任务
@@ -54,7 +54,7 @@ class TaskScheduleServiceTest {
                         tables: []
                         """);
 
-        TaskScheduleResponse response = service.resolveSchedule("jobs/scheduled.yaml", true);
+        TaskScheduleResponse response = service.resolveSchedule("task-configs/scheduled.yaml", true);
 
         assertThat(response.isEnabled()).isTrue();
         assertThat(response.getCron()).isEqualTo("0 0 2 * * ?");
@@ -64,9 +64,9 @@ class TaskScheduleServiceTest {
 
     @Test
     void resolveSchedule_customJob_readsSqlite() {
-        scheduleRepository.upsert("jobs/custom.yaml", true, "0 30 3 * * ?", Instant.now().toString());
+        scheduleRepository.upsert("task-configs/custom.yaml", true, "0 30 3 * * ?", Instant.now().toString());
 
-        TaskScheduleResponse response = service.resolveSchedule("jobs/custom.yaml", false);
+        TaskScheduleResponse response = service.resolveSchedule("task-configs/custom.yaml", false);
 
         assertThat(response.isEnabled()).isTrue();
         assertThat(response.getCron()).isEqualTo("0 30 3 * * ?");

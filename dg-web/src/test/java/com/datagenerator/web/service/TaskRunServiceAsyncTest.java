@@ -32,7 +32,7 @@ class TaskRunServiceAsyncTest {
         TaskRunService taskRunService = createTaskRunService(mockOrchestratorReturningSuccess());
 
         TaskRunSubmitRequest request = new TaskRunSubmitRequest();
-        request.setConfigPath("jobs/large.yaml");
+        request.setConfigPath("task-configs/large.yaml");
         request.setWriter(Map.of("type", "csv", "path", "out.csv"));
 
         TaskRunSubmitResult result = taskRunService.submit(request);
@@ -58,7 +58,7 @@ class TaskRunServiceAsyncTest {
         TaskRunService taskRunService = createTaskRunService(orchestrator);
 
         TaskRunSubmitRequest request = new TaskRunSubmitRequest();
-        request.setConfigPath("jobs/large.yaml");
+        request.setConfigPath("task-configs/large.yaml");
         request.setWriter(Map.of("type", "csv", "path", "out.csv"));
 
         TaskRunSubmitResult result = taskRunService.submit(request);
@@ -108,7 +108,7 @@ class TaskRunServiceAsyncTest {
         table.setName("customers");
         table.setCount(100);
         taskConfig.setTables(List.of(table));
-        when(configLoader.loadTaskConfig("jobs/small.yaml")).thenReturn(taskConfig);
+        when(configLoader.loadTaskConfig("task-configs/small.yaml")).thenReturn(taskConfig);
 
         ConnectionRegistry connectionRegistry = new ConnectionRegistry();
 
@@ -129,7 +129,7 @@ class TaskRunServiceAsyncTest {
         TaskRunServiceTestSupport.wireEnqueueToDoSubmit(taskRunService, context.scheduleExecutor());
 
         TaskRunSubmitRequest request = new TaskRunSubmitRequest();
-        request.setConfigPath("jobs/small.yaml");
+        request.setConfigPath("task-configs/small.yaml");
         request.setWriter(Map.of("type", "csv", "path", "out.csv"));
 
         Thread submitThread = new Thread(() -> {
@@ -160,7 +160,7 @@ class TaskRunServiceAsyncTest {
         TaskRunService taskRunService = createTaskRunService(mockOrchestratorReturningSuccess());
 
         TaskRunSubmitRequest request = new TaskRunSubmitRequest();
-        request.setConfigPath("jobs/large.yaml");
+        request.setConfigPath("task-configs/large.yaml");
         request.setWriter(Map.of("type", "csv", "path", "out.csv"));
 
         TaskRunSubmitResult result = taskRunService.submit(request);
@@ -182,7 +182,7 @@ class TaskRunServiceAsyncTest {
         table.setName("customers");
         table.setCount(10_000);
         taskConfig.setTables(List.of(table));
-        when(configLoader.loadTaskConfig("jobs/large.yaml")).thenReturn(taskConfig);
+        when(configLoader.loadTaskConfig("task-configs/large.yaml")).thenReturn(taskConfig);
 
         TaskRunRuntimeSettings runtimeSettings = new TaskRunRuntimeSettings(100, 1000, 2);
         return TaskRunServiceTestSupport.createTaskRunService(runtimeSettings, orchestrator, configLoader);

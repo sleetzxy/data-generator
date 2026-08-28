@@ -43,14 +43,14 @@ class YamlConfigLoaderTest {
 
     @Test
     void loadTaskConfig_parsesId() {
-        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/ecommerce_seed.yaml");
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/task-configs/ecommerce_seed.yaml");
         assertThat(taskConfig.getId()).isEqualTo("ecommerce_seed");
         assertThat(taskConfig.getName()).isEqualTo("电商种子数据造数");
     }
 
     @Test
     void loadTaskConfig_parsesDependsOn() {
-        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/ecommerce_seed.yaml");
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/task-configs/ecommerce_seed.yaml");
         assertThat(taskConfig.getName()).isEqualTo("电商种子数据造数");
         assertThat(taskConfig.getConstraints()).contains("constraints/global_rules.yaml");
 
@@ -92,17 +92,17 @@ class YamlConfigLoaderTest {
 
     @Test
     void loadTaskConfig_parsesJobLevelConnections() {
-        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/job_level_connections.yaml");
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/task-configs/task_level_connections.yaml");
 
         assertThat(taskConfig.getConnections()).containsKey("my-pg");
         assertThat(taskConfig.getConnections().get("my-pg")).containsEntry(
-                "url", "jdbc:postgresql://job-host:5432/jobdb");
+                "url", "jdbc:postgresql://task-host:5432/taskdb");
         assertThat(taskConfig.getWriter()).containsEntry("connection", "my-pg");
     }
 
     @Test
     void loadTaskConfig_parsesWriters() {
-        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/multi_write.yaml");
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/task-configs/multi_write.yaml");
         assertThat(taskConfig.getWriter()).isEmpty();
         assertThat(taskConfig.getWriters()).hasSize(2);
         assertThat(taskConfig.getWriters().get(0)).containsEntry("type", "postgresql");
@@ -111,7 +111,7 @@ class YamlConfigLoaderTest {
 
     @Test
     void loadTaskConfig_inlineSchemaAndConstraints_parsesTableDefinition() {
-        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/inline_single.yaml");
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/task-configs/inline_single.yaml");
         assertThat(taskConfig.getName()).isEqualTo("内联 Schema 单表造数");
         assertThat(taskConfig.getWriter()).containsEntry("type", "csv");
         assertThat(taskConfig.getWriter()).containsEntry("connection", "local-csv");
@@ -128,8 +128,8 @@ class YamlConfigLoaderTest {
 
     @Test
     void loadTaskConfig_withSchedule_parsesEnabledAndCron() {
-        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/scheduled_job.yaml");
-        assertThat(taskConfig.getId()).isEqualTo("scheduled_job");
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/task-configs/scheduled_task.yaml");
+        assertThat(taskConfig.getId()).isEqualTo("scheduled_task");
         assertThat(taskConfig.getName()).isEqualTo("定时任务示例");
 
         ScheduleDefinition schedule = taskConfig.getSchedule().orElseThrow();
@@ -138,16 +138,47 @@ class YamlConfigLoaderTest {
     }
 
     @Test
-    void loadTaskConfig_legacyJobField_fallsBackToName() {
-        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/legacy_job_field.yaml");
-        assertThat(taskConfig.getName()).isEqualTo("legacy_name");
-        assertThat(taskConfig.getId()).isEqualTo("legacy_job_field");
+    void loadTaskConfig_missingNameAndId_throws() {
+        assertThatThrownBy(() -> loader.loadTaskConfigFromContent("""
+                tables:
+                  - name: t1
+                    count: 1
+                    schema:
+                      table: t1
+                      fields:
+                        - name: id
+                          type: BIGINT
+                          generator: { strategy: sequence, start: 1, step: 1 }
+                """))
+                .isInstanceOf(ConfigLoadException.class)
+                .hasMessageContaining("name");
     }
 
     @Test
-    void loadTaskConfig_withJobLevelSeeds_parsesAndValidates() {
-        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/job_level_seeds.yaml");
-        assertThat(taskConfig.getId()).isEqualTo("job_level_seeds");
+    void loadTaskConfig_missingName_fallsBackToId() {
+        TaskConfig taskConfig = loader.loadTaskConfigFromContent("""
+                id: overlay_only_id
+                writer:
+                  type: csv
+                  connection: local-csv
+                tables:
+                  - name: t1
+                    count: 1
+                    schema:
+                      table: t1
+                      fields:
+                        - name: id
+                          type: BIGINT
+                          generator: { strategy: sequence, start: 1, step: 1 }
+                """);
+        assertThat(taskConfig.getName()).isEqualTo("overlay_only_id");
+        assertThat(taskConfig.getId()).isEqualTo("overlay_only_id");
+    }
+
+    @Test
+    void loadTaskConfig_withTaskLevelSeeds_parsesAndValidates() {
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/task-configs/task_level_seeds.yaml");
+        assertThat(taskConfig.getId()).isEqualTo("task_level_seeds");
         assertThat(taskConfig.getSeeds()).hasSize(2);
         assertThat(taskConfig.getSeeds().get(0).getName()).isEqualTo("header");
         assertThat(taskConfig.getSeeds().get(1).getLink().getSeed()).isEqualTo("header");
@@ -155,14 +186,14 @@ class YamlConfigLoaderTest {
 
     @Test
     void loadTaskConfig_unquotedOnKeyword_parsesLinkParentColumn() {
-        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/seed_link_on_keyword.yaml");
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/task-configs/seed_link_on_keyword.yaml");
 
         assertThat(taskConfig.getSeeds().get(1).getLink().resolveParentColumn()).isEqualTo("id");
     }
 
     @Test
     void overridePath_resolvesTableByName() {
-        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/jobs/ecommerce_seed.yaml");
+        TaskConfig taskConfig = loader.loadTaskConfig("fixtures/task-configs/ecommerce_seed.yaml");
 
         Optional<TableTask> customers = taskConfig.findTable("customers");
         Optional<TableTask> orders = taskConfig.findTable("orders");

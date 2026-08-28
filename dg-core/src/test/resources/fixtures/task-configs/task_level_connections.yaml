@@ -1,11 +1,11 @@
-id: job_level_connections
-name: Job 级 connections 测试
+id: task_level_connections
+name: 任务配置级 connections 测试
 connections:
   my-pg:
     type: postgresql
-    url: jdbc:postgresql://job-host:5432/jobdb
-    username: jobuser
-    password: jobpass
+    url: jdbc:postgresql://task-host:5432/taskdb
+    username: taskuser
+    password: taskpass
 writer:
   type: postgresql
   connection: my-pg

@@ -90,7 +90,7 @@ class ConstraintPipelineTest {
         schema.setConstraints("fixtures/constraints/schema_rules.yaml");
 
         TaskConfig taskConfig = new TaskConfig();
-        taskConfig.setConstraints("fixtures/constraints/job_rules.yaml");
+        taskConfig.setConstraints("fixtures/constraints/task_rules.yaml");
 
         TableTask tableTask = new TableTask();
         tableTask.setConstraints("fixtures/constraints/table_rules.yaml");

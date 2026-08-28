@@ -18,6 +18,8 @@ class YamlConfigLoaderContentTest {
     @Test
     void loadTaskConfigFromContent_validYaml_parsesTables() {
         String yaml = """
+                id: content_test
+                name: 内容解析测试
                 writer:
                   type: csv
                   connection: local-csv

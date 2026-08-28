@@ -28,7 +28,7 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class TaskRunQueueExecutorTest {
 
-    private static final String CONFIG_PATH = "jobs/demo.yaml";
+    private static final String CONFIG_PATH = "task-configs/demo.yaml";
 
     @Mock
     private TaskRunRepository jobRepository;

@@ -78,7 +78,7 @@ data-generator/
     ├── schemas/customer.yaml, order.yaml, order_item.yaml
     ├── references/region_lookup.yaml
     ├── constraints/order_rules.yaml
-    └── jobs/single_customer.yaml, ecommerce_seed.yaml
+    └── task-configs/single_customer.yaml, ecommerce_seed.yaml
 ```
 
 ---
@@ -678,7 +678,7 @@ class JobControllerTest {
         mockMvc.perform(post("/api/v1/jobs")
             .contentType(APPLICATION_JSON)
             .content("""
-                {"jobConfig":"jobs/single_customer.yaml",
+                {"jobConfig":"task-configs/single_customer.yaml",
                  "writer":{"type":"csv","connection":"local-csv","mode":"insert"}}
                 """))
             .andExpect(status().isOk())
@@ -767,8 +767,8 @@ data-generator:
 - `schemas/customer.yaml`, `order.yaml`, `order_item.yaml`
 - `references/region_lookup.yaml`
 - `constraints/order_rules.yaml`
-- `jobs/single_customer.yaml`（单表）
-- `jobs/ecommerce_seed.yaml`（三表 DAG：customers → orders → order_items，对齐 spec §5.4）
+- `task-configs/single_customer.yaml`（单表）
+- `task-configs/ecommerce_seed.yaml`（三表 DAG：customers → orders → order_items，对齐 spec §5.4）
 
 - [ ] **Step 4: Run test — expect PASS**
 
@@ -807,7 +807,7 @@ curl http://localhost:8080/api/v1/health
 curl http://localhost:8080/api/v1/schemas
 curl -X POST http://localhost:8080/api/v1/preview \
   -H "Content-Type: application/json" \
-  -d '{"jobConfig":"jobs/single_customer.yaml","preview":{"limit":5}}'
+  -d '{"jobConfig":"task-configs/single_customer.yaml","preview":{"limit":5}}'
 ```
 
 - [ ] **Step 4: 编写 README**

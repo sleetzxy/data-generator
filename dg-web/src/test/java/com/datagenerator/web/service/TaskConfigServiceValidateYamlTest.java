@@ -41,6 +41,8 @@ class TaskConfigServiceValidateYamlTest {
     @Test
     void validateYaml_valid_returnsOk() {
         String yaml = """
+                id: validate_test
+                name: 校验测试
                 writer:
                   type: csv
                   connection: local-csv

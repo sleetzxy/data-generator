@@ -59,7 +59,10 @@ public class YamlConfigLoader {
         TaskConfig taskConfig = new TaskConfig();
         String name = YamlMappingUtils.asString(root.get("name"));
         if (name == null || name.isBlank()) {
-            name = YamlMappingUtils.asString(root.get("job"));
+            name = YamlMappingUtils.asString(root.get("id"));
+        }
+        if (name == null || name.isBlank()) {
+            throw new ConfigLoadException("Task config must define 'name' or 'id'");
         }
         taskConfig.setName(name);
         String id = YamlMappingUtils.asString(root.get("id"));
@@ -134,7 +137,8 @@ public class YamlConfigLoader {
         } catch (ConfigLoadException exception) {
             throw exception;
         } catch (Exception exception) {
-            throw new ConfigLoadException("Failed to load YAML config: " + path, exception);
+            String detail = exception.getMessage() == null ? exception.getClass().getSimpleName() : exception.getMessage();
+            throw new ConfigLoadException("Failed to load YAML config: " + path + " (" + detail + ")", exception);
         }
     }
 }

@@ -31,7 +31,7 @@ class TaskRunRepositoryTest {
         Optional<TaskRunResponse> found = repository.findById("job-1");
         assertThat(found).isPresent();
         assertThat(found.get().getStatus()).isEqualTo(TaskRunStatus.PENDING);
-        assertThat(found.get().getConfigPath()).isEqualTo("jobs/test.yaml");
+        assertThat(found.get().getConfigPath()).isEqualTo("task-configs/test.yaml");
     }
 
     @Test
@@ -71,10 +71,10 @@ class TaskRunRepositoryTest {
 
     @Test
     void findRunningByConfigPath_returnsOnlyRunning() {
-        insertJob("j1", "jobs/a.yaml", TaskRunStatus.RUNNING);
-        insertJob("j2", "jobs/a.yaml", TaskRunStatus.COMPLETED);
+        insertJob("j1", "task-configs/a.yaml", TaskRunStatus.RUNNING);
+        insertJob("j2", "task-configs/a.yaml", TaskRunStatus.COMPLETED);
 
-        assertThat(repository.findRunningByConfigPath("jobs/a.yaml"))
+        assertThat(repository.findRunningByConfigPath("task-configs/a.yaml"))
                 .extracting(TaskRunResponse::getRunId)
                 .containsExactly("j1");
     }
@@ -115,7 +115,7 @@ class TaskRunRepositoryTest {
                 new TaskRunProgress(1, 0, 10, 0, 0),
                 List.of(new TableDetail("t1", 0, "pending")),
                 null,
-                "jobs/test.yaml",
+                "task-configs/test.yaml",
                 "2026-06-05T00:00:00Z",
                 null,
                 null);

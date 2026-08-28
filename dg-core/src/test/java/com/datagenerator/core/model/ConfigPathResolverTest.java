@@ -66,14 +66,14 @@ class ConfigPathResolverTest {
     void writableOverlay_overridesClasspathResource() throws Exception {
         Path overlay = Files.createTempDirectory("dg-overlay-test");
         Path primaryDir = Files.createTempDirectory("dg-primary-test");
-        Files.createDirectories(primaryDir.resolve("jobs"));
-        Files.writeString(primaryDir.resolve("jobs/demo.yaml"), "id: primary\nname: primary\ntables: []");
-        Files.createDirectories(overlay.resolve("jobs"));
-        Files.writeString(overlay.resolve("jobs/demo.yaml"), "id: overlay\nname: overlay\ntables: []");
+        Files.createDirectories(primaryDir.resolve("task-configs"));
+        Files.writeString(primaryDir.resolve("task-configs/demo.yaml"), "id: primary\nname: primary\ntables: []");
+        Files.createDirectories(overlay.resolve("task-configs"));
+        Files.writeString(overlay.resolve("task-configs/demo.yaml"), "id: overlay\nname: overlay\ntables: []");
 
         ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlay);
 
-        try (var inputStream = resolver.open("jobs/demo.yaml")) {
+        try (var inputStream = resolver.open("task-configs/demo.yaml")) {
             assertThat(new String(inputStream.readAllBytes())).contains("overlay");
         }
     }

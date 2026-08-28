@@ -44,7 +44,7 @@ class TaskRunOrchestratorTest {
     @Test
     void taskRunOrchestrator_multiTableWithForeignKeyReference() {
         var taskConfig = new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()))
-                .loadTaskConfig("fixtures/jobs/multi_table.yaml");
+                .loadTaskConfig("fixtures/task-configs/multi_table.yaml");
 
         TaskRunResult result = orchestrator.run(
                 taskConfig,
@@ -82,7 +82,7 @@ class TaskRunOrchestratorTest {
                 pluginRegistry,
                 new ConnectionRegistry());
 
-        var taskConfig = configLoader.loadTaskConfig("fixtures/jobs/multi_table.yaml");
+        var taskConfig = configLoader.loadTaskConfig("fixtures/task-configs/multi_table.yaml");
         taskConfig.setWriters(List.of(
                 Map.of("type", "mock-pg", "mode", "insert"),
                 Map.of("type", "mock-ck", "mode", "insert")));
@@ -100,7 +100,7 @@ class TaskRunOrchestratorTest {
     @Test
     void taskRunOrchestrator_taskConfigWriterOverridesRuntimeWriter() {
         var taskConfig = new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()))
-                .loadTaskConfig("fixtures/jobs/multi_table.yaml");
+                .loadTaskConfig("fixtures/task-configs/multi_table.yaml");
         taskConfig.setWriter(Map.of("type", "mock", "mode", "insert"));
 
         TaskRunResult result = orchestrator.run(
@@ -132,14 +132,14 @@ class TaskRunOrchestratorTest {
                 pluginRegistry,
                 globalRegistry);
 
-        var taskConfig = configLoader.loadTaskConfig("fixtures/jobs/job_level_connections.yaml");
+        var taskConfig = configLoader.loadTaskConfig("fixtures/task-configs/task_level_connections.yaml");
 
         TaskRunResult result = taskRunOrchestrator.run(taskConfig, List.of(), GenerationOptions.defaults());
 
         assertThat(result.writtenRows()).isEqualTo(1);
-        assertThat(capturingWriter.config().url()).isEqualTo("jdbc:postgresql://job-host:5432/jobdb");
-        assertThat(capturingWriter.config().username()).isEqualTo("jobuser");
-        assertThat(capturingWriter.config().password()).isEqualTo("jobpass");
+        assertThat(capturingWriter.config().url()).isEqualTo("jdbc:postgresql://task-host:5432/taskdb");
+        assertThat(capturingWriter.config().username()).isEqualTo("taskuser");
+        assertThat(capturingWriter.config().password()).isEqualTo("taskpass");
     }
 
     static final class CapturingWriter implements DataWriter {

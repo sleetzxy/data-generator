@@ -11,7 +11,7 @@ start_app() {
 
     mkdir -p "$APP_HOME/logs" "$run_dir"
     if [[ "$role" == "web" ]]; then
-        mkdir -p "$APP_HOME/data/configs/jobs" "$APP_HOME/data/task-run-logs"
+        mkdir -p "$APP_HOME/data/configs/task-configs" "$APP_HOME/data/task-run-logs"
     fi
 
     if [[ -f "$pid_file" ]]; then

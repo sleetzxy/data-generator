@@ -165,7 +165,7 @@ $dirs = @(
     "conf\dg-ai",
     "logs",
     "run",
-    "data\configs\jobs",
+    "data\configs\task-configs",
     "data\task-run-logs"
 )
 foreach ($dir in $dirs) {

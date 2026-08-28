@@ -200,7 +200,7 @@ tables:
 ### 4.2 dg-web / 文档
 
 - ~~更新 `config-guide.md`~~（已完成 v1.1）：Job 级 seeds、`link.match`/`sources`、启动预加载；删除 schema.seed / mutate 章节。
-- 部署方自行维护 Job YAML（`config-dir/jobs/` 或 `writable-config-dir/jobs/`），不随公开仓库发布。
+- 部署方自行维护 Job YAML（`config-dir/jobs/` 或 `writable-config-dir/task-configs/`），不随公开仓库发布。
 - 控制台默认模板无需 seed（保持简单）。
 
 ### 4.3 dg-spi
@@ -235,7 +235,7 @@ tables:
 | `LinkedSeedIndexTest` | equals/path/contains 预加载与 lookup、旧版 SQL 解析 |
 | `SeedGeneratorTest` | field 别名、缺列错误 |
 | `TableGeneratorTest` | 多 seed 同行、与非 seed generator 混用 |
-| 集成 | 精简 fixture Job（如 `fixtures/jobs/ecommerce_seed.yaml`） |
+| 集成 | 精简 fixture Job（如 `fixtures/task-configs/ecommerce_seed.yaml`） |
 
 测试命名：`feature_scenario_expected`。
 

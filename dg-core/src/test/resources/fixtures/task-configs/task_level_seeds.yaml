@@ -1,5 +1,5 @@
-id: job_level_seeds
-name: Job 级 seeds 示例
+id: task_level_seeds
+name: 任务配置级 seeds 示例
 
 writer:
   type: csv

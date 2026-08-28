@@ -54,7 +54,7 @@ class TaskConfigControllerTest {
         when(taskConfigService.list("演示"))
                 .thenReturn(List.of(new TaskConfigResponse(
                         "demo_job",
-                        "jobs/demo_job.yaml",
+                        "task-configs/demo_job.yaml",
                         "demo_job",
                         "演示任务",
                         null,
@@ -71,7 +71,7 @@ class TaskConfigControllerTest {
         when(taskConfigService.get("single_customer"))
                 .thenReturn(new TaskConfigResponse(
                         "single_customer",
-                        "jobs/single_customer.yaml",
+                        "task-configs/single_customer.yaml",
                         "single_customer",
                         "单客户造数",
                         "id: single_customer\nname: 单客户造数",
@@ -83,7 +83,7 @@ class TaskConfigControllerTest {
                 .andExpect(jsonPath("$.fileName").value("single_customer"))
                 .andExpect(jsonPath("$.name").value("单客户造数"))
                 .andExpect(jsonPath("$.id").value("single_customer"))
-                .andExpect(jsonPath("$.path").value("jobs/single_customer.yaml"))
+                .andExpect(jsonPath("$.path").value("task-configs/single_customer.yaml"))
                 .andExpect(jsonPath("$.builtin").value(true))
                 .andExpect(jsonPath("$.readOnly").value(true));
     }
@@ -93,13 +93,13 @@ class TaskConfigControllerTest {
         when(taskConfigService.get("demo_job"))
                 .thenReturn(new TaskConfigResponse(
                         "demo_job",
-                        "jobs/demo_job.yaml",
+                        "task-configs/demo_job.yaml",
                         "demo_job",
                         "演示任务",
                         null,
                         false,
                         false));
-        when(jobScheduleService.resolveSchedule("jobs/demo_job.yaml", false))
+        when(jobScheduleService.resolveSchedule("task-configs/demo_job.yaml", false))
                 .thenReturn(new TaskScheduleResponse(true, "0 0 2 * * ?", true, "2026-06-07T02:00:00+08:00"));
 
         mockMvc.perform(get("/api/v1/task-configs/demo_job/schedule"))
@@ -115,13 +115,13 @@ class TaskConfigControllerTest {
         when(taskConfigService.get("builtin"))
                 .thenReturn(new TaskConfigResponse(
                         "builtin",
-                        "jobs/builtin.yaml",
+                        "task-configs/builtin.yaml",
                         "builtin",
                         "内置任务",
                         null,
                         true,
                         true));
-        when(jobScheduleService.resolveSchedule("jobs/builtin.yaml", true))
+        when(jobScheduleService.resolveSchedule("task-configs/builtin.yaml", true))
                 .thenReturn(new TaskScheduleResponse(true, "0 30 3 * * ?", false, "2026-06-07T03:30:00+08:00"));
 
         mockMvc.perform(get("/api/v1/task-configs/builtin/schedule"))
@@ -136,20 +136,20 @@ class TaskConfigControllerTest {
         when(taskConfigService.get("builtin"))
                 .thenReturn(new TaskConfigResponse(
                         "builtin",
-                        "jobs/builtin.yaml",
+                        "task-configs/builtin.yaml",
                         "builtin",
                         "内置任务",
                         null,
                         true,
                         true));
-        when(jobScheduleService.saveSchedule(eq("jobs/builtin.yaml"), any()))
-                .thenThrow(new ReadOnlyScheduleException("jobs/builtin.yaml"));
+        when(jobScheduleService.saveSchedule(eq("task-configs/builtin.yaml"), any()))
+                .thenThrow(new ReadOnlyScheduleException("task-configs/builtin.yaml"));
 
         mockMvc.perform(put("/api/v1/task-configs/builtin/schedule")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"enabled\":true,\"cron\":\"0 0 2 * * ?\"}"))
                 .andExpect(status().isForbidden())
-                .andExpect(jsonPath("$.message").value("Schedule is read-only for builtin task config: jobs/builtin.yaml"));
+                .andExpect(jsonPath("$.message").value("Schedule is read-only for builtin task config: task-configs/builtin.yaml"));
     }
 
     @Test
@@ -157,13 +157,13 @@ class TaskConfigControllerTest {
         when(taskConfigService.get("demo_job"))
                 .thenReturn(new TaskConfigResponse(
                         "demo_job",
-                        "jobs/demo_job.yaml",
+                        "task-configs/demo_job.yaml",
                         "demo_job",
                         "演示任务",
                         null,
                         false,
                         false));
-        when(jobScheduleService.saveSchedule(eq("jobs/demo_job.yaml"), any()))
+        when(jobScheduleService.saveSchedule(eq("task-configs/demo_job.yaml"), any()))
                 .thenReturn(new TaskScheduleResponse(true, "0 0 2 * * ?", true, "2026-06-07T02:00:00+08:00"));
 
         mockMvc.perform(put("/api/v1/task-configs/demo_job/schedule")
@@ -173,6 +173,6 @@ class TaskConfigControllerTest {
                 .andExpect(jsonPath("$.enabled").value(true))
                 .andExpect(jsonPath("$.cron").value("0 0 2 * * ?"));
 
-        verify(scheduleManager).reschedule("jobs/demo_job.yaml");
+        verify(scheduleManager).reschedule("task-configs/demo_job.yaml");
     }
 }

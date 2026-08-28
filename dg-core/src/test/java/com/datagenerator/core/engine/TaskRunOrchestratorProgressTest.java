@@ -43,7 +43,7 @@ class TaskRunOrchestratorProgressTest {
     @Test
     void run_withListener_notifiesBatchWrites() {
         var taskConfig = new YamlConfigLoader(ConfigPathResolver.forClasspath(getClass().getClassLoader()))
-                .loadTaskConfig("fixtures/jobs/multi_table.yaml");
+                .loadTaskConfig("fixtures/task-configs/multi_table.yaml");
         AtomicInteger batchEvents = new AtomicInteger();
 
         TaskRunResult result = orchestrator.run(

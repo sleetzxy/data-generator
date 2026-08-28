@@ -268,7 +268,7 @@ fields:
 **单表快捷模式** = 仅含一张表的 Job 配置，与多表共用同一格式：
 
 ```yaml
-# configs/jobs/single_customer.yaml
+# configs/task-configs/single_customer.yaml
 job: single_customer
 tables:
   - name: customers
@@ -279,7 +279,7 @@ tables:
 **多表 DAG 编排：**
 
 ```yaml
-# configs/jobs/ecommerce_seed.yaml
+# configs/task-configs/ecommerce_seed.yaml
 job: ecommerce_seed
 tables:
   - name: customers
@@ -428,7 +428,7 @@ ExpressionValidators   →  SpEL/Aviator/Groovy
 
 ```json
 {
-  "jobConfig": "jobs/ecommerce_seed.yaml",
+  "jobConfig": "task-configs/ecommerce_seed.yaml",
   "overrides": {
     "tables.customers.count": 500,
     "tables.orders.count": 2000
@@ -451,7 +451,7 @@ ExpressionValidators   →  SpEL/Aviator/Groovy
 
 ```json
 {
-  "jobConfig": "jobs/ecommerce_seed.yaml",
+  "jobConfig": "task-configs/ecommerce_seed.yaml",
   "writers": [
     { "type": "postgresql", "connection": "dev-pg", "mode": "insert" },
     { "type": "clickhouse", "connection": "dev-ck", "mode": "insert" }
@@ -465,7 +465,7 @@ ExpressionValidators   →  SpEL/Aviator/Groovy
 
 ```json
 {
-  "jobConfig": "jobs/ecommerce_seed.yaml",
+  "jobConfig": "task-configs/ecommerce_seed.yaml",
   "overrides": { "tables.customers.count": 10 },
   "preview": {
     "limit": 20,
@@ -527,7 +527,7 @@ configs/
 │   └── region_lookup.yaml
 ├── constraints/       # 可复用约束规则集
 │   └── spatial_rules.yaml
-└── jobs/              # 多表编排任务定义（DAG）
+└── task-configs/              # 多表编排任务定义（DAG）
     └── ecommerce_seed.yaml
 ```
 

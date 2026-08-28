@@ -21,9 +21,9 @@ class TaskScheduleRepositoryTest {
 
     @Test
     void upsertAndFind_roundTrip() {
-        repository.upsert("jobs/my.yaml", true, "0 0 2 * * ?", Instant.now().toString());
+        repository.upsert("task-configs/my.yaml", true, "0 0 2 * * ?", Instant.now().toString());
         Optional<TaskScheduleRepository.TaskScheduleRecord> found =
-                repository.findByConfigPath("jobs/my.yaml");
+                repository.findByConfigPath("task-configs/my.yaml");
         assertThat(found).isPresent();
         assertThat(found.get().enabled()).isTrue();
         assertThat(found.get().cron()).isEqualTo("0 0 2 * * ?");
@@ -31,8 +31,8 @@ class TaskScheduleRepositoryTest {
 
     @Test
     void deleteByConfigPath_removesRow() {
-        repository.upsert("jobs/x.yaml", false, null, Instant.now().toString());
-        repository.deleteByConfigPath("jobs/x.yaml");
-        assertThat(repository.findByConfigPath("jobs/x.yaml")).isEmpty();
+        repository.upsert("task-configs/x.yaml", false, null, Instant.now().toString());
+        repository.deleteByConfigPath("task-configs/x.yaml");
+        assertThat(repository.findByConfigPath("task-configs/x.yaml")).isEmpty();
     }
 }

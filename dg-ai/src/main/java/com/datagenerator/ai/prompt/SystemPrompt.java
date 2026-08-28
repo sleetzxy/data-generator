@@ -23,8 +23,7 @@ public final class SystemPrompt {
             生成策略: sequence / random / uuid / enum / literal / regex / phone / email / idcard / reference / seed / expression
 
             ### 关键要点
-            - `id` 仅含字母、数字、下划线、连字符，以字母开头，全局不可重复
-            - 旧版 `job` 字段已废弃，统一使用 `id` + `name`
+            - `id` 与 `name` 均为必填；`id` 仅含字母、数字、下划线、连字符，以字母开头，全局不可重复
             - `writer` 与 `writers` 二选一：单写用 `writer`，多写（同一数据写入 PG + ClickHouse）用 `writers`
             - 调用 addTableToDraft 时 fields 直接放在 table 顶层（如 `fields:\n  - name: id\n    type: integer`），系统会自动包装到 `schema.fields` 下
             - Schema 引用数据库表的 `table` 名（可选），放在 table meta 中即可（如 `table: my_table`），系统会自动归入 `schema.table`

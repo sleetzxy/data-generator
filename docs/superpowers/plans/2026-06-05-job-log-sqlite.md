@@ -327,7 +327,7 @@ class JobRepositoryTest {
         Optional<JobResponse> found = repository.findById("job-1");
         assertThat(found).isPresent();
         assertThat(found.get().getStatus()).isEqualTo(JobStatus.PENDING);
-        assertThat(found.get().getJobConfig()).isEqualTo("jobs/test.yaml");
+        assertThat(found.get().getJobConfig()).isEqualTo("task-configs/test.yaml");
     }
 
     @Test
@@ -382,7 +382,7 @@ class JobRepositoryTest {
                 new JobProgress(1, 0, 10, 0, 0),
                 List.of(new TableDetail("t1", 0, "pending")),
                 null,
-                "jobs/test.yaml",
+                "task-configs/test.yaml",
                 "2026-06-05T00:00:00Z",
                 null,
                 null);
