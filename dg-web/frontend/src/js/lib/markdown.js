@@ -1,15 +1,6 @@
 /** 轻量 Markdown 渲染，供配置指南与编辑器参考面板复用。 */
 
-function escapeHtml(text) {
-    if (text == null) {
-        return '';
-    }
-    return String(text)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;');
-}
+import { escapeHtml } from '../core/ui.js';
 
 function inlineFormat(text) {
     let result = escapeHtml(text);
@@ -22,11 +13,11 @@ function inlineFormat(text) {
 function slugify(text) {
     return text.trim()
         .toLowerCase()
-        .replace(/[^\w\u4e00-\u9fff\s-]/g, '')
+        .replace(/[^\w一-鿿\s-]/g, '')
         .replace(/\s+/g, '-');
 }
 
-function renderMarkdown(text) {
+export function renderMarkdown(text) {
     const lines = text.replace(/\r\n/g, '\n').split('\n');
     const html = [];
     let inCode = false;
@@ -117,7 +108,8 @@ function renderMarkdown(text) {
     return html.join('\n');
 }
 
-function buildMarkdownToc(container, tocNav) {
+/** 基于容器内 h2/h3 标题构建目录导航 */
+export function buildMarkdownToc(container, tocNav) {
     const headings = container.querySelectorAll('h2, h3');
     if (!headings.length) {
         tocNav.innerHTML = '';
@@ -132,7 +124,3 @@ function buildMarkdownToc(container, tocNav) {
         return `<a class="toc-link${level}" href="#${id}">${escapeHtml(heading.textContent)}</a>`;
     }).join('');
 }
-
-window.escapeHtml = escapeHtml;
-window.renderMarkdown = renderMarkdown;
-window.buildMarkdownToc = buildMarkdownToc;

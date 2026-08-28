@@ -225,7 +225,7 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 | 新增 REST 端点 | DTO → Service → Controller；补充 `@WebMvcTest`（`@AutoConfigureMockMvc(addFilters = false)` 若不测 Security） |
 | 修改生成/约束逻辑 | 改 `dg-core`；补单元测试 |
 | 修改任务持久化 | 改 `dg-web/.../storage/`（`JobRepository`、`JobLogFileRepository`）；任务记录见 job-log-sqlite spec，运行日志见 `storage.log-dir` |
-| 修改认证/登录 | 改 `SecurityConfig` + `DataGeneratorProperties.AuthProperties`；静态页 `static/login.html` |
+| 修改认证/登录 | 改 `SecurityConfig` + `DataGeneratorProperties.AuthProperties`；登录页 `dg-web/frontend/src/login.html` |
 | 修改部署/启停脚本 | 改 `scripts/linux`、`scripts/windows`；打包逻辑在 `scripts/package.ps1`（Maven 须带 `-am`） |
 | 修改 AI Agent | 改 `dg-ai`（Tool、SystemPrompt、AiAutoConfiguration）；如需新 Tool，实现并注册到 Toolkit |
 | 排查调用链 | `codegraph_trace` → `codegraph_explore` |
@@ -250,7 +250,7 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 | `docs/superpowers/plans/2026-06-06-job-schedule.md` | Job 定时调度实现计划 |
 | `docs/superpowers/specs/2026-06-07-job-level-seeds-design.md` | Job 级 seeds 设计规格 |
 | `dg-ai/README.md` | dg-ai 模块说明（架构、配置、API、Tool Set、RAG 知识库） |
-| `dg-web/src/main/resources/static/docs/config-guide.md` | Web 控制台配置指南（用户文档） |
+| `dg-web/frontend/src/docs/config-guide.md` | Web 控制台配置指南（用户文档） |
 
 ---
 

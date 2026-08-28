@@ -2,7 +2,7 @@
   "name": "dg-web-frontend",
   "private": true,
   "scripts": {
-    "build:yaml-editor": "esbuild yaml-editor-src.js --bundle --format=esm --outfile=../src/main/resources/static/yaml-editor.js"
+    "build:yaml-editor": "esbuild yaml-editor-src.js --bundle --format=esm --outfile=src/js/lib/yaml-editor.js"
   },
   "devDependencies": {
     "@codemirror/commands": "^6.8.0",

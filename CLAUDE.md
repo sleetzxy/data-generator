@@ -258,7 +258,8 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 | 新增 REST 端点 | DTO → Service → Controller；补充 `@WebMvcTest` |
 | 修改生成/约束逻辑 | 改 `dg-core`；补单元测试 |
 | 修改任务持久化 | 改 `dg-web/.../storage/`（`JobRepository`、`JobLogFileRepository`） |
-| 修改认证/登录 | 改 `SecurityConfig` + `DataGeneratorProperties.AuthProperties`；静态页 `static/login.html` |
+| 修改认证/登录 | 改 `SecurityConfig` + `DataGeneratorProperties.AuthProperties`；登录页 `dg-web/frontend/src/login.html` |
+| 修改前端 | 改 `dg-web/frontend/src`（js/app.js 入口，js/core 共享层，js/views 各视图，js/lib 工具库）；`mvn -pl dg-web -am package` 将 frontend/src 映射进 jar 的 static/ |
 | 修改部署/启停脚本 | 改 `scripts/linux`、`scripts/windows`；打包逻辑在 `scripts/package.ps1` |
 | 修改 AI Agent | 改 `dg-ai`（Tool、SystemPrompt、AiAutoConfiguration）；如需新 Tool，实现并注册到 Toolkit |
 | 排查调用链 | `codegraph_trace` → `codegraph_explore` |
@@ -281,7 +282,7 @@ java -jar dg-web/target/dg-web-0.1.0-SNAPSHOT.jar
 | `docs/superpowers/specs/2026-06-07-job-level-seeds-design.md` | Job 级 seeds 设计规格 |
 | `docs/superpowers/plans/` | 实现计划 |
 | `dg-ai/README.md` | dg-ai 模块说明（架构、配置、API、Tool Set、RAG 知识库） |
-| `dg-web/src/main/resources/static/docs/config-guide.md` | Web 控制台配置指南（用户文档） |
+| `dg-web/frontend/src/docs/config-guide.md` | Web 控制台配置指南（用户文档） |
 
 ---
 

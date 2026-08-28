@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Data Generator 控制台</title>
-    <link rel="stylesheet" href="/style.css">
+    <link rel="stylesheet" href="/css/style.css">
 </head>
 <body class="app-shell">
 <aside class="app-sidebar">
@@ -40,6 +40,16 @@
                 <span>任务管理</span>
             </a>
         </div>
+        <div class="sidebar-group">
+            <div class="sidebar-group-title">帮助</div>
+            <a href="#docs" class="sidebar-link" data-view="docs">
+                <svg class="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
+                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
+                </svg>
+                <span>配置指南</span>
+            </a>
+        </div>
         <div class="sidebar-group sidebar-group-ai" id="sidebar-group-ai">
             <div class="sidebar-group-title">智能</div>
             <a href="#ai" class="sidebar-link" id="nav-ai" data-view="ai">
@@ -51,16 +61,6 @@
                     <circle cx="15" cy="13" r="1" fill="currentColor" stroke="none"/>
                 </svg>
                 <span>AI 助手</span>
-            </a>
-        </div>
-        <div class="sidebar-group">
-            <div class="sidebar-group-title">帮助</div>
-            <a href="#docs" class="sidebar-link" data-view="docs">
-                <svg class="sidebar-link-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                    <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/>
-                    <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>
-                </svg>
-                <span>配置指南</span>
             </a>
         </div>
     </nav>
@@ -194,7 +194,7 @@
                     <div class="ai-composer">
                         <form id="ai-chat-form" class="ai-composer-form">
                             <textarea id="ai-input" rows="1" spellcheck="false"
-                                      placeholder="描述你的造数需求，例如：帮我创建一个包含用户和订单表的 Job…"></textarea>
+                                      placeholder="描述你的造数需求，例如：帮我创建一个包含用户和订单表的任务配置…"></textarea>
                             <div class="ai-composer-toolbar">
                                 <div class="ai-composer-right">
                                     <button type="submit" id="ai-send-btn" class="ai-send-btn" aria-label="发送" disabled>
@@ -330,11 +330,7 @@
 
 <div id="toast" class="toast hidden"></div>
 
-<script src="/csrf.js"></script>
-<script src="/scrollbar.js"></script>
-<script src="/markdown.js"></script>
-<script src="/docs.js"></script>
-<script type="module" src="/app.js"></script>
-<script src="/agent.js"></script>
+<script src="/js/lib/csrf.js"></script>
+<script type="module" src="/js/app.js"></script>
 </body>
 </html>

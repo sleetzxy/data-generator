@@ -1,4 +1,10 @@
-const AGENT_API = '/api/v1/agent';
+/** AI 助手视图：SSE 流式对话、思考/工具调用块渲染、会话历史管理。 */
+
+import { api } from '../core/api.js';
+import { escapeHtml, showToast } from '../core/ui.js';
+import { loadDefinitions } from './tasks.js';
+
+const AGENT_API_BASE = '/api/v1/agent';
 
 let aiChatId = null;
 let aiSending = false;
@@ -27,9 +33,8 @@ const AGENT_WELCOME_TEXT = `我是 Data Generator 的 AI 配置顾问，基于 R
 
 我会自动规划复杂任务的执行步骤，并逐步完成。直接描述你的造数需求即可开始。`;
 
-document.addEventListener('DOMContentLoaded', initAgentUi);
-
-function initAgentUi() {
+/** 绑定聊天表单、头部按钮与历史面板事件（由应用入口调用） */
+export function initAgent() {
     const chatForm = document.getElementById('ai-chat-form');
     if (!chatForm) {
         return;
@@ -44,8 +49,6 @@ function initAgentUi() {
     input.addEventListener('input', handleInputChange);
     input.addEventListener('keydown', handleInputKeydown);
 
-    window.dgOnAiViewShown = onAiViewShown;
-
     // 点击面板外部关闭历史对话列表
     document.addEventListener('click', function (e) {
         const panel = document.getElementById('ai-history-panel');
@@ -59,13 +62,14 @@ function initAgentUi() {
     });
 }
 
-function onAiViewShown() {
+/** 进入 AI 视图时的处理（由应用入口的视图切换调用） */
+export function onAiViewShown() {
     document.getElementById('ai-history-panel').classList.add('hidden');
     showWelcomeIfEmpty();
 }
 
 async function ensureChat() {
-    const response = await agentFetch('/chat/open', { method: 'POST' });
+    const response = await api('/chat/open', { method: 'POST' }, AGENT_API_BASE);
     aiChatId = (response.data && response.data.chatId) || response.chatId;
 }
 
@@ -132,7 +136,7 @@ async function handleSend(event) {
             await ensureChat();
         }
     } catch (err) {
-        showAgentToast('创建会话失败: ' + err.message);
+        showToast('创建会话失败: ' + err.message);
         setSending(false);
         return;
     }
@@ -144,7 +148,7 @@ async function handleSend(event) {
         await sendAgentMessage(aiChatId, content, handleSseEvent);
     } catch (err) {
         appendToAssistantBubble('\n[错误] ' + err.message);
-        showAgentToast('发送失败: ' + err.message);
+        showToast('发送失败: ' + err.message);
         setSending(false);
     }
 }
@@ -158,7 +162,7 @@ async function handleNewChat() {
     }
     document.getElementById('ai-history-panel').classList.add('hidden');
     resetSession();
-    showAgentToast('已开始新对话');
+    showToast('已开始新对话');
 }
 
 /** ── 清空当前会话 ── */
@@ -171,14 +175,14 @@ async function handleClearChat() {
     // 删除服务端 Agent 状态
     if (aiChatId) {
         try {
-            await agentFetch(`/chat/${encodeURIComponent(aiChatId)}`, { method: 'DELETE' });
+            await api(`/chat/${encodeURIComponent(aiChatId)}`, { method: 'DELETE' }, AGENT_API_BASE);
         } catch (e) {
             // 删除失败不阻塞前端重置
             console.warn('删除服务端会话失败:', e);
         }
     }
     resetSession();
-    showAgentToast('会话已清空');
+    showToast('会话已清空');
 }
 
 /** ── 切换历史面板 ── */
@@ -210,7 +214,7 @@ async function renderHistoryList() {
 
     list.innerHTML = sessions.map((item, idx) => {
         const title = item.title || '未命名对话';
-        const time = formatTime(item.updatedAt);
+        const time = formatSessionTime(item.updatedAt);
         return `<div class="ai-history-item" data-index="${idx}">
             <span class="ai-history-item-title">${escapeHtml(title)}</span>
             <span class="ai-history-item-time">${time}</span>
@@ -258,7 +262,7 @@ async function switchToHistory(idx) {
     try {
         sessionMessages = await fetchSessionMessages(item.chatId);
     } catch (e) {
-        showAgentToast('加载会话失败: ' + e.message);
+        showToast('加载会话失败: ' + e.message);
         messagesEl.innerHTML = '';
         showWelcomeIfEmpty();
         return;
@@ -289,7 +293,7 @@ async function switchToHistory(idx) {
     }
 
     document.getElementById('ai-history-panel').classList.add('hidden');
-    showAgentToast('已切换到: ' + (item.title || '历史对话'));
+    showToast('已切换到: ' + (item.title || '历史对话'));
 }
 
 /**
@@ -388,7 +392,7 @@ function appendTextToAssistantBubble(text) {
 /** ── 服务端会话 API ── */
 
 async function fetchSessions() {
-    const response = await agentFetch('/sessions');
+    const response = await api('/sessions', {}, AGENT_API_BASE);
     if (!response || !response.data) {
         return [];
     }
@@ -397,7 +401,7 @@ async function fetchSessions() {
 }
 
 async function fetchSessionMessages(chatId) {
-    const response = await agentFetch(`/chat/${encodeURIComponent(chatId)}/messages`);
+    const response = await api(`/chat/${encodeURIComponent(chatId)}/messages`, {}, AGENT_API_BASE);
     if (!response || !response.data) {
         return { chatId, messages: [] };
     }
@@ -406,7 +410,7 @@ async function fetchSessionMessages(chatId) {
 }
 
 async function deleteSessionRemote(chatId) {
-    await agentFetch(`/chat/${encodeURIComponent(chatId)}`, { method: 'DELETE' });
+    await api(`/chat/${encodeURIComponent(chatId)}`, { method: 'DELETE' }, AGENT_API_BASE);
 }
 
 /** ── 删除历史项 ── */
@@ -416,7 +420,7 @@ async function deleteHistoryItem(idx) {
     try {
         await deleteSessionRemote(item.chatId);
     } catch (e) {
-        showAgentToast('删除失败: ' + e.message);
+        showToast('删除失败: ' + e.message);
         return;
     }
     if (item.chatId === aiChatId) {
@@ -426,7 +430,8 @@ async function deleteHistoryItem(idx) {
     renderHistoryList();
 }
 
-function formatTime(updatedAt) {
+/** 会话时间显示：今天 HH:mm，否则 M/D HH:mm */
+function formatSessionTime(updatedAt) {
     if (!updatedAt) return '';
     try {
         const d = new Date(updatedAt);
@@ -441,12 +446,6 @@ function formatTime(updatedAt) {
     } catch (_) {
         return '';
     }
-}
-
-function escapeHtml(str) {
-    const div = document.createElement('div');
-    div.textContent = str;
-    return div.innerHTML;
 }
 
 function resetSession() {
@@ -704,9 +703,7 @@ function setToolResult(toolCallId, text) {
 }
 
 function handleAgentTaskConfigSaved() {
-    if (typeof loadDefinitions === 'function') {
-        loadDefinitions({ fullRender: true });
-    }
+    loadDefinitions({ fullRender: true });
 }
 
 function appendToAssistantBubble(text) {
@@ -872,7 +869,7 @@ function handleSseEvent(eventName, data) {
                 message = parsed.message || data;
             } catch (_) { /* ignore */ }
             appendToAssistantBubble('\n[错误] ' + message);
-            showAgentToast(message);
+            showToast(message);
             setSending(false);
             break;
         }
@@ -920,7 +917,7 @@ async function sendAgentMessage(chatId, content, onEvent) {
 
     // 不再传递 mode 参数，模型自动处理思考
     const response = await fetch(
-        `${AGENT_API}/chat/${encodeURIComponent(chatId)}`,
+        `${AGENT_API_BASE}/chat/${encodeURIComponent(chatId)}`,
         {
             method: 'POST',
             credentials: 'same-origin',
@@ -993,48 +990,4 @@ function consumeSseBuffer(buffer, onEvent) {
     });
 
     return remainder;
-}
-
-async function agentFetch(path, options = {}) {
-    const method = (options.method || 'GET').toUpperCase();
-    // 先展开调用方 headers，再设置必需字段，确保 Content-Type 和 CSRF Token 不被覆盖
-    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-    if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS' && typeof getCsrfToken === 'function') {
-        const csrfToken = getCsrfToken();
-        if (csrfToken) {
-            headers['X-XSRF-TOKEN'] = csrfToken;
-        }
-    }
-
-    // 排除 options 中的 headers 避免重复展开覆盖
-    const { headers: _, ...restOptions } = options;
-    const response = await fetch(`${AGENT_API}${path}`, {
-        credentials: 'same-origin',
-        headers,
-        ...restOptions
-    });
-
-    if (response.status === 401) {
-        window.location.href = '/login.html';
-        return null;
-    }
-    if (!response.ok) {
-        let message = response.statusText;
-        try {
-            const body = await response.json();
-            message = body.message || body.error || message;
-        } catch (_) { /* ignore */ }
-        throw new Error(message);
-    }
-    if (response.status === 204) {
-        return null;
-    }
-    const data = await response.json();
-    return data;
-}
-
-function showAgentToast(message) {
-    if (typeof showToast === 'function') {
-        showToast(message);
-    }
 }

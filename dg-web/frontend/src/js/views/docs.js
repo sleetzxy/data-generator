@@ -1,6 +1,12 @@
+/** 配置指南视图：加载 Markdown 指南、构建目录并绑定滚动定位。 */
+
+import { escapeHtml } from '../core/ui.js';
+import { buildMarkdownToc, renderMarkdown } from '../lib/markdown.js';
+
 const DOCS_PATH = '/docs/config-guide.md';
 
-async function loadGuide() {
+/** 加载并渲染配置指南（幂等，由应用入口在首次进入视图时调用） */
+export async function loadGuide() {
     const body = document.getElementById('docs-body');
     const toc = document.getElementById('docs-toc');
 
@@ -11,7 +17,7 @@ async function loadGuide() {
         }
         const markdown = await response.text();
         body.innerHTML = renderMarkdown(markdown);
-        buildToc(body, toc);
+        buildMarkdownToc(body, toc);
         bindTocScroll();
         const sectionId = location.hash.replace('#', '');
         if (sectionId && document.getElementById(sectionId)) {
@@ -21,10 +27,6 @@ async function loadGuide() {
         body.innerHTML = `<div class="docs-error">加载配置指南失败：${escapeHtml(err.message)}</div>`;
         toc.innerHTML = '';
     }
-}
-
-function buildToc(container, tocNav) {
-    buildMarkdownToc(container, tocNav);
 }
 
 function bindTocScroll() {
@@ -60,5 +62,3 @@ function scrollToHash(hash) {
         - 12;
     scrollContainer.scrollTo({ top: offset, behavior: 'auto' });
 }
-
-window.loadDocsGuide = loadGuide;

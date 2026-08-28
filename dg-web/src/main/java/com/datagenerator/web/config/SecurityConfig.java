@@ -92,9 +92,9 @@ public class SecurityConfig {
 
                                 LOGIN_PAGE,
 
-                                "/style.css",
+                                "/css/style.css",
 
-                                "/csrf.js",
+                                "/js/lib/csrf.js",
 
                                 "/api/v1/auth/login",
 

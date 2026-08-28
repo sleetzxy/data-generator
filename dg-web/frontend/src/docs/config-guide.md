@@ -9,7 +9,7 @@
 完成以下三步即可生成第一批数据：
 
 1. **确认连接** — 管理员在 `application.yml` 中配置数据库 / CSV 输出目录（见 [配置连接](#配置连接)）。
-2. **编写 Job** — 在控制台点击「新建任务」，填写**任务名称**与 YAML 内容（见 [编写第一个 Job](#编写第一个-job)）。
+2. **编写任务配置** — 在控制台点击「新建任务」，填写**任务名称**与 YAML 内容（见 [编写第一个任务配置](#编写第一个任务配置)）。
 3. **运行** — 保存后点击「运行」；小任务同步完成，大行数任务自动异步执行，可在「日志」中查看进度。
 
 > **控制台提示：** 自定义任务的**显示名称**在弹窗「任务名称」中填写，**不必**在 YAML 里写顶层 `name`；`id` 也由系统自动生成。定时调度在弹窗中配置，**不要**在自定义 YAML 里写 `schedule` 块。
@@ -43,15 +43,15 @@ tables:
 
 | 部分 | 作用 | 配置位置 |
 |------|------|----------|
-| **Job** | 任务唯一 ID、描述名称、默认写入方式 | YAML 顶层 `id`、`name`、`writer` 或 `writers`；控制台自定义任务另有 UI 字段 |
-| **Seeds** | 从真实/维表数据采样作底稿，多源可关联 | 顶层 `seeds[]`（Job 级，非 schema 内） |
+| **任务配置** | 任务唯一 ID、描述名称、默认写入方式 | YAML 顶层 `id`、`name`、`writer` 或 `writers`；控制台自定义任务另有 UI 字段 |
+| **Seeds** | 从真实/维表数据采样作底稿，多源可关联 | 顶层 `seeds[]`（任务配置级，非 schema 内） |
 | **表任务** | 每张表生成多少行、依赖关系 | `tables[]` |
 | **Schema** | 字段列表及每列如何生成 | `tables[].schema` |
 | **约束** | 生成结果的校验规则 | `schema.constraints` 或 `tables[].constraints` |
-| **连接** | 数据库地址、CSV 目录 | `application.yml`；或 Job 顶层 `connections` 块 / reader·writer 内联（见 [配置连接](#配置连接)） |
-| **定时调度** | Cron 自动执行 | 内置 Job：YAML `schedule`；自定义 Job：控制台弹窗（存 SQLite） |
+| **连接** | 数据库地址、CSV 目录 | `application.yml`；或 任务配置顶层 `connections` 块 / reader·writer 内联（见 [配置连接](#配置连接)） |
+| **定时调度** | Cron 自动执行 | 内置任务配置：YAML `schedule`；自定义任务配置：控制台弹窗（存 SQLite） |
 
-推荐将 Schema **内联**在 Job 中（字段多、业务绑定时更清晰）；多个 Job 共用同一 Schema 时可拆到 `schemas/*.yaml` 并用路径引用。
+推荐将 Schema **内联**在任务配置中（字段多、业务绑定时更清晰）；多个任务配置 共用同一 Schema 时可拆到 `schemas/*.yaml` 并用路径引用。
 
 ---
 
@@ -62,8 +62,8 @@ tables:
 | 项 | 控制台行为 | YAML 编辑区 |
 |----|------------|-------------|
 | **任务名称** | 弹窗「任务名称」填写，可中文 | **无需**写顶层 `name`，保存时自动写入 |
-| **任务 ID** | 新建时系统自动生成（`job` + 8 位 hex） | **无需**写 `id`，保存时自动写入 |
-| **配置文件名** | 默认与自动生成的 `id` 相同（纯 ASCII） | 不展示；存于 `writable-config-dir/jobs/` |
+| **任务 ID** | 新建时系统自动生成（`task` + 8 位 hex） | **无需**写 `id`，保存时自动写入 |
+| **配置文件名** | 默认与自动生成的 `id` 相同（纯 ASCII） | 不展示；存于 `writable-config-dir/task-configs/` |
 | **定时调度** | 弹窗「定时调度」勾选并填 Cron | **禁止**写 `schedule` 块 |
 | **内置任务** | 只读；调度读 YAML，不可在 UI 修改 | 可查看完整 YAML（含 `id`、`name`） |
 
@@ -78,7 +78,7 @@ tables:
 - 同一配置若已有运行中实例，新触发会**排队**（FIFO），不会并行重复执行
 - 已启用调度时点击「运行」，会**立即执行一次**，不影响 Cron 计划
 
-内置 Job 可在 YAML 中声明调度：
+内置任务配置 可在 YAML 中声明调度：
 
 ```yaml
 id: my_builtin_job
@@ -91,7 +91,7 @@ tables: []
 
 ---
 
-## 编写第一个 Job
+## 编写第一个任务配置
 
 ### 最小结构
 
@@ -130,14 +130,14 @@ tables:                   # 至少一张表
 |------|------|------|
 | `id` | 是* | 任务唯一标识，仅含字母、数字、下划线、连字符，以字母开头；全局不可重复。*控制台新建自定义任务时自动生成 |
 | `name` | 否 | 任务描述名称，可中文。*控制台自定义任务请在「任务名称」填写，勿在 YAML 重复 |
-| `writer` | 否 | Job 级**单写**配置（写入一个目标），可被表级覆盖；与 `writers` **二选一** |
-| `writers` | 否 | Job 级**多写**配置（同一批数据写入多个目标，如 PG + ClickHouse）；与 `writer` **二选一** |
-| `seeds` | 否 | Job 级命名种子列表，供字段 `strategy: seed` 引用（见 [Job 级 seeds](#job-级-seeds从真实数据出发)） |
-| `schedule` | 否 | 定时调度（仅**内置** Job；自定义任务请用控制台） |
+| `writer` | 否 | 任务配置级**单写**配置（写入一个目标），可被表级覆盖；与 `writers` **二选一** |
+| `writers` | 否 | 任务配置级**多写**配置（同一批数据写入多个目标，如 PG + ClickHouse）；与 `writer` **二选一** |
+| `seeds` | 否 | 任务配置级命名种子列表，供字段 `strategy: seed` 引用（见 [任务配置级 seeds](#任务配置级-seeds从真实数据出发)） |
+| `schedule` | 否 | 定时调度（仅**内置**任务配置；自定义任务请用控制台） |
 | `constraints` | 否 | 引用外部约束文件或内联约束列表 |
 | `tables` | 是 | 表任务列表 |
 
-> **说明：** 旧版配置中的 `job` 字段已废弃，请改用 `id` + `name`。加载旧文件时仍会临时兼容读取 `job`，但保存时必须使用 `id`。
+> **说明：** 顶层 `id` 与 `name` 均为必填。
 
 ### 每个字段怎么写
 
@@ -160,12 +160,12 @@ tables:                   # 至少一张表
 
 ## 配置连接
 
-推荐将连接信息放在 **`application.yml`**，Job 里通过连接**名称**引用，避免把密码写进业务配置。
+推荐将连接信息放在 **`application.yml`**，任务配置里通过连接**名称**引用，避免把密码写进业务配置。
 
 ```yaml
 data-generator:
   connections:
-    dev-safety:              # ← Job 里 writer.connection 引用此名
+    dev-safety:              # ← 任务配置里 writer.connection 引用此名
       type: postgresql
       url: jdbc:postgresql://host:5432/SAFETY_DB
       username: postgres
@@ -187,9 +187,9 @@ data-generator:
 
 修改 `application.yml` 中的连接后需**重启服务**。
 
-### Job 内联连接（可选）
+### 任务配置内联连接（可选）
 
-`writer` / `writers` / `seeds[].reader` 也支持在 Job YAML 中**直接写连接**，无需在 `application.yml` 注册名称。两种方式可混用。
+`writer` / `writers` / `seeds[].reader` 也支持在 任务配置 YAML 中**直接写连接**，无需在 `application.yml` 注册名称。两种方式可混用。
 
 **方式一：连接字段平铺在 reader / writer 上**
 
@@ -235,19 +235,19 @@ writer:
 
 字段优先级（高 → 低）：reader/writer 上的直接字段 > 内联 `connection` 对象 > `application.yml` 命名连接。
 
-> 内联连接适合临时环境或一次性任务；生产环境仍建议集中维护 `application.yml`，便于轮换凭证且不把密码写入 Job 文件。
+> 内联连接适合临时环境或一次性任务；生产环境仍建议集中维护 `application.yml`，便于轮换凭证且不把密码写入 任务配置文件。
 
-### Job 级 connections 块（可选）
+### 任务配置级 connections 块（可选）
 
-在 Job 顶层声明命名连接，供本 Job 内 `writer` / `writers` / `seeds[].reader` 通过**字符串** `connection` 引用。运行时与 `application.yml` 中的连接**合并**，同名以 Job 内定义为准（覆盖 url、username 等）。
+在 任务配置顶层声明命名连接，供本 任务配置内 `writer` / `writers` / `seeds[].reader` 通过**字符串** `connection` 引用。运行时与 `application.yml` 中的连接**合并**，同名以 任务配置内定义为准（覆盖 url、username 等）。
 
 ```yaml
 connections:
   my-pg:
     type: postgresql
-    url: jdbc:postgresql://job-host:5432/jobdb
-    username: jobuser
-    password: jobpass
+    url: jdbc:postgresql://task-host:5432/taskdb
+    username: taskuser
+    password: taskpass
 
 writer:
   type: postgresql
@@ -272,7 +272,7 @@ tables:
           generator: { strategy: sequence, start: 1 }
 ```
 
-适合将连接与 Job 定义打包分发（仍注意凭证安全）；若仅覆盖全局连接的个别字段，也可在 reader/writer 上写 `connection: dev-pg` 并附加 `url:` 等字段（见方式三）。
+适合将连接与 任务配置定义打包分发（仍注意凭证安全）；若仅覆盖全局连接的个别字段，也可在 reader/writer 上写 `connection: dev-pg` 并附加 `url:` 等字段（见方式三）。
 
 ---
 
@@ -293,7 +293,7 @@ tables:
 | 随机邮箱 | `email` | `{ strategy: email, domain: example.com }` |
 | 18 位身份证号及派生 | `idcard` | `{ strategy: idcard, areaCode: '440115' }` / `{ strategy: idcard, from: sfzh, part: age }` |
 | 引用上游表某列 | `reference` | `{ strategy: reference, source: orders, field: id }` |
-| 从 Task seeds 采样 | `seed` | `{ strategy: seed, source: location_sample }`（见 [Job 级 seeds](#job-级-seeds从真实数据出发)） |
+| 从 Task seeds 采样 | `seed` | `{ strategy: seed, source: location_sample }`（见 [任务配置级 seeds](#任务配置级-seeds从真实数据出发)） |
 | 表达式计算列值 | `expression` | `{ strategy: expression, expression: "price * qty", language: spel }` |
 
 ### 通用 generator 参数
@@ -311,7 +311,7 @@ tables:
   type: VARCHAR
   primaryKey: true
   generator: { strategy: sequence, prefix: '4401152024', start: 1, width: 6 }
-# → 4401152024000001、4401152024000002 … 单次 Job 内唯一
+# → 4401152024000001、4401152024000002 … 单次 任务配置内唯一
 
 - name: zhidui_pcs
   type: VARCHAR
@@ -336,7 +336,7 @@ generator: { strategy: uuid }
 generator: { strategy: uuid, dashed: false }   # 32 位 hex，无横线
 ```
 
-适合全局唯一主键；单次 Job 内不会重复。
+适合全局唯一主键；单次 任务配置内不会重复。
 
 ### random — 随机值
 
@@ -451,7 +451,7 @@ generator: { strategy: idcard, areaCode: '440115', birthDate: '1990-05-20', gend
 
 ### reference — 引用其他表
 
-引用**同一 Job 内已生成的上游表**：
+引用**同一 任务配置内已生成的上游表**：
 
 ```yaml
 # 上游表 orders 已配置 depends_on
@@ -474,7 +474,7 @@ generator:
 
 可选 `distribution`：`uniform`（默认）、`histogram`、`normal`，用于控制数值型参考数据的采样分布。
 
-### seed — 从 Job 级 seeds 采样
+### seed — 从任务配置级 seeds 采样
 
 ```yaml
 generator: { strategy: seed, source: location_sample }
@@ -502,11 +502,11 @@ generator:
 
 ---
 
-## Job 级 seeds：从真实数据出发
+## 任务配置级 seeds：从真实数据出发
 
-当你希望「先从生产/路网库采一行真实数据作底稿，部分列保留采样值、其余列用 generator 重算」时，在 **Job 顶层** 声明 `seeds`，字段通过 `strategy: seed` 绑定。
+当你希望「先从生产/路网库采一行真实数据作底稿，部分列保留采样值、其余列用 generator 重算」时，在 **任务配置顶层** 声明 `seeds`，字段通过 `strategy: seed` 绑定。
 
-> **说明：** 旧版 `schema.seed` + `mutate` 已移除，请迁移为 Job 级 `seeds` 格式。
+> **说明：** 旧版 `schema.seed` + `mutate` 已移除，请迁移为 任务配置级 `seeds` 格式。
 
 ### 基本写法
 
@@ -554,7 +554,7 @@ tables:
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `name` | 是 | Job 内唯一标识，供字段 `source` 引用 |
+| `name` | 是 | 任务配置内唯一标识，供字段 `source` 引用 |
 | `reader` | 三选一 | 内联 SQL / 连接配置，每次采样一行 |
 | `reference` | 三选一 | 引用 `references/*.yaml` 中预定义的 reader |
 | `template` | 三选一 | 内联固定键值 Map |
@@ -678,7 +678,7 @@ tables:
 
 ### 部分 seed 无数据
 
-根 seed 的 SQL 查询**允许返回 0 行**：引擎不会因此中断整个 Job，该 seed 对应字段生成 **null**（与非 seed 字段空值行为一致）。适用于多个 seed 源中仅部分库表有数据的场景。若目标库列不允许 `null`，可在字段 generator 上配置 `default`（如 `default: ''`）兜底。
+根 seed 的 SQL 查询**允许返回 0 行**：引擎不会因此中断整个任务运行，该 seed 对应字段生成 **null**（与非 seed 字段空值行为一致）。适用于多个 seed 源中仅部分库表有数据的场景。若目标库列不允许 `null`，可在字段 generator 上配置 `default`（如 `default: ''`）兜底。
 
 > **注意：** 从属 seed 的 link 关联在内存中匹配；未命中时对应字段为 **null**（见 [多 seed 关联（link）](#多-seed-关联link)）。`reference` 维表引用策略在无数据时仍会报错（与 seed 语义不同）。
 
@@ -795,7 +795,7 @@ writer:
 
 ### 多写（`writers`）
 
-同一 Job 运行时，将**同一批生成结果**同时写入多个目标（如 PostgreSQL + ClickHouse）：
+同一任务配置 运行时，将**同一批生成结果**同时写入多个目标（如 PostgreSQL + ClickHouse）：
 
 ```yaml
 writers:
@@ -812,14 +812,14 @@ writers:
 - 每个列表项结构与单写 `writer` 相同（`type`、`connection`、`mode` 等）
 - 各目标写入**同一份行数据**；若某目标写入失败，其他目标可能已成功，任务进度按最小成功批次数统计
 - 同一层级**不能**同时配置 `writer` 与 `writers`
-- 表级同样支持 `writers`，用于某张表单独多写或覆盖 Job 默认
+- 表级同样支持 `writers`，用于某张表单独多写或覆盖任务配置默认
 
 ### 表级覆盖
 
-同一份 Job 中，不同表可写入不同目标（单写或多写均可）：
+同一份任务配置 中，不同表可写入不同目标（单写或多写均可）：
 
 ```yaml
-# Job 级默认：双写 PG + ClickHouse
+# 任务配置级默认：双写 PG + ClickHouse
 writers:
   - type: postgresql
     connection: dev-safety
@@ -830,12 +830,12 @@ writers:
 
 tables:
   - name: orders
-    # 继承 Job 级 writers
+    # 继承 任务配置级 writers
     schema:
       table: orders
 
   - name: order_items
-    # 该表仅写 CSV，覆盖 Job 级
+    # 该表仅写 CSV，覆盖 任务配置级
     writer:
       type: csv
       connection: traffic-output
@@ -844,7 +844,7 @@ tables:
       table: order_items
 ```
 
-**优先级**：表级 `writer` / `writers` > Job 级 `writer` / `writers` > API 请求中的 `writer` / `writers`。
+**优先级**：表级 `writer` / `writers` > 任务配置级 `writer` / `writers` > API 请求中的 `writer` / `writers`。
 
 | type | 说明 |
 |------|------|
@@ -856,11 +856,11 @@ tables:
 
 ### API 运行时覆盖
 
-提交任务时可通过请求体覆盖默认写入（Job YAML 中已配置 `writer` / `writers` 时，**以 YAML 为准**）：
+提交任务时可通过请求体覆盖默认写入（任务配置 YAML 中已配置 `writer` / `writers` 时，**以 YAML 为准**）：
 
 ```json
 {
-  "configPath": "jobs/my_job.yaml",
+  "configPath": "task-configs/my_job.yaml",
   "writers": [
     { "type": "postgresql", "connection": "dev-pg", "mode": "insert" },
     { "type": "clickhouse", "connection": "dev-ck", "mode": "insert" }
@@ -885,7 +885,7 @@ tables:
 
 ### 在控制台运行
 
-1. 保存 Job 配置（含可选的定时调度）
+1. 保存 任务配置（含可选的定时调度）
 2. 点击「运行」— 服务按 YAML 执行；若已启用 Cron，会提示「立即执行一次」
 3. 点击「日志」查看该任务的历史运行记录（分页）；展开可查看单次运行的详细日志
 4. 运行中任务会**按批次**更新进度（`written_rows`）与日志；控制台自动刷新时保留滚动位置，任务列表增量更新状态
@@ -897,16 +897,16 @@ tables:
 ```bash
 curl -X POST http://localhost:8080/api/v1/task-runs \
   -H "Content-Type: application/json" \
-  -d '{"configPath": "jobs/my_job.yaml", "overrides": {"tables.customers.count": 500}}'
+  -d '{"configPath": "task-configs/my_job.yaml", "overrides": {"tables.customers.count": 500}}'
 ```
 
-也可在请求体中指定运行时写入（Job YAML 未配置时生效）：
+也可在请求体中指定运行时写入（任务配置 YAML 未配置时生效）：
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/task-runs \
   -H "Content-Type: application/json" \
   -d '{
-    "configPath": "jobs/my_job.yaml",
+    "configPath": "task-configs/my_job.yaml",
     "writers": [
       {"type": "postgresql", "connection": "dev-pg", "mode": "insert"},
       {"type": "clickhouse", "connection": "dev-ck", "mode": "insert"}
@@ -921,7 +921,7 @@ curl -X POST http://localhost:8080/api/v1/task-runs \
 ```bash
 curl -X POST http://localhost:8080/api/v1/preview \
   -H "Content-Type: application/json" \
-  -d '{"configPath": "jobs/my_job.yaml", "preview": {"limit": 5}}'
+  -d '{"configPath": "task-configs/my_job.yaml", "preview": {"limit": 5}}'
 ```
 
 返回 JSON，包含 `status`（`COMPLETED`）、`duration` 及各表样本：
@@ -1030,10 +1030,10 @@ tables:
 
 | 参数 | 默认 | 说明 |
 |------|------|------|
-| `job.sync-threshold` | 5000 | 超过则异步 |
-| `job.batch-size` | 1000 | 写入批次；进度/日志按批更新（SQLite 持久化有节流，表完成时强制落盘） |
-| `job.thread-pool-size` | 4 | 异步任务线程池；单表行数 ≥5000 时并行生成行数据 |
-| `job.generation-parallelism` | 0 | 造数并行度；`0` 表示沿用 `thread-pool-size`；API 提交 Job 时可在 `options.generationParallelism` 覆盖 |
+| `task-run.sync-threshold` | 5000 | 超过则异步 |
+| `task-run.batch-size` | 1000 | 写入批次；进度/日志按批更新（SQLite 持久化有节流，表完成时强制落盘） |
+| `task-run.thread-pool-size` | 4 | 异步任务线程池；单表行数 ≥5000 时并行生成行数据 |
+| `task-run.generation-parallelism` | 0 | 造数并行度；`0` 表示沿用 `thread-pool-size`；API 提交任务 时可在 `options.generationParallelism` 覆盖 |
 | `storage.sqlite-path` | `./data/dg-tasks.db` | 运行记录 SQLite 库（表 `task_runs`、`task_schedules`） |
 | `storage.log-dir` | `./data/task-run-logs` | 运行日志文件目录（每次运行一个 `{runId}.log`，前缀 `task-run-`） |
 
@@ -1042,13 +1042,13 @@ tables:
 ## 常见问题
 
 **Q：保存后运行报错「Unknown connection」**  
-A：当 `connection` 为**字符串**时，须在 `application.yml` 的 `connections` 中定义同名连接并重启服务，或在 Job 顶层 [`connections` 块](#job-级-connections-块可选)中声明；若使用 [Job 内联连接](#job-内联连接可选)（直接写 `url`/`username`/`password` 或将 `connection` 写为对象），则无需在 `application.yml` 注册。
+A：当 `connection` 为**字符串**时，须在 `application.yml` 的 `connections` 中定义同名连接并重启服务，或在 任务配置顶层 [`connections` 块](#任务配置级-connections-块可选)中声明；若使用 [任务配置内联连接](#任务配置内联连接可选)（直接写 `url`/`username`/`password` 或将 `connection` 写为对象），则无需在 `application.yml` 注册。
 
 **Q：多写（writers）时各库数据是否一致？**  
 A：一致。引擎只生成一次数据，同一批次会写入 `writers` 中的每个目标；各库表结构、类型映射差异可能导致存储表现略有不同，但源行字段值相同。若某一目标写入失败，其他目标可能已有数据，请查看任务日志与各库实际行数。
 
 **Q：能否同时写 `writer` 和 `writers`？**  
-A：不能。Job 级、表级、API 请求体均须**二选一**；同时配置会在加载或校验时报错。
+A：不能。任务配置级、表级、API 请求体均须**二选一**；同时配置会在加载或校验时报错。
 
 **Q：PostgreSQL 写入 bigint 列失败**  
 A：不要用空字符串表示空值；改用 `enum: ['']` 或不生成该字段。
@@ -1062,8 +1062,8 @@ A：确认顶层 `seeds[].name` 与字段 `generator.source` 一致；`strategy:
 **Q：ClickHouse 报错 Cannot set null to non-nullable column**  
 A：目标列不允许 `null`，但 generator（常见于 `seed`）产出了 `null`。在字段 generator 上加 `default`（如 `default: ''`）即可，无需改用 `expression` 手写兜底逻辑。
 
-**Q：多表 Job 第二表很慢或内存占用高**  
-A：确认已配置 `depends_on` 与 `reference align: index`；引擎会对 FK 校验建索引，并在上游表完成后仅保留下游所需列。单表 ≥5000 行时可调大 `job.thread-pool-size` 或 `job.generation-parallelism` 提升并行度。
+**Q：多表任务配置 第二表很慢或内存占用高**  
+A：确认已配置 `depends_on` 与 `reference align: index`；引擎会对 FK 校验建索引，并在上游表完成后仅保留下游所需列。单表 ≥5000 行时可调大 `task-run.thread-pool-size` 或 `task-run.generation-parallelism` 提升并行度。
 
 **Q：link 关联 seed 无数据或字段为 null**  
 A：确认 `link.parent_field` 与父 seed 采样列一致；从属 seed 须在 `link` 中声明 `match` 或 `sources`，`reader.query` 写纯 SQL 预加载。启动时会预加载 SQL 结果并在内存中匹配；未命中时对应字段为 null，可配 `default` 兜底。详见 [多 seed 关联（link）](#多-seed-关联link)。
@@ -1078,7 +1078,7 @@ A：API 提交时使用 `"overrides": {"tables.incidents.count": 100}`。
 A：`prefix` 会把生成结果拼成字符串，字段 `type` 须为 `VARCHAR`、`CHAR`、`TEXT` 等字符串类型；纯数字自增且不需前缀时用 `sequence` 不配 `prefix` 即可。
 
 **Q：内置任务和自定义任务有什么区别**  
-A：内置任务随 jar 发布只读，调度可在 YAML 中配置；自定义任务保存在 `writable-config-dir/jobs/`，可在控制台编辑，`id`/显示名称/调度由 UI 管理，YAML 中勿写 `schedule`。
+A：内置任务随 jar 发布只读，调度可在 YAML 中配置；自定义任务保存在 `writable-config-dir/task-configs/`，可在控制台编辑，`id`/显示名称/调度由 UI 管理，YAML 中勿写 `schedule`。
 
 **Q：控制台保存后 YAML 里没有 name / id**  
 A：正常。编辑区仅展示业务配置；`name` 来自「任务名称」，`id` 与配置文件名在保存时自动生成（文件名为 ASCII，避免中文路径编码问题）。
@@ -1091,5 +1091,5 @@ A：不能。启用调度时必须填写合法的 Cron 表达式，否则保存�
 ## 下一步
 
 - 在控制台「新建任务」中粘贴模板并开始编辑
-- 对照上文 [完整示例](#完整示例多表--seeds--reference) 了解 Job 级 seeds 与多表 reference 写法
+- 对照上文 [完整示例](#完整示例多表--seeds--reference) 了解 任务配置级 seeds 与多表 reference 写法
 - 遇到问题先查看运行日志，再对照本指南相应章节
