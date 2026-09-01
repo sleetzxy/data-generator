@@ -16,22 +16,10 @@ public class SqliteDataSourceConfig {
     @Bean
     DataSource dataSource(DataGeneratorProperties properties) throws IOException {
         Path dbPath = Path.of(properties.getStorage().getSqlitePath()).toAbsolutePath().normalize();
-        migrateLegacySqliteFile(dbPath);
         Files.createDirectories(dbPath.getParent());
         org.sqlite.SQLiteDataSource dataSource = new org.sqlite.SQLiteDataSource();
         dataSource.setUrl("jdbc:sqlite:" + dbPath);
         return dataSource;
-    }
-
-    /** 旧版默认库名 {@code dg-jobs.db} 自动重命名为 {@code dg-tasks.db}。 */
-    private static void migrateLegacySqliteFile(Path dbPath) throws IOException {
-        if (Files.exists(dbPath)) {
-            return;
-        }
-        Path legacyPath = dbPath.getParent().resolve("dg-jobs.db");
-        if (Files.exists(legacyPath)) {
-            Files.move(legacyPath, dbPath);
-        }
     }
 
     @Bean

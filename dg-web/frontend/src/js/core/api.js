@@ -12,8 +12,8 @@ const DEFAULT_BASE = '/api/v1';
  */
 export async function api(path, options = {}, base = DEFAULT_BASE) {
     const method = (options.method || 'GET').toUpperCase();
-    // 先展开调用方 headers，再设置必需字段，确保 Content-Type 和 CSRF Token 不被覆盖
-    const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+    // 内置头在调用方 headers 之后设置，确保 Content-Type 和 CSRF Token 不被覆盖
+    const headers = { ...(options.headers || {}), 'Content-Type': 'application/json' };
     if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS' && typeof getCsrfToken === 'function') {
         const csrfToken = getCsrfToken();
         if (csrfToken) {

@@ -155,8 +155,8 @@ class YamlConfigLoaderTest {
     }
 
     @Test
-    void loadTaskConfig_missingName_fallsBackToId() {
-        TaskConfig taskConfig = loader.loadTaskConfigFromContent("""
+    void loadTaskConfig_missingName_throws() {
+        assertThatThrownBy(() -> loader.loadTaskConfigFromContent("""
                 id: overlay_only_id
                 writer:
                   type: csv
@@ -170,9 +170,30 @@ class YamlConfigLoaderTest {
                         - name: id
                           type: BIGINT
                           generator: { strategy: sequence, start: 1, step: 1 }
-                """);
-        assertThat(taskConfig.getName()).isEqualTo("overlay_only_id");
-        assertThat(taskConfig.getId()).isEqualTo("overlay_only_id");
+                """))
+                .isInstanceOf(ConfigLoadException.class)
+                .hasMessageContaining("name");
+    }
+
+    @Test
+    void loadTaskConfig_missingId_throws() {
+        assertThatThrownBy(() -> loader.loadTaskConfigFromContent("""
+                name: 无 id 配置
+                writer:
+                  type: csv
+                  connection: local-csv
+                tables:
+                  - name: t1
+                    count: 1
+                    schema:
+                      table: t1
+                      fields:
+                        - name: id
+                          type: BIGINT
+                          generator: { strategy: sequence, start: 1, step: 1 }
+                """))
+                .isInstanceOf(ConfigLoadException.class)
+                .hasMessageContaining("id");
     }
 
     @Test

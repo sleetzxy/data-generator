@@ -3,15 +3,12 @@
 import { api } from '../core/api.js';
 import { escapeAttr, escapeHtml, formatTime, showToast, statusBadge } from '../core/ui.js';
 import {
-    fetchAllTaskRuns,
     findActiveRun,
     findLatestRun,
     getDefinitionsCache,
-    getAllRunsCache,
     isActiveRun,
-    rebuildRunIndexes,
+    loadRunIndexes,
     setAllDefinitionsCache,
-    setAllRunsCache,
     setDefinitionsCache
 } from '../core/state.js';
 import { ensureAutoRefresh } from '../core/refresh.js';
@@ -23,7 +20,7 @@ import { createYamlEditor, destroyYamlEditor, getYamlEditorValue } from '../lib/
 const DEFINITION_PAGE_SIZE = 20;
 const DOCS_GUIDE_PATH = '/docs/config-guide.md';
 
-const DEFAULT_JOB_TEMPLATE = `writer:
+const DEFAULT_TASK_TEMPLATE = `writer:
   type: csv
   connection: local-csv
   mode: insert
@@ -44,6 +41,7 @@ tables:
 let editingDefinition = null;
 let editingScheduleEditable = false;
 let definitionsPage = 1;
+let definitionsTotal = 0;
 let definitionSearchQuery = '';
 let definitionSearchTimer = null;
 let guideLoaded = false;
@@ -125,25 +123,45 @@ function renderScheduleCron(schedule) {
 
 function buildTaskConfigListUrl() {
     const query = definitionSearchQuery.trim();
-    if (!query) {
-        return '/task-configs';
+    const params = new URLSearchParams({
+        page: String(definitionsPage),
+        size: String(DEFINITION_PAGE_SIZE)
+    });
+    if (query) {
+        params.set('name', query);
     }
-    return `/task-configs?name=${encodeURIComponent(query)}`;
+    return `/task-configs?${params.toString()}`;
+}
+
+/** 拉取当前页的任务配置列表（后端分页）；页数收缩时回退到最后一页重取 */
+async function fetchDefinitionsPage() {
+    let listResult = await api(buildTaskConfigListUrl());
+    const totalPages = getDefinitionTotalPages(listResult.total || 0);
+    if (definitionsPage > totalPages) {
+        definitionsPage = totalPages;
+        listResult = await api(buildTaskConfigListUrl());
+    }
+    return listResult;
 }
 
 export async function loadDefinitions(options = {}) {
     const fullRender = options.fullRender === true;
     const tbody = document.getElementById('definitions-body');
     try {
-        const [items, allItems, runs] = await Promise.all([
-            api(buildTaskConfigListUrl()),
+        const [listResult, allListResult] = await Promise.all([
+            fetchDefinitionsPage(),
             api('/task-configs'),
-            fetchAllTaskRuns()
+            loadRunIndexes()
         ]);
-        setAllRunsCache(runs);
+        const items = listResult.items || [];
+        const allItems = allListResult.items || [];
+        definitionsTotal = listResult.total || 0;
         setAllDefinitionsCache(allItems);
         setDefinitionsCache(items);
-        rebuildRunIndexes();
+        const skipped = allListResult.skipped || [];
+        if (skipped.length) {
+            showToast(`有 ${skipped.length} 个任务配置加载失败已跳过: ${skipped.map(item => item.path).join('、')}`);
+        }
 
         if (!fullRender && canSyncDefinitionsInPlace()) {
             scheduleDefinitionsUiSync();
@@ -160,7 +178,7 @@ export async function loadDefinitions(options = {}) {
 }
 
 function currentPageDefinitionKey() {
-    return getPagedDefinitions().map(item => item.path).join('|');
+    return getDefinitionsCache().map(item => item.path).join('|');
 }
 
 export function canSyncDefinitionsInPlace() {
@@ -172,7 +190,7 @@ export function canSyncDefinitionsInPlace() {
         return false;
     }
     const rows = tbody.querySelectorAll('tr[data-definition-path]');
-    if (rows.length !== getPagedDefinitions().length) {
+    if (rows.length !== getDefinitionsCache().length) {
         return false;
     }
     return currentPageDefinitionKey() === lastRenderedPageKey;
@@ -227,21 +245,15 @@ function updateStopButtonInPlace(actionsCell, activeRun) {
     }
 }
 
-function getDefinitionTotalPages() {
-    return Math.max(1, Math.ceil(getDefinitionsCache().length / DEFINITION_PAGE_SIZE));
-}
-
-function getPagedDefinitions() {
-    const start = (definitionsPage - 1) * DEFINITION_PAGE_SIZE;
-    return getDefinitionsCache().slice(start, start + DEFINITION_PAGE_SIZE);
+function getDefinitionTotalPages(total) {
+    return Math.max(1, Math.ceil(total / DEFINITION_PAGE_SIZE));
 }
 
 function renderDefinitionsPagination() {
     const pagination = document.getElementById('definitions-pagination');
-    const totalPages = getDefinitionTotalPages();
-    const total = getDefinitionsCache().length;
+    const totalPages = getDefinitionTotalPages(definitionsTotal);
 
-    if (total <= DEFINITION_PAGE_SIZE) {
+    if (definitionsTotal <= DEFINITION_PAGE_SIZE) {
         pagination.classList.add('hidden');
         pagination.innerHTML = '';
         return;
@@ -250,18 +262,18 @@ function renderDefinitionsPagination() {
     pagination.classList.remove('hidden');
     pagination.innerHTML = `
         <button type="button" class="btn small" data-page="${definitionsPage - 1}" ${definitionsPage <= 1 ? 'disabled' : ''}>上一页</button>
-        <span class="pagination-info">第 ${definitionsPage} / ${totalPages} 页，共 ${total} 条</span>
+        <span class="pagination-info">第 ${definitionsPage} / ${totalPages} 页，共 ${definitionsTotal} 条</span>
         <button type="button" class="btn small" data-page="${definitionsPage + 1}" ${definitionsPage >= totalPages ? 'disabled' : ''}>下一页</button>
     `;
 }
 
 function changeDefinitionsPage(page) {
-    const totalPages = getDefinitionTotalPages();
+    const totalPages = getDefinitionTotalPages(definitionsTotal);
     if (page < 1 || page > totalPages) {
         return;
     }
     definitionsPage = page;
-    renderDefinitionsTable();
+    loadDefinitions({ fullRender: true }).catch(err => showToast('加载失败: ' + err.message));
 }
 
 function captureOpenActionMenuId() {
@@ -285,7 +297,7 @@ function restoreOpenActionMenu(menuId) {
 function renderDefinitionsTable() {
     const preservedMenuId = captureOpenActionMenuId();
     const tbody = document.getElementById('definitions-body');
-    const totalPages = getDefinitionTotalPages();
+    const totalPages = getDefinitionTotalPages(definitionsTotal);
 
     if (definitionsPage > totalPages) {
         definitionsPage = totalPages;
@@ -305,7 +317,7 @@ function renderDefinitionsTable() {
         return;
     }
 
-    const pagedItems = getPagedDefinitions();
+    const pagedItems = getDefinitionsCache();
     const startIndex = (definitionsPage - 1) * DEFINITION_PAGE_SIZE;
     tbody.innerHTML = pagedItems.map((item, index) => {
         const latestRun = findLatestRun(item.path);
@@ -385,13 +397,13 @@ async function openDefinitionModal(fileName, content, readOnly = false, schedule
     document.getElementById('definition-name').value = displayName || fileName || '';
     document.getElementById('definition-name').disabled = !!readOnly;
     document.getElementById('name-field').style.display = 'flex';
-    document.getElementById('definition-content').value = content || DEFAULT_JOB_TEMPLATE;
+    document.getElementById('definition-content').value = content || DEFAULT_TASK_TEMPLATE;
     document.getElementById('modal-save').style.display = readOnly ? 'none' : '';
     document.getElementById('guide-toggle').style.display = readOnly ? 'none' : '';
     applyScheduleFields(schedule, readOnly, !fileName);
     document.getElementById('modal').classList.remove('hidden');
     ensureGuideLoaded();
-    await mountYamlEditor(content || DEFAULT_JOB_TEMPLATE, readOnly);
+    await mountYamlEditor(content || DEFAULT_TASK_TEMPLATE, readOnly);
 }
 
 async function mountYamlEditor(content, readOnly) {
@@ -544,17 +556,7 @@ async function deleteDefinition(fileName) {
 
 async function viewDefinitionLogs(name, path) {
     try {
-        if (!getAllRunsCache().length) {
-            setAllRunsCache(await fetchAllTaskRuns());
-        }
-        const runs = getAllRunsCache()
-            .filter(run => run.configPath === path)
-            .sort((a, b) => new Date(b.submittedAt) - new Date(a.submittedAt));
-        if (!runs.length) {
-            showToast(`任务 "${name}" 暂无运行记录`);
-            return;
-        }
-        openLogListModal(name, path, runs);
+        await openLogListModal(name, path);
     } catch (err) {
         showToast('加载失败: ' + err.message);
     }
@@ -592,9 +594,7 @@ async function stopRun(runId) {
     }
     if (!confirm(`确定停止任务 ${runId}？`)) return;
     try {
-        const runs = await fetchAllTaskRuns();
-        setAllRunsCache(runs);
-        const current = runs.find(run => run.runId === runId);
+        const current = await api(`/task-runs/${encodeURIComponent(runId)}`);
         if (!current || !isActiveRun(current.status)) {
             showToast('任务已结束');
             await loadDefinitions({ fullRender: true });

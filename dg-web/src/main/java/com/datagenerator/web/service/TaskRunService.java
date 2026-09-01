@@ -1,11 +1,16 @@
 package com.datagenerator.web.service;
 
 import com.datagenerator.web.config.TaskRunRuntimeSettings;
+import com.datagenerator.web.dto.ConfigVolumeStat;
+import com.datagenerator.web.dto.DailyRunStat;
+import com.datagenerator.web.dto.TaskRunIndexResponse;
+import com.datagenerator.web.dto.TaskRunListFilter;
 import com.datagenerator.web.dto.TaskRunListResponse;
 import com.datagenerator.web.dto.TaskRunLogEntry;
 import com.datagenerator.web.dto.TaskRunOptions;
 import com.datagenerator.web.dto.TaskRunProgress;
 import com.datagenerator.web.dto.TaskRunResponse;
+import com.datagenerator.web.dto.TaskRunStatsResponse;
 import com.datagenerator.web.dto.TaskRunStatus;
 import com.datagenerator.web.dto.TaskRunSubmitRequest;
 import com.datagenerator.web.dto.TaskRunSubmitResult;
@@ -46,12 +51,19 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class TaskRunService {
@@ -59,6 +71,18 @@ public class TaskRunService {
     private static final Logger log = LoggerFactory.getLogger(TaskRunService.class);
     private static final int PREVIEW_MAX_LIMIT = 100;
     private static final int MAX_PAGE_SIZE = 200;
+    /** 概览统计数据量排行的条目上限 */
+    private static final int STATS_TOP_CONFIG_LIMIT = 10;
+    /** 概览每日趋势的天数窗口 */
+    private static final int STATS_DAILY_DAYS = 14;
+    /** submitted_at 统一为固定 9 位小数的 ISO 格式，保证 TEXT 字典序即时间序 */
+    private static final DateTimeFormatter SUBMITTED_AT_FORMATTER =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss.SSSSSSSSS'Z'").withZone(ZoneOffset.UTC);
+
+    /** 生成固定格式的提交时间字符串 */
+    private static String formatSubmittedAt(Instant instant) {
+        return SUBMITTED_AT_FORMATTER.format(instant);
+    }
 
     private final TaskRunOrchestrator taskRunOrchestrator;
     private final PreviewOrchestratorFactory previewOrchestratorFactory;
@@ -101,10 +125,10 @@ public class TaskRunService {
         return scheduleExecutor.enqueue(request.getConfigPath(), TriggerSource.MANUAL, request);
     }
 
-    public TaskRunResponse createQueuedJob(String configPath, TriggerSource triggerSource) {
+    public TaskRunResponse createQueuedRun(String configPath, TriggerSource triggerSource) {
         validateConfigPath(configPath);
         String runId = generateRunId();
-        String submittedAt = Instant.now().toString();
+        String submittedAt = formatSubmittedAt(Instant.now());
         TaskRunResponse placeholder = new TaskRunResponse(
                 runId,
                 TaskRunStatus.PENDING,
@@ -154,7 +178,7 @@ public class TaskRunService {
     TaskRunSubmitResult doSubmit(TaskRunSubmitRequest request, TriggerSource triggerSource) {
         validateConfigPath(request.getConfigPath());
         String runId = generateRunId();
-        String submittedAt = Instant.now().toString();
+        String submittedAt = formatSubmittedAt(Instant.now());
         TaskConfig taskConfig = loadAndApplyOverrides(request);
         GenerationOptions options = toGenerationOptions(request.getOptions());
         long estimatedRows = estimateTotalRows(taskConfig);
@@ -195,15 +219,111 @@ public class TaskRunService {
         return new TaskRunSubmitResult(response, false);
     }
 
-    public TaskRunListResponse list(int page, int size) {
+    public TaskRunListResponse list(int page, int size, TaskRunListFilter filter) {
+        TaskRunListFilter validated = validateFilter(filter);
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), MAX_PAGE_SIZE);
         int offset = (safePage - 1) * safeSize;
-        long total = taskRunRepository.countAll();
-        List<TaskRunSummaryResponse> items = taskRunRepository.listPage(offset, safeSize).stream()
+        long total = taskRunRepository.countAll(validated);
+        List<TaskRunSummaryResponse> items = taskRunRepository.listPage(offset, safeSize, validated).stream()
                 .map(this::toSummary)
                 .toList();
         return new TaskRunListResponse(items, total, safePage, safeSize);
+    }
+
+    /** 概览统计：状态计数、累计写入、Top 配置排行与近 14 天每日趋势（缺失日期补零） */
+    public TaskRunStatsResponse stats() {
+        Map<String, Long> byStatus = taskRunRepository.countByStatus();
+        long totalRuns = byStatus.values().stream().mapToLong(Long::longValue).sum();
+        long totalWritten = taskRunRepository.sumWrittenRows();
+        List<ConfigVolumeStat> topConfigs =
+                taskRunRepository.topWrittenByConfigPath(STATS_TOP_CONFIG_LIMIT);
+
+        LocalDate start = LocalDate.now(ZoneId.systemDefault()).minusDays(STATS_DAILY_DAYS - 1L);
+        Map<String, DailyRunStat> byDay = taskRunRepository.dailyRunStats(start.toString()).stream()
+                .collect(Collectors.toMap(DailyRunStat::date, stat -> stat));
+        List<DailyRunStat> daily = new ArrayList<>();
+        for (int offset = 0; offset < STATS_DAILY_DAYS; offset++) {
+            String date = start.plusDays(offset).toString();
+            daily.add(byDay.getOrDefault(date, new DailyRunStat(date, 0, 0)));
+        }
+
+        return new TaskRunStatsResponse(
+                totalRuns,
+                countOfStatus(byStatus, "RUNNING"),
+                countOfStatus(byStatus, "PENDING"),
+                countOfStatus(byStatus, "COMPLETED"),
+                countOfStatus(byStatus, "FAILED"),
+                countOfStatus(byStatus, "CANCELLED"),
+                totalWritten,
+                topConfigs,
+                daily);
+    }
+
+    /** 按配置路径聚合的运行索引：每路径最新一次与活跃运行 */
+    public TaskRunIndexResponse runIndexes() {
+        List<TaskRunSummaryResponse> latestRuns = taskRunRepository.latestRunsByConfigPath().stream()
+                .map(this::toSummary)
+                .toList();
+        List<TaskRunSummaryResponse> activeRuns = taskRunRepository.activeRunsByConfigPath().stream()
+                .map(this::toSummary)
+                .toList();
+        return new TaskRunIndexResponse(latestRuns, activeRuns);
+    }
+
+    private static long countOfStatus(Map<String, Long> byStatus, String status) {
+        return byStatus.getOrDefault(status, 0L);
+    }
+
+    /** 校验并规范化查询条件：非法状态或时间格式直接拒绝 */
+    private static TaskRunListFilter validateFilter(TaskRunListFilter filter) {
+        if (filter == null) {
+            return new TaskRunListFilter(null, null, null, null);
+        }
+        String status = normalizeStatuses(filter.status());
+        String from = validateInstant(filter.from(), "from");
+        String to = validateInstant(filter.to(), "to");
+        return new TaskRunListFilter(status, normalize(filter.configPath()), from, to);
+    }
+
+    /** 校验并规范化状态条件：支持逗号分隔多状态，空段剔除 */
+    private static String normalizeStatuses(String status) {
+        String normalized = normalize(status);
+        if (normalized == null) {
+            return null;
+        }
+        List<String> statuses = Arrays.stream(normalized.split(","))
+                .map(String::trim)
+                .filter(item -> !item.isEmpty())
+                .toList();
+        if (statuses.isEmpty()) {
+            return null;
+        }
+        for (String single : statuses) {
+            try {
+                TaskRunStatus.valueOf(single);
+            } catch (IllegalArgumentException exception) {
+                throw new IllegalArgumentException("Unknown task run status: " + single);
+            }
+        }
+        return String.join(",", statuses);
+    }
+
+    private static String normalize(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String validateInstant(String value, String name) {
+        String normalized = normalize(value);
+        if (normalized == null) {
+            return null;
+        }
+        try {
+            Instant.parse(normalized);
+        } catch (DateTimeParseException exception) {
+            throw new IllegalArgumentException("Invalid " + name + " time: " + value);
+        }
+        return normalized;
     }
 
     public TaskRunResponse getById(String runId) {

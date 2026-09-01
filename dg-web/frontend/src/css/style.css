@@ -350,7 +350,7 @@ html:has(body.app-shell) {
 /* ── 运行概览 ── */
 .overview-stats {
     display: grid;
-    grid-template-columns: repeat(7, minmax(0, 1fr));
+    grid-template-columns: repeat(8, minmax(0, 1fr));
     gap: 0.75rem;
     margin-bottom: 1rem;
     flex-shrink: 0;
@@ -386,6 +386,7 @@ html:has(body.app-shell) {
 .stat-card.stat-accent-completed::before { background: #16a34a; }
 .stat-card.stat-accent-failed::before { background: #dc2626; }
 .stat-card.stat-accent-cancelled::before { background: #94a3b8; }
+.stat-card.stat-accent-volume::before { background: #0d9488; }
 
 .stat-card-label {
     font-size: 0.72rem;
@@ -415,6 +416,7 @@ html:has(body.app-shell) {
     min-height: 0;
     display: grid;
     grid-template-columns: 1fr 1fr;
+    grid-auto-rows: minmax(0, 1fr);
     gap: 1rem;
     overflow: hidden;
 }
@@ -425,7 +427,120 @@ html:has(body.app-shell) {
     flex-direction: column;
 }
 
+.overview-data-volume-panel {
+    flex-shrink: 0;
+    margin-top: 1rem;
+}
+
+.volume-viz-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+}
+
+.volume-viz-block {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+}
+
+.volume-viz-title {
+    font-weight: 600;
+    color: var(--text);
+    font-size: 0.85rem;
+}
+
+/* 排行横向条形图 */
+.volume-bars {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 260px;
+    overflow: auto;
+}
+
+.volume-empty {
+    color: var(--muted);
+    font-size: 0.85rem;
+    text-align: center;
+    padding: 1.5rem 0;
+}
+
+.volume-bar-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr) 64px;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.volume-bar-name {
+    font-size: 0.8rem;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.volume-bar-track {
+    background: var(--border);
+    border-radius: 6px;
+    height: 12px;
+    overflow: hidden;
+}
+
+.volume-bar-fill {
+    height: 100%;
+    border-radius: 6px;
+    background: linear-gradient(90deg, #0f766e, #14b8a6);
+    transition: width 0.3s ease;
+}
+
+.volume-bar-value {
+    font-size: 0.8rem;
+    color: var(--text);
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 每日写入趋势柱状图 */
+.daily-volume .daily-chart {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.daily-grid-line {
+    stroke: var(--border);
+    stroke-width: 1;
+    stroke-dasharray: 4 4;
+}
+
+.daily-axis-label {
+    fill: var(--muted);
+    font-size: 11px;
+}
+
+.daily-bar {
+    fill: #0d9488;
+}
+
+.daily-bar:hover {
+    fill: #0f766e;
+}
+
+.daily-bar-zero {
+    fill: var(--border);
+}
+
 .overview-table-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+/* 高特异性覆盖 .panel > .table-wrap 的 overflow: visible，保证概览表格在面板内滚动 */
+#view-overview .overview-table-wrap {
     flex: 1;
     min-height: 0;
     overflow: auto;
@@ -456,6 +571,99 @@ html:has(body.app-shell) {
     font-size: 0.78rem;
 }
 
+/* ── AI 助手抽屉浮层与悬浮球 ── */
+
+.ai-drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(480px, 100vw);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    padding: 0.75rem;
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    box-shadow: -8px 0 24px rgba(15, 23, 42, 0.16);
+    transform: translateX(100%);
+    transition: transform 0.25s ease;
+}
+
+.ai-drawer.open {
+    transform: translateX(0);
+}
+
+.ai-drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 199;
+    background: rgba(15, 23, 42, 0.28);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.25s ease;
+}
+
+.ai-drawer-backdrop.open {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.ai-fab {
+    position: fixed;
+    right: 1.25rem;
+    bottom: 1.25rem;
+    width: 56px;
+    height: 56px;
+    z-index: 198;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    cursor: grab;
+    color: #ffffff;
+    /* 左上高光到右下暗部的径向渐变，营造球体立体感，主色与页面一致 */
+    background: radial-gradient(circle at 32% 28%, #60a5fa, #2563eb 58%, #1d4ed8);
+    box-shadow: 0 6px 18px rgba(37, 99, 235, 0.38);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+.ai-fab svg {
+    width: 26px;
+    height: 26px;
+}
+
+.ai-fab:hover {
+    transform: scale(1.06);
+    box-shadow: 0 8px 22px rgba(37, 99, 235, 0.46);
+}
+
+.ai-fab:active {
+    transform: scale(0.96);
+}
+
+/* 拖动中：禁用过渡与缩放，光标变为抓取状态 */
+.ai-fab.dragging {
+    cursor: grabbing;
+    transition: none;
+    transform: none;
+}
+
+.ai-fab.hidden {
+    display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .ai-drawer,
+    .ai-drawer-backdrop {
+        transition: none;
+    }
+}
+
 /* ── AI 主视图面板 ── */
 .ai-panel {
     position: relative;
@@ -473,10 +681,11 @@ html:has(body.app-shell) {
     flex-shrink: 0;
 }
 
-.ai-panel-desc {
+.ai-panel-title {
     margin: 0;
-    font-size: 0.85rem;
-    color: var(--muted);
+    font-size: 1rem;
+    font-weight: 600;
+    color: var(--text);
 }
 
 .ai-panel-actions {
@@ -494,7 +703,7 @@ html:has(body.app-shell) {
     overflow: hidden;
 }
 
-#view-ai .ai-history-panel {
+#ai-drawer .ai-history-panel {
     position: absolute;
     top: 3.5rem;
     left: 1rem;
@@ -502,7 +711,7 @@ html:has(body.app-shell) {
     z-index: 10;
 }
 
-#view-ai .ai-messages {
+#ai-drawer .ai-messages {
     flex: 1;
     min-height: 0;
 }
@@ -515,6 +724,10 @@ html:has(body.app-shell) {
 
 @media (max-width: 960px) {
     .overview-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .volume-viz-grid {
         grid-template-columns: 1fr;
     }
 
@@ -784,6 +997,26 @@ a.btn {
 }
 
 #view-tasks #definitions-pagination {
+    flex-shrink: 0;
+}
+
+/* 运行日志视图：滚动条仅出现在表格区域，分页始终可见 */
+#view-logs .panel-fill {
+    flex: 1;
+    min-height: 0;
+}
+
+#view-logs .toolbar {
+    flex-shrink: 0;
+}
+
+#view-logs .logs-view-table-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+#view-logs #logs-view-pagination {
     flex-shrink: 0;
 }
 
@@ -1210,6 +1443,20 @@ th {
 }
 
 .search-input:focus {
+    outline: 2px solid rgba(37, 99, 235, 0.25);
+    border-color: var(--primary);
+}
+
+.select-input {
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.45rem 0.65rem;
+    font-size: 0.85rem;
+    background: var(--surface);
+    color: var(--text);
+}
+
+.select-input:focus {
     outline: 2px solid rgba(37, 99, 235, 0.25);
     border-color: var(--primary);
 }

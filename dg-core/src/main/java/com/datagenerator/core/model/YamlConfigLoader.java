@@ -12,7 +12,6 @@ import com.datagenerator.core.config.WriterConfigResolver;
 public class YamlConfigLoader {
 
     private final ConfigPathResolver pathResolver;
-    private final Yaml yaml = new Yaml();
 
     public YamlConfigLoader(ConfigPathResolver pathResolver) {
         this.pathResolver = pathResolver;
@@ -35,7 +34,7 @@ public class YamlConfigLoader {
             throw new ConfigLoadException("Empty YAML content");
         }
         try {
-            Object loaded = yaml.load(yamlContent);
+            Object loaded = new Yaml().load(yamlContent);
             if (loaded == null) {
                 throw new ConfigLoadException("Empty YAML content");
             }
@@ -59,18 +58,14 @@ public class YamlConfigLoader {
         TaskConfig taskConfig = new TaskConfig();
         String name = YamlMappingUtils.asString(root.get("name"));
         if (name == null || name.isBlank()) {
-            name = YamlMappingUtils.asString(root.get("id"));
+            throw new ConfigLoadException("Task config must define 'name'");
         }
-        if (name == null || name.isBlank()) {
-            throw new ConfigLoadException("Task config must define 'name' or 'id'");
+        String id = YamlMappingUtils.asString(root.get("id"));
+        if (id == null || id.isBlank()) {
+            throw new ConfigLoadException("Task config must define 'id'");
         }
         taskConfig.setName(name);
-        String id = YamlMappingUtils.asString(root.get("id"));
-        if (id != null && !id.isBlank()) {
-            taskConfig.setId(id);
-        } else if (taskConfig.getName() != null && !taskConfig.getName().isBlank()) {
-            taskConfig.setId(taskConfig.getName());
-        }
+        taskConfig.setId(id);
         Object constraintsValue = root.get("constraints");
         if (constraintsValue instanceof List<?>) {
             taskConfig.setInlineConstraints(YamlMappingUtils.toConstraintDefinitions(constraintsValue));
@@ -129,7 +124,7 @@ public class YamlConfigLoader {
     @SuppressWarnings("unchecked")
     private Map<String, Object> loadYamlMap(String path) {
         try (InputStream inputStream = pathResolver.open(path)) {
-            Object loaded = yaml.load(inputStream);
+            Object loaded = new Yaml().load(inputStream);
             if (loaded == null) {
                 throw new ConfigLoadException("Empty YAML config: " + path);
             }

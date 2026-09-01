@@ -34,7 +34,7 @@ public class TaskRunQueueExecutor {
             if (!hasRunning && queue.items.isEmpty()) {
                 return taskRunService.doSubmit(request, trigger);
             }
-            TaskRunResponse queued = taskRunService.createQueuedJob(configPath, trigger);
+            TaskRunResponse queued = taskRunService.createQueuedRun(configPath, trigger);
             queue.items.add(new QueuedItem(queued.getRunId(), trigger, request));
             TaskRunResponse pending = taskRunRepository.findById(queued.getRunId()).orElseThrow();
             return new TaskRunSubmitResult(pending, true);

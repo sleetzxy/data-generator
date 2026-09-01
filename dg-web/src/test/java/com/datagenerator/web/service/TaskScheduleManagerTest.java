@@ -1,5 +1,6 @@
 package com.datagenerator.web.service;
 
+import com.datagenerator.web.dto.TaskConfigListResponse;
 import com.datagenerator.web.dto.TaskConfigResponse;
 import com.datagenerator.web.dto.TaskScheduleResponse;
 import com.datagenerator.web.storage.TaskScheduleRepository;
@@ -54,8 +55,8 @@ class TaskScheduleManagerTest {
 
     @Test
     void reschedule_enabledWithValidCron_registersSchedule() {
-        when(definitionService.list()).thenReturn(List.of(
-                new TaskConfigResponse("demo", CONFIG_PATH, "demo-id", "Demo", true)));
+        when(definitionService.list()).thenReturn(new TaskConfigListResponse(List.of(
+                new TaskConfigResponse("demo", CONFIG_PATH, "demo-id", "Demo", true)), List.of(), 1L, 1, 1));
         when(scheduleService.resolveSchedule(CONFIG_PATH, true))
                 .thenReturn(new TaskScheduleResponse(true, "0 0 2 * * ?", false, null));
         doReturn(scheduledFuture).when(scheduler).schedule(any(Runnable.class), any(Trigger.class));
@@ -67,8 +68,8 @@ class TaskScheduleManagerTest {
 
     @Test
     void cancel_existingSchedule_cancelsFuture() {
-        when(definitionService.list()).thenReturn(List.of(
-                new TaskConfigResponse("demo", CONFIG_PATH, "demo-id", "Demo", true)));
+        when(definitionService.list()).thenReturn(new TaskConfigListResponse(List.of(
+                new TaskConfigResponse("demo", CONFIG_PATH, "demo-id", "Demo", true)), List.of(), 1L, 1, 1));
         when(scheduleService.resolveSchedule(CONFIG_PATH, true))
                 .thenReturn(new TaskScheduleResponse(true, "0 0 2 * * ?", false, null));
         doReturn(scheduledFuture).when(scheduler).schedule(any(Runnable.class), any(Trigger.class));

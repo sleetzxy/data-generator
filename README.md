@@ -62,7 +62,7 @@ graph LR
 
 ### 运行时架构
 
-一次 Job 从提交到落库的完整路径：
+一次任务从提交到落库的完整路径：
 
 ```mermaid
 flowchart TB
@@ -74,7 +74,7 @@ flowchart TB
     subgraph dg-web
         auth["Spring Security<br/>表单登录 · Session"]
         api["REST API<br/>/api/v1/*"]
-        svc["JobService · JobLogStore"]
+        svc["TaskRunService · TaskRunLogRepository"]
         sqlite[("SQLite<br/>dg-tasks.db")]
         logfiles["运行日志<br/>./data/task-run-logs"]
         yaml["YAML 配置<br/>classpath:configs · writable-config-dir"]
@@ -116,10 +116,10 @@ flowchart TB
 **要点：**
 
 - **dg-web** 负责 HTTP 适配、认证、任务调度与持久化；不直接操作数据源；可选代理 `/api/v1/agent` 至 **dg-ai**
-- **dg-ai** 独立进程，提供多轮对话 Job 生成（AgentScope HarnessAgent + Tool Set）；通过服务间认证头回调 dg-web 的 REST API（连接列表、Job 校验等）
+- **dg-ai** 独立进程，提供多轮对话任务生成（AgentScope HarnessAgent + Tool Set）；通过服务间认证头回调 dg-web 的 REST API（连接列表、任务配置校验等）
 - **dg-core** 纯业务引擎，按 YAML 定义驱动生成流水线，通过 SPI 调用插件
-- **插件** 各自独立 AutoConfiguration 注册，按需引入 classpath；Reader 读参考数据，Writer 写生成结果；支持 Job 级 **`writers` 多写**（同一批数据同时写入 PG / ClickHouse / CSV 等多个目标）
-- **连接配置** 可在 `application.yml` 集中维护，也可在 Job YAML 中用顶层 **`connections` 块**或 reader/writer **内联连接**（见配置指南）
+- **插件** 各自独立 AutoConfiguration 注册，按需引入 classpath；Reader 读参考数据，Writer 写生成结果；支持任务级 **`writers` 多写**（同一批数据同时写入 PG / ClickHouse / CSV 等多个目标）
+- **连接配置** 可在 `application.yml` 集中维护，也可在任务 YAML 中用顶层 **`connections` 块**或 reader/writer **内联连接**（见配置指南）
 - 小任务同步返回，超过 `sync-threshold` 行数转异步；任务元数据存 SQLite，运行日志按任务写入 `log-dir` 文件，批次 flush 后更新进度（节流持久化，表完成时强制落盘）
 - 单表行数 ≥ 5000 时，引擎按 `thread-pool-size` **并行生成**行数据；多表 DAG 上游表在内存中仅保留下游 `reference` / `foreign_key` 所需列
 
@@ -212,8 +212,8 @@ bin\windows\start-ai.bat      REM dg-ai
 
 控制台提供：
 
-- **任务管理** — Job 定义 CRUD、Cron 定时调度、提交运行、运行记录与日志（分页）；**自动刷新**（默认开启，运行中/日志弹窗 2 秒、空闲 5 秒，增量更新状态避免整表闪烁）
-- **AI 助手**（可选）— 右下角悬浮球（机器人图标）→ 右侧抽屉**多轮对话**（同一会话内上下文连续）；支持**深度思考**模式查看 Agent 推理过程；生成 Job YAML 校验通过后可自动填入「新建任务」表单（需同时启动 dg-ai 并在 dg-web 启用 `data-generator.ai.enabled`）
+- **任务管理** — 任务配置 CRUD、Cron 定时调度、提交运行、运行记录与日志（分页）；**自动刷新**（默认开启，运行中/日志弹窗 2 秒、空闲 5 秒，增量更新状态避免整表闪烁）
+- **AI 助手**（可选）— 右下角悬浮球（机器人图标）→ 右侧抽屉**多轮对话**（同一会话内上下文连续）；支持**深度思考**模式查看 Agent 推理过程；生成任务 YAML 校验通过后可自动填入「新建任务」表单（需同时启动 dg-ai 并在 dg-web 启用 `data-generator.ai.enabled`）
 - **配置指南** — 内置 YAML 配置说明文档（可作为 RAG 知识库数据源上传至 dg-ai）
 
 ### 运行测试
@@ -229,9 +229,9 @@ mvn clean test
 AI 能力由 **`dg-ai` 独立 HTTP 服务**提供。浏览器经 dg-web 的 `/api/v1/agent/**` 代理与 dg-ai 对话（SSE 流式）；dg-ai 的 Tool 通过 **`X-DG-Service-Auth` 请求头**回调 dg-web 既有 REST API（如 `/api/v1/config/connections`、`/api/v1/task-configs?validateOnly=true`），无需单独暴露 agent-tools 端点。
 
 **核心能力：**
-- **多轮对话生成** — AgentScope HarnessAgent + ReAct 循环，LLM 自主决策调用 Tool 完成 Job 创建
+- **多轮对话生成** — AgentScope HarnessAgent + ReAct 循环，LLM 自主决策调用 Tool 完成任务创建
 - **RAG 知识库** — 上传 Markdown 文档 → 按标题切分 → 向量索引 → 语义检索，Agent 可按需查阅配置文档
-- **配置草稿管理** — 复杂多表 Job 分片持久化 + 增量 YAML 合并，突破单次 LLM token 限制
+- **配置草稿管理** — 复杂多表任务分片持久化 + 增量 YAML 合并，突破单次 LLM token 限制
 - **SSE 流式输出** — 所有事件（文本/思考/工具调用/工具结果）无条件流式输出，前端实时渲染文本、思考过程与工具调用结果
 
 ### 启动 dg-ai
@@ -264,30 +264,30 @@ data-generator:
     token: ai-tokens                         # dg-ai 回调时使用，两端须一致
 ```
 
-设置 `enabled=true`、两端 `service-auth.token` 一致、dg-ai 已启动且 LLM API Key 有效后，登录控制台即可见 FAB；校验通过的 YAML 会自动填入「新建任务」表单。
+设置 `enabled=true`、两端 `service-auth.token` 一致、dg-ai 已启动且 LLM API Key 有效后，登录控制台右下角即可见 AI 悬浮球，点击弹出右侧抽屉对话浮层（不打断当前页面操作，支持多轮对话、思考/工具调用过程展示与历史会话）；校验通过的 YAML 会自动填入「新建任务」表单。
 
 能力由 **HarnessAgent**（`SystemPrompt` 系统提示 + ReAct 循环）与 **Toolkit**（`ConfigTools` + `KnowledgeTools`）组成。修改工作流程请编辑 `SystemPrompt.java` 或 Tool 实现类。详见 [`dg-ai/README.md`](dg-ai/README.md)。
 
 ## 配置目录
 
-YAML 业务配置默认从 `data-generator.config-dir` 加载（默认 `classpath:configs`）。可将 `config-dir` 设为外部绝对路径（如 `/data/configs`），或在 `writable-config-dir` 中通过控制台维护自定义 Job：
+YAML 业务配置默认从 `data-generator.config-dir` 加载（默认 `classpath:configs`）。可将 `config-dir` 设为外部绝对路径（如 `/data/configs`），或在 `writable-config-dir` 中通过控制台维护自定义任务配置：
 
 ```
 configs/                    # 或你指定的 config-dir 根目录
 ├── schemas/                # 可复用的表/数据集 Schema
 ├── references/             # 参考数据（维表）读取配置
 ├── constraints/            # 可复用约束规则集
-└── task-configs/                   # 自行编写的多表编排 Job（YAML）
+└── task-configs/           # 自行编写的多表编排任务（YAML）
 ```
 
-控制台新建的自定义 Job 写入 `writable-config-dir`（默认 `./data/configs/task-configs/`），与 `config-dir` 下的定义合并展示。
+控制台新建的自定义任务配置写入 `writable-config-dir`（默认 `./data/configs/task-configs/`），与 `config-dir` 下的定义合并展示。
 
 ### application.yml 主要配置项
 
 ```yaml
 data-generator:
   config-dir: classpath:configs
-  writable-config-dir: ./data/configs   # Web 控制台新建/编辑 Job 的写入目录
+  writable-config-dir: ./data/configs   # Web 控制台新建/编辑任务配置的写入目录
   auth:
     enabled: true                       # false 时关闭登录（仅建议本地调试）
     username: admin
@@ -295,7 +295,7 @@ data-generator:
   storage:
     sqlite-path: ./data/dg-tasks.db      # 任务记录 SQLite 库
     log-dir: ./data/task-run-logs      # 运行日志文件目录（每任务一个 {runId}.log）
-  connections:                          # 数据源连接（Schema/Job YAML 引用 connection 名）
+  connections:                          # 数据源连接（Schema/任务 YAML 引用 connection 名）
     dev-pg:
       type: postgresql
       url: jdbc:postgresql://localhost:5432/dev
@@ -310,7 +310,7 @@ data-generator:
     token: ai-tokens                    # dg-ai 等服务间调用共享密钥（X-DG-Service-Auth）
 ```
 
-Schema/Job YAML 通过 `connection: dev-pg` 等形式引用连接，避免在业务配置中硬编码凭证。
+Schema/任务 YAML 通过 `connection: dev-pg` 等形式引用连接，避免在业务配置中硬编码凭证。
 
 ### 运行时数据
 
@@ -318,7 +318,7 @@ Schema/Job YAML 通过 `connection: dev-pg` 等形式引用连接，避免在业
 |------|------|
 | `./data/dg-tasks.db` | 任务记录（SQLite，重启后保留） |
 | `./data/task-run-logs/` | 运行日志文件（每任务 `{runId}.log`，如 `task-run-{timestamp}-{id}.log`） |
-| `./data/configs/` | Web 控制台写入的可编辑 Job 定义 |
+| `./data/configs/` | Web 控制台写入的可编辑任务配置定义 |
 
 ## 认证说明
 
@@ -383,7 +383,13 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/preview \
 ```bash
 # 列出所有任务配置（响应含 fileName、name、id、schedule、createdAt 等）
 curl -b cookies.txt http://localhost:8080/api/v1/task-configs
-# fileName 为配置文件名（API 路径参数）；name 为任务显示名称
+# 响应形状: {"items":[...],"skipped":[...],"total":3,"page":1,"size":3}
+
+# 分页列出（page/size 可选；任一不传时返回全量，保持向后兼容）
+curl -b cookies.txt "http://localhost:8080/api/v1/task-configs?page=1&size=20"
+
+# 按显示名称搜索（可与 page/size 组合）
+curl -b cookies.txt "http://localhost:8080/api/v1/task-configs?name=演示&page=1&size=20"
 
 # 查看单个配置（自定义任务返回的 content 不含顶层 name，由 displayName 维护）
 curl -b cookies.txt http://localhost:8080/api/v1/task-configs/joba1b2c3d4
@@ -415,6 +421,10 @@ curl -b cookies.txt http://localhost:8080/api/v1/task-configs/my_builtin/schedul
 
 自定义任务 YAML **禁止**包含 `schedule` 块；`id` 新建时自动生成；可选 `name` 指定 ASCII 配置文件名，否则与 `id` 相同。
 
+> **破坏性变更提示**：
+> 1. `/api/v1/task-configs` 列表响应自数组改为对象 `{"items":[...],"skipped":[...],"total":N,"page":N,"size":N}`；外部 API 消费者需按 `items` 读取。已确认 dg-ai 与 Web 控制台均适配。
+> 2. 任务配置 YAML 自本版本起 **`id` 与 `name` 均为必填**（`name` 为任务显示名称）。存量只有 `id` 的配置会加载失败并在列表中以 `skipped` 提示，请升级前补全 `name` 字段。
+
 ### 提交生成任务
 
 单写示例：
@@ -433,7 +443,7 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/task-runs \
   }'
 ```
 
-多写（同一批数据同时写入 PG 与 ClickHouse；Job YAML 中已配置 `writers` 时以 YAML 为准）：
+多写（同一批数据同时写入 PG 与 ClickHouse；任务 YAML 中已配置 `writers` 时以 YAML 为准）：
 
 ```bash
 curl -b cookies.txt -X POST http://localhost:8080/api/v1/task-runs \
@@ -452,9 +462,15 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/task-runs \
 ### 查询运行记录与日志
 
 ```bash
-# 列出历史运行（分页，默认 page=1 size=50）
-curl -b cookies.txt http://localhost:8080/api/v1/task-runs?page=1&size=50
+# 列出历史运行（分页，默认 page=1 size=50；status 支持逗号分隔多状态，configPath/from/to 可选过滤）
+curl -b cookies.txt "http://localhost:8080/api/v1/task-runs?page=1&size=50&status=RUNNING,PENDING"
 # 响应: {"items":[...],"total":100,"page":1,"size":50}
+
+# 概览统计（状态计数、累计写入、Top 配置排行、近 14 天每日趋势）
+curl -b cookies.txt http://localhost:8080/api/v1/task-runs/stats
+
+# 按配置路径聚合的运行索引（每路径最新一次与活跃运行）
+curl -b cookies.txt http://localhost:8080/api/v1/task-runs/by-config
 
 # 查询单次运行
 curl -b cookies.txt http://localhost:8080/api/v1/task-runs/{runId}
@@ -477,7 +493,7 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/task-runs/{runId}/rec
 | 数据源插件 | PostgreSQL、ClickHouse、CSV 读写 |
 | 生成策略 | sequence、random、enum、regex、reference、seed、expression（SpEL/Aviator/Groovy）；**uuid、phone、email、literal、idcard**（含 `from`/`part` 派生与复制）；字段级 **primaryKey** 标识；全策略通用 **default / prefix / width**（`default` 用于 null/空串兜底；`prefix` 要求字符串 type） |
 | 约束引擎 | 字段级（range、nullable、foreign_key）；组合级 SpEL（conditional、mutex） |
-| 多表编排 | 单表快捷 Job + 多表 DAG（`depends_on` 拓扑排序） |
+| 多表编排 | 单表快捷任务 + 多表 DAG（`depends_on` 拓扑排序） |
 | 写入目标 | 单写 `writer`；多写 `writers`（同一批数据 fan-out 至 PG / ClickHouse / CSV 等） |
 | REST API | health、table-schemas、preview、task-configs、task-runs |
 
@@ -494,7 +510,7 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/task-runs/{runId}/rec
 
 | 能力 | 说明 |
 |------|------|
-| Job 级 seeds | 顶层 `seeds[]` 多命名数据源；字段 `strategy: seed` + `source`；支持 `link` 关联（`match`/`sources` 声明规则，启动预加载 + 内存匹配）；**单个 seed 查询无结果时不阻断任务**，对应字段为 null（可配 `default` 兜底） |
+| 任务级 seeds | 顶层 `seeds[]` 多命名数据源；字段 `strategy: seed` + `source`；支持 `link` 关联（`match`/`sources` 声明规则，启动预加载 + 内存匹配）；**单个 seed 查询无结果时不阻断任务**，对应字段为 null（可配 `default` 兜底） |
 | Groovy 表达式 | `language: groovy` 约束与自定义表达式 |
 | 约束 repair/warn | `on_fail: repair` 自动修正；`warn` 记录告警并继续 |
 | 任务取消 | `DELETE /api/v1/task-runs/{id}` 取消 PENDING/RUNNING 运行（同步/异步） |
@@ -504,13 +520,13 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/task-runs/{runId}/rec
 
 | 能力 | 说明 |
 |------|------|
-| Web 控制台 | 任务管理、Job 定义编辑、Cron 调度、运行记录与日志（分页）、配置指南；自动刷新与增量 DOM 更新 |
+| Web 控制台 | 任务管理、任务配置编辑、Cron 调度、运行记录与日志（分页）、配置指南；自动刷新与增量 DOM 更新 |
 | AI Agent | `dg-ai` 独立服务（AgentScope HarnessAgent）+ Web FAB 多轮对话；SSE 流式输出；Tool Set 回调 dg-web |
-| 连接配置 | `application.yml` 命名连接；Job 顶层 `connections` 块；reader/writer 内联连接（可混用） |
+| 连接配置 | `application.yml` 命名连接；任务顶层 `connections` 块；reader/writer 内联连接（可混用） |
 | 表单登录 | Spring Security Session 认证，`data-generator.auth.*` 可配置 |
 | 任务持久化 | SQLite 存储任务记录；运行日志写入 `log-dir` 文件，重启后可查历史 |
-| Job 定义 CRUD | REST + Web UI；`validateOnly=true` 校验 YAML；自定义 YAML 存 `writable-config-dir`，调度存 SQLite |
-| Job 定时调度 | Cron 触发、同配置 FIFO 排队、手动运行与调度并存 |
+| 任务配置 CRUD | REST + Web UI；`validateOnly=true` 校验 YAML；自定义 YAML 存 `writable-config-dir`，调度存 SQLite |
+| 任务定时调度 | Cron 触发、同配置 FIFO 排队、手动运行与调度并存 |
 | 部署打包 | `scripts/package.ps1` 生成 zip（含 dg-web + dg-ai jar）；`start-all` / `start-ai` 等启停脚本；可选内置 JDK |
 
 ## 许可证

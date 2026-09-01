@@ -24,12 +24,7 @@ public class TaskRunLogRepository {
     private final Path logDir;
 
     public TaskRunLogRepository(DataGeneratorProperties properties) {
-        try {
-            this.logDir = TaskRunLogDirMigrator.migrateLegacyLogDir(
-                    Path.of(properties.getStorage().getLogDir()));
-        } catch (IOException exception) {
-            throw new IllegalStateException("Failed to migrate task run log directory", exception);
-        }
+        this.logDir = Path.of(properties.getStorage().getLogDir()).toAbsolutePath().normalize();
     }
 
     public void append(String runId, String level, String message) {

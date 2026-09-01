@@ -1,7 +1,9 @@
 package com.datagenerator.web.controller;
 
 import com.datagenerator.web.controller.TaskRunController;
+import com.datagenerator.web.dto.TaskRunIndexResponse;
 import com.datagenerator.web.dto.TaskRunResponse;
+import com.datagenerator.web.dto.TaskRunStatsResponse;
 import com.datagenerator.web.dto.TaskRunStatus;
 import com.datagenerator.web.dto.TaskRunSubmitRequest;
 import com.datagenerator.web.dto.TaskRunSubmitResult;
@@ -18,8 +20,11 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.List;
+
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -90,5 +95,26 @@ class TaskRunControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.runId").value("job-sync-1"))
                 .andExpect(jsonPath("$.status").value("COMPLETED"));
+    }
+
+    @Test
+    void getStats_delegatesToService() throws Exception {
+        when(taskRunService.stats()).thenReturn(new TaskRunStatsResponse(
+                10, 2, 1, 5, 1, 1, 1000, List.of(), List.of()));
+
+        mockMvc.perform(get("/api/v1/task-runs/stats"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.totalRuns").value(10))
+                .andExpect(jsonPath("$.totalWritten").value(1000));
+    }
+
+    @Test
+    void getRunIndexes_delegatesToService() throws Exception {
+        when(taskRunService.runIndexes()).thenReturn(new TaskRunIndexResponse(List.of(), List.of()));
+
+        mockMvc.perform(get("/api/v1/task-runs/by-config"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.latestRuns").isArray())
+                .andExpect(jsonPath("$.activeRuns").isArray());
     }
 }

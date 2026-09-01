@@ -269,7 +269,8 @@ fields:
 
 ```yaml
 # configs/task-configs/single_customer.yaml
-job: single_customer
+id: single_customer
+name: 单客户造数
 tables:
   - name: customers
     schema: schemas/customer.yaml
@@ -280,7 +281,8 @@ tables:
 
 ```yaml
 # configs/task-configs/ecommerce_seed.yaml
-job: ecommerce_seed
+id: ecommerce_seed
+name: 电商种子数据造数
 tables:
   - name: customers
     schema: schemas/customer.yaml

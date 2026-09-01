@@ -1,5 +1,6 @@
 package com.datagenerator.web.controller;
 
+import com.datagenerator.web.dto.TaskConfigListResponse;
 import com.datagenerator.web.dto.TaskConfigResponse;
 import com.datagenerator.web.dto.TaskScheduleResponse;
 import com.datagenerator.web.config.DataGeneratorProperties;
@@ -41,7 +42,7 @@ class TaskConfigControllerTest {
     private TaskConfigService taskConfigService;
 
     @MockBean
-    private TaskScheduleService jobScheduleService;
+    private TaskScheduleService taskScheduleService;
 
     @MockBean
     private TaskScheduleManager scheduleManager;
@@ -51,19 +52,19 @@ class TaskConfigControllerTest {
 
     @Test
     void listDefinitions_withNameFilter_delegatesToService() throws Exception {
-        when(taskConfigService.list("演示"))
-                .thenReturn(List.of(new TaskConfigResponse(
+        when(taskConfigService.list("演示", null, null))
+                .thenReturn(new TaskConfigListResponse(List.of(new TaskConfigResponse(
                         "demo_job",
                         "task-configs/demo_job.yaml",
                         "demo_job",
                         "演示任务",
                         null,
                         false,
-                        false)));
+                        false)), List.of(), 1L, 1, 1));
 
         mockMvc.perform(get("/api/v1/task-configs").param("name", "演示"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$[0].name").value("演示任务"));
+                .andExpect(jsonPath("$.items[0].name").value("演示任务"));
     }
 
     @Test
@@ -99,7 +100,7 @@ class TaskConfigControllerTest {
                         null,
                         false,
                         false));
-        when(jobScheduleService.resolveSchedule("task-configs/demo_job.yaml", false))
+        when(taskScheduleService.resolveSchedule("task-configs/demo_job.yaml", false))
                 .thenReturn(new TaskScheduleResponse(true, "0 0 2 * * ?", true, "2026-06-07T02:00:00+08:00"));
 
         mockMvc.perform(get("/api/v1/task-configs/demo_job/schedule"))
@@ -121,7 +122,7 @@ class TaskConfigControllerTest {
                         null,
                         true,
                         true));
-        when(jobScheduleService.resolveSchedule("task-configs/builtin.yaml", true))
+        when(taskScheduleService.resolveSchedule("task-configs/builtin.yaml", true))
                 .thenReturn(new TaskScheduleResponse(true, "0 30 3 * * ?", false, "2026-06-07T03:30:00+08:00"));
 
         mockMvc.perform(get("/api/v1/task-configs/builtin/schedule"))
@@ -142,7 +143,7 @@ class TaskConfigControllerTest {
                         null,
                         true,
                         true));
-        when(jobScheduleService.saveSchedule(eq("task-configs/builtin.yaml"), any()))
+        when(taskScheduleService.saveSchedule(eq("task-configs/builtin.yaml"), any()))
                 .thenThrow(new ReadOnlyScheduleException("task-configs/builtin.yaml"));
 
         mockMvc.perform(put("/api/v1/task-configs/builtin/schedule")
@@ -163,7 +164,7 @@ class TaskConfigControllerTest {
                         null,
                         false,
                         false));
-        when(jobScheduleService.saveSchedule(eq("task-configs/demo_job.yaml"), any()))
+        when(taskScheduleService.saveSchedule(eq("task-configs/demo_job.yaml"), any()))
                 .thenReturn(new TaskScheduleResponse(true, "0 0 2 * * ?", true, "2026-06-07T02:00:00+08:00"));
 
         mockMvc.perform(put("/api/v1/task-configs/demo_job/schedule")

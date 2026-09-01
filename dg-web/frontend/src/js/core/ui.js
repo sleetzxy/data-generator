@@ -33,6 +33,18 @@ export function formatTime(iso) {
     }
 }
 
+/** 大数字紧凑格式化（中文万/亿单位） */
+export function formatCompactNumber(value) {
+    const num = Number(value) || 0;
+    if (num >= 100000000) {
+        return `${(num / 100000000).toFixed(2)} 亿`;
+    }
+    if (num >= 10000) {
+        return `${(num / 10000).toFixed(1)} 万`;
+    }
+    return String(num);
+}
+
 /** 运行状态徽章 */
 export function statusBadge(status) {
     if (!status) {

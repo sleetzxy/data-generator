@@ -1,7 +1,9 @@
 package com.datagenerator.web.service;
 
+import com.datagenerator.web.dto.TaskConfigListResponse;
 import com.datagenerator.web.dto.TaskConfigRequest;
 import com.datagenerator.web.dto.TaskConfigResponse;
+import com.datagenerator.web.dto.TaskConfigSkipInfo;
 import com.datagenerator.web.dto.TaskScheduleRequest;
 import com.datagenerator.web.dto.TaskConfigValidationResponse;
 import com.datagenerator.web.storage.TaskScheduleRepository;
@@ -34,6 +36,7 @@ public class TaskConfigService {
 
     private static final Logger log = LoggerFactory.getLogger(TaskConfigService.class);
     private static final String TASK_CONFIGS_DIR = "task-configs";
+    private static final int MAX_LIST_SIZE = 200;
 
     private final ConfigPathResolver pathResolver;
     private final YamlConfigLoader configLoader;
@@ -41,7 +44,6 @@ public class TaskConfigService {
     private final TaskScheduleManager scheduleManager;
     private final TaskRunQueueExecutor scheduleExecutor;
     private final TaskScheduleRepository scheduleRepository;
-    private final Yaml yaml = new Yaml();
 
     public TaskConfigService(
             ConfigPathResolver pathResolver,
@@ -66,13 +68,19 @@ public class TaskConfigService {
         }
     }
 
-    public List<TaskConfigResponse> list() {
-        return list(null);
+    public TaskConfigListResponse list() {
+        return list(null, null, null);
     }
 
-    public List<TaskConfigResponse> list(String nameKeyword) {
+    public TaskConfigListResponse list(String nameKeyword) {
+        return list(nameKeyword, null, null);
+    }
+
+    /** 分页查询任务配置列表；page/size 任一为空时返回全量（兼容无分页调用方） */
+    public TaskConfigListResponse list(String nameKeyword, Integer page, Integer size) {
         List<TaskConfigResponse> results = new ArrayList<>();
-        for (String relativePath : listIncludedJobRelativePaths()) {
+        List<TaskConfigSkipInfo> skipped = new ArrayList<>();
+        for (String relativePath : listIncludedTaskRelativePaths()) {
             String fileName = toDefinitionName(relativePath);
             String configPath = toConfigPath(relativePath);
             try {
@@ -80,16 +88,27 @@ public class TaskConfigService {
                 results.add(toResponse(fileName, configPath, taskConfig, null, isBuiltin(configPath)));
             } catch (RuntimeException exception) {
                 log.warn("跳过无法加载的任务配置 {}: {}", configPath, exception.getMessage());
+                skipped.add(new TaskConfigSkipInfo(configPath, exception.getMessage()));
             }
         }
         results.sort(this::compareForList);
-        if (nameKeyword == null || nameKeyword.isBlank()) {
-            return results;
+        List<TaskConfigResponse> filtered = results;
+        if (nameKeyword != null && !nameKeyword.isBlank()) {
+            String keyword = nameKeyword.trim().toLowerCase();
+            filtered = results.stream()
+                    .filter(item -> matchesNameKeyword(item, keyword))
+                    .toList();
         }
-        String keyword = nameKeyword.trim().toLowerCase();
-        return results.stream()
-                .filter(item -> matchesNameKeyword(item, keyword))
-                .toList();
+        if (page == null || size == null) {
+            return new TaskConfigListResponse(filtered, skipped, filtered.size(), 1, filtered.size());
+        }
+        int safePage = Math.max(page, 1);
+        int safeSize = Math.min(Math.max(size, 1), MAX_LIST_SIZE);
+        int offset = (safePage - 1) * safeSize;
+        List<TaskConfigResponse> items = offset >= filtered.size()
+                ? List.of()
+                : filtered.subList(offset, Math.min(filtered.size(), offset + safeSize));
+        return new TaskConfigListResponse(items, skipped, filtered.size(), safePage, safeSize);
     }
 
     private boolean matchesNameKeyword(TaskConfigResponse item, String keyword) {
@@ -258,7 +277,7 @@ public class TaskConfigService {
     }
 
     private Map<?, ?> parseRootMapping(String content) {
-        Object loaded = yaml.load(content);
+        Object loaded = new Yaml().load(content);
         if (!(loaded instanceof Map<?, ?> root)) {
             throw new IllegalArgumentException("Task config YAML must be a mapping");
         }
@@ -297,20 +316,20 @@ public class TaskConfigService {
     private String assignGeneratedId(String content) {
         Map<String, Object> root = toMutableRoot(parseRootMapping(content));
         root.remove("name");
-        root.put("id", generateUniqueJobId());
-        return yaml.dump(root);
+        root.put("id", generateUniqueTaskId());
+        return new Yaml().dump(root);
     }
 
     private String injectDisplayName(String content, String displayName) {
         Map<String, Object> root = toMutableRoot(parseRootMapping(content));
         root.put("name", displayName.trim());
-        return yaml.dump(root);
+        return new Yaml().dump(root);
     }
 
     private String stripNameFromContent(String content) {
         Map<String, Object> root = toMutableRoot(parseRootMapping(content));
         root.remove("name");
-        return yaml.dump(root);
+        return new Yaml().dump(root);
     }
 
     private String requireDisplayName(String displayName) {
@@ -345,7 +364,7 @@ public class TaskConfigService {
         return mutable;
     }
 
-    private String generateUniqueJobId() {
+    private String generateUniqueTaskId() {
         for (int attempt = 0; attempt < 100; attempt++) {
             String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
             String id = "task" + suffix;
@@ -361,7 +380,7 @@ public class TaskConfigService {
     }
 
     private boolean idExists(String id) {
-        for (String relativePath : listIncludedJobRelativePaths()) {
+        for (String relativePath : listIncludedTaskRelativePaths()) {
             TaskConfig existing = configLoader.loadTaskConfig(toConfigPath(relativePath));
             if (id.equals(existing.getId())) {
                 return true;
@@ -386,7 +405,7 @@ public class TaskConfigService {
     }
 
     private void validateIdUnique(String id, String excludeConfigPath) {
-        for (String relativePath : listIncludedJobRelativePaths()) {
+        for (String relativePath : listIncludedTaskRelativePaths()) {
             String configPath = toConfigPath(relativePath);
             if (configPath.equals(excludeConfigPath)) {
                 continue;
@@ -415,10 +434,10 @@ public class TaskConfigService {
         return pathResolver.existsOnClasspath(configPath);
     }
 
-    private List<String> listIncludedJobRelativePaths() {
+    private List<String> listIncludedTaskRelativePaths() {
         List<String> included = new ArrayList<>();
         for (String relativePath : pathResolver.listYamlRelativePaths(TASK_CONFIGS_DIR)) {
-            if (isListedJobPath(relativePath, toConfigPath(relativePath))) {
+            if (isListedTaskPath(relativePath, toConfigPath(relativePath))) {
                 included.add(relativePath);
             }
         }
@@ -426,7 +445,7 @@ public class TaskConfigService {
     }
 
     /** 内置任务仅扫描 task-configs 目录直属 YAML，忽略子目录。 */
-    private boolean isListedJobPath(String relativePath, String configPath) {
+    private boolean isListedTaskPath(String relativePath, String configPath) {
         return !relativePath.contains("/") || !isBuiltin(configPath);
     }
 
@@ -470,7 +489,7 @@ public class TaskConfigService {
         while (normalized.startsWith("/")) {
             normalized = normalized.substring(1);
         }
-            if (normalized.startsWith(TASK_CONFIGS_DIR + "/")) {
+        if (normalized.startsWith(TASK_CONFIGS_DIR + "/")) {
             normalized = normalized.substring(TASK_CONFIGS_DIR.length() + 1);
         }
         if (normalized.endsWith(".yaml") || normalized.endsWith(".yml")) {

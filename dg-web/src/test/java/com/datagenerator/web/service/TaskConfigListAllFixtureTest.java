@@ -5,23 +5,25 @@ import com.datagenerator.core.model.ConfigPathResolver;
 import com.datagenerator.core.model.YamlConfigLoader;
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 
-class TaskConfigListAllBuiltinTest {
+import static org.assertj.core.api.Assertions.assertThat;
+
+/** 验证受控 fixture 目录下全部任务配置均可加载，不依赖部署方本地数据 */
+class TaskConfigListAllFixtureTest {
 
     private static final String TASK_CONFIGS_DIR = "task-configs";
 
     @Test
-    void listAllTopLevelBuiltinConfigs_loadsSuccessfully() {
-        ConfigPathResolver resolver = productionLikeResolver();
+    void listAllFixtureConfigs_loadsSuccessfully() {
+        ConfigPathResolver resolver = fixtureResolver();
         YamlConfigLoader loader = new YamlConfigLoader(resolver);
+        List<String> relativePaths = resolver.listYamlRelativePaths(TASK_CONFIGS_DIR);
+        assertThat(relativePaths).contains("sample.yaml");
+
         List<String> failures = new ArrayList<>();
-        for (String relativePath : resolver.listYamlRelativePaths(TASK_CONFIGS_DIR)) {
-            if (relativePath.contains("/") && resolver.existsOnClasspath(TASK_CONFIGS_DIR + "/" + relativePath)) {
-                continue;
-            }
+        for (String relativePath : relativePaths) {
             String configPath = TASK_CONFIGS_DIR + "/" + relativePath;
             try {
                 loader.loadTaskConfig(configPath);
@@ -34,10 +36,8 @@ class TaskConfigListAllBuiltinTest {
         }
     }
 
-    private static ConfigPathResolver productionLikeResolver() {
-        return ConfigPathResolver.fromSetting(
-                "classpath:configs",
-                TaskConfigListAllBuiltinTest.class.getClassLoader(),
-                Path.of("./data/configs"));
+    private static ConfigPathResolver fixtureResolver() {
+        return ConfigPathResolver.forClasspath(
+                TaskConfigListAllFixtureTest.class.getClassLoader(), "fixtures");
     }
 }

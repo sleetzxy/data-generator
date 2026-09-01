@@ -1,8 +1,11 @@
 package com.datagenerator.web.controller;
 
+import com.datagenerator.web.dto.TaskRunIndexResponse;
+import com.datagenerator.web.dto.TaskRunListFilter;
 import com.datagenerator.web.dto.TaskRunListResponse;
 import com.datagenerator.web.dto.TaskRunLogEntry;
 import com.datagenerator.web.dto.TaskRunResponse;
+import com.datagenerator.web.dto.TaskRunStatsResponse;
 import com.datagenerator.web.dto.TaskRunSubmitRequest;
 import com.datagenerator.web.dto.TaskRunSubmitResult;
 import com.datagenerator.web.dto.TaskRunSummaryResponse;
@@ -32,8 +35,22 @@ public class TaskRunController {
     @GetMapping
     public TaskRunListResponse listTaskRuns(
             @RequestParam(defaultValue = "1") int page,
-            @RequestParam(defaultValue = "50") int size) {
-        return taskRunService.list(page, size);
+            @RequestParam(defaultValue = "50") int size,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String configPath,
+            @RequestParam(required = false) String from,
+            @RequestParam(required = false) String to) {
+        return taskRunService.list(page, size, new TaskRunListFilter(status, configPath, from, to));
+    }
+
+    @GetMapping("/stats")
+    public TaskRunStatsResponse getStats() {
+        return taskRunService.stats();
+    }
+
+    @GetMapping("/by-config")
+    public TaskRunIndexResponse getRunIndexes() {
+        return taskRunService.runIndexes();
     }
 
     @PostMapping

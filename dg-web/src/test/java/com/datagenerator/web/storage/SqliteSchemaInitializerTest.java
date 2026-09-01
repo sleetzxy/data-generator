@@ -24,53 +24,15 @@ class SqliteSchemaInitializerTest {
     }
 
     @Test
-    void initialize_migratesLegacyJobsTable() {
+    void initialize_createsIndexes_idempotent() {
         JdbcTemplate jdbc = SqliteTestSupport.createJdbcTemplate();
-        jdbc.execute("""
-                CREATE TABLE jobs (
-                    job_id TEXT PRIMARY KEY,
-                    status TEXT NOT NULL,
-                    job_config TEXT,
-                    submitted_at TEXT NOT NULL,
-                    duration TEXT,
-                    error_message TEXT,
-                    total_tables INTEGER NOT NULL DEFAULT 0,
-                    completed_tables INTEGER NOT NULL DEFAULT 0,
-                    total_rows INTEGER NOT NULL DEFAULT 0,
-                    written_rows INTEGER NOT NULL DEFAULT 0,
-                    failed_rows INTEGER NOT NULL DEFAULT 0,
-                    details_json TEXT,
-                    trigger_source TEXT
-                )
-                """);
-        jdbc.update("""
-                INSERT INTO jobs (
-                    job_id, status, job_config, submitted_at, duration, error_message,
-                    total_tables, completed_tables, total_rows, written_rows, failed_rows,
-                    details_json, trigger_source
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                "legacy-1",
-                "COMPLETED",
-                "task-configs/demo.yaml",
-                "2026-01-01T00:00:00Z",
-                "1s",
-                null,
-                1,
-                1,
-                10,
-                10,
-                0,
-                null,
-                "MANUAL");
-
+        SqliteSchemaInitializer.initialize(jdbc);
         SqliteSchemaInitializer.initialize(jdbc);
 
-        assertThat(tableExists(jdbc, "jobs")).isFalse();
-        assertThat(tableExists(jdbc, "task_runs")).isTrue();
-        Map<String, Object> row = jdbc.queryForMap("SELECT run_id, config_path FROM task_runs WHERE run_id = ?", "legacy-1");
-        assertThat(row.get("run_id")).isEqualTo("legacy-1");
-        assertThat(row.get("config_path")).isEqualTo("task-configs/demo.yaml");
+        List<Map<String, Object>> indexes = jdbc.queryForList(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='task_runs'");
+        assertThat(indexes).extracting(row -> row.get("name"))
+                .contains("idx_task_runs_submitted_at", "idx_task_runs_status_submitted_at");
     }
 
     private static boolean columnExists(JdbcTemplate jdbc, String table, String column) {

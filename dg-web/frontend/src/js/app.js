@@ -2,25 +2,23 @@
 
 import { showToast } from './core/ui.js';
 import {
-    fetchAllTaskRuns,
     getCurrentView,
-    rebuildRunIndexes,
-    setAllRunsCache,
+    loadRunIndexes,
     setCurrentView
 } from './core/state.js';
 import { ensureAutoRefresh, setRefreshHandler, stopAutoRefresh } from './core/refresh.js';
 import { initOverlayScrollbars } from './lib/scrollbar.js';
 import { initOverview, loadOverview, syncOverviewInPlace } from './views/overview.js';
 import { canSyncDefinitionsInPlace, initTasks, loadDefinitions, syncDefinitionsTableInPlace } from './views/tasks.js';
-import { initLogs, refreshOpenLogModal } from './views/logs.js';
+import { initLogs, initLogsView, loadLogsView, refreshOpenLogModal } from './views/logs.js';
 import { initPreview } from './views/preview.js';
 import { loadGuide } from './views/docs.js';
-import { initAgent, onAiViewShown } from './views/agent.js';
+import { initAgent } from './views/agent.js';
 
 const VIEW_TITLES = {
     overview: '运行概览',
     tasks: '任务管理',
-    ai: 'AI 助手',
+    logs: '运行日志',
     docs: '配置指南'
 };
 
@@ -57,10 +55,10 @@ function switchView(view) {
 
     if (view === 'overview') {
         loadOverview().catch(err => showToast('概览加载失败: ' + err.message));
+    } else if (view === 'logs') {
+        loadLogsView().catch(err => showToast('运行日志加载失败: ' + err.message));
     } else if (view === 'docs') {
         loadDocsView().catch(err => showToast('配置指南加载失败: ' + err.message));
-    } else if (view === 'ai') {
-        onAiViewShown();
     }
     ensureAutoRefresh();
 }
@@ -76,13 +74,12 @@ async function loadDocsView() {
     initOverlayScrollbars(docsView?.querySelector('.docs-content'));
 }
 
-/** 自动刷新回调：拉取最新运行记录并同步各视图 */
+/** 自动刷新回调：拉取按配置聚合的运行索引并同步各视图 */
 async function refreshRuntimeSnapshot() {
-    setAllRunsCache(await fetchAllTaskRuns());
-    rebuildRunIndexes();
+    await loadRunIndexes();
 
     if (getCurrentView() === 'overview') {
-        syncOverviewInPlace();
+        await syncOverviewInPlace();
     }
 
     if (getCurrentView() === 'tasks' && canSyncDefinitionsInPlace()) {
@@ -98,6 +95,7 @@ initOverlayScrollbars();
 initOverview();
 initTasks();
 initLogs();
+initLogsView();
 initPreview();
 initAgent();
 setRefreshHandler(refreshRuntimeSnapshot);

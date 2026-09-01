@@ -1,5 +1,6 @@
 package com.datagenerator.web.controller;
 
+import com.datagenerator.web.dto.TaskConfigListResponse;
 import com.datagenerator.web.dto.TaskConfigRequest;
 import com.datagenerator.web.dto.TaskConfigResponse;
 import com.datagenerator.web.dto.TaskScheduleRequest;
@@ -19,8 +20,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
-
 @RestController
 @RequestMapping("/api/v1/task-configs")
 public class TaskConfigController {
@@ -39,8 +38,11 @@ public class TaskConfigController {
     }
 
     @GetMapping
-    public List<TaskConfigResponse> list(@RequestParam(name = "name", required = false) String name) {
-        return taskConfigService.list(name);
+    public TaskConfigListResponse list(
+            @RequestParam(name = "name", required = false) String name,
+            @RequestParam(name = "page", required = false) Integer page,
+            @RequestParam(name = "size", required = false) Integer size) {
+        return taskConfigService.list(name, page, size);
     }
 
     @GetMapping("/{name}")

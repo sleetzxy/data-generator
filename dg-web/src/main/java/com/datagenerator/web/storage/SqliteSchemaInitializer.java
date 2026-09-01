@@ -12,7 +12,6 @@ public final class SqliteSchemaInitializer {
 
     public static void initialize(JdbcTemplate jdbcTemplate) {
         jdbcTemplate.execute("PRAGMA journal_mode=WAL");
-        migrateLegacySchema(jdbcTemplate);
         jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS task_runs (
                     run_id TEXT PRIMARY KEY,
@@ -34,6 +33,10 @@ public final class SqliteSchemaInitializer {
                 ON task_runs(submitted_at)
                 """);
         jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_task_runs_status_submitted_at
+                ON task_runs(status, submitted_at DESC)
+                """);
+        jdbcTemplate.execute("""
                 CREATE TABLE IF NOT EXISTS task_schedules (
                     config_path TEXT PRIMARY KEY,
                     enabled INTEGER NOT NULL DEFAULT 0,
@@ -43,80 +46,6 @@ public final class SqliteSchemaInitializer {
                 """);
         ensureColumn(jdbcTemplate, "task_runs", "trigger_source", "TEXT");
         ensureColumn(jdbcTemplate, "task_schedules", "created_at", "TEXT");
-        migrateLegacyConfigPaths(jdbcTemplate);
-    }
-
-    /** 将旧版 jobs/ 配置路径迁移为 task-configs/ */
-    private static void migrateLegacyConfigPaths(JdbcTemplate jdbcTemplate) {
-        if (tableExists(jdbcTemplate, "task_runs")) {
-            jdbcTemplate.update("""
-                    UPDATE task_runs
-                    SET config_path = REPLACE(config_path, 'jobs/', 'task-configs/')
-                    WHERE config_path LIKE 'jobs/%'
-                    """);
-        }
-        if (tableExists(jdbcTemplate, "task_schedules")) {
-            jdbcTemplate.update("""
-                    UPDATE task_schedules
-                    SET config_path = REPLACE(config_path, 'jobs/', 'task-configs/')
-                    WHERE config_path LIKE 'jobs/%'
-                    """);
-        }
-    }
-
-    private static void migrateLegacySchema(JdbcTemplate jdbcTemplate) {
-        if (tableExists(jdbcTemplate, "jobs") && !tableExists(jdbcTemplate, "task_runs")) {
-            jdbcTemplate.execute("""
-                    CREATE TABLE task_runs (
-                        run_id TEXT PRIMARY KEY,
-                        status TEXT NOT NULL,
-                        config_path TEXT,
-                        submitted_at TEXT NOT NULL,
-                        duration TEXT,
-                        error_message TEXT,
-                        total_tables INTEGER NOT NULL DEFAULT 0,
-                        completed_tables INTEGER NOT NULL DEFAULT 0,
-                        total_rows INTEGER NOT NULL DEFAULT 0,
-                        written_rows INTEGER NOT NULL DEFAULT 0,
-                        failed_rows INTEGER NOT NULL DEFAULT 0,
-                        details_json TEXT,
-                        trigger_source TEXT
-                    )
-                    """);
-            jdbcTemplate.execute("""
-                    INSERT INTO task_runs (
-                        run_id, status, config_path, submitted_at, duration, error_message,
-                        total_tables, completed_tables, total_rows, written_rows, failed_rows,
-                        details_json, trigger_source
-                    )
-                    SELECT
-                        job_id, status, job_config, submitted_at, duration, error_message,
-                        total_tables, completed_tables, total_rows, written_rows, failed_rows,
-                        details_json, trigger_source
-                    FROM jobs
-                    """);
-            jdbcTemplate.execute("DROP TABLE jobs");
-        }
-        if (tableExists(jdbcTemplate, "job_schedules") && !tableExists(jdbcTemplate, "task_schedules")) {
-            jdbcTemplate.execute("""
-                    CREATE TABLE task_schedules (
-                        config_path TEXT PRIMARY KEY,
-                        enabled INTEGER NOT NULL DEFAULT 0,
-                        cron TEXT,
-                        updated_at TEXT NOT NULL,
-                        created_at TEXT
-                    )
-                    """);
-            jdbcTemplate.execute("""
-                    INSERT INTO task_schedules (config_path, enabled, cron, updated_at, created_at)
-                    SELECT config_path, enabled, cron, updated_at, created_at
-                    FROM job_schedules
-                    """);
-            jdbcTemplate.execute("DROP TABLE job_schedules");
-        }
-        if (tableExists(jdbcTemplate, "job_logs")) {
-            jdbcTemplate.execute("DROP TABLE job_logs");
-        }
     }
 
     private static boolean tableExists(JdbcTemplate jdbcTemplate, String tableName) {

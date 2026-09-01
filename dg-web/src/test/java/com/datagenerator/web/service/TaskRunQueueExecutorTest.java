@@ -57,7 +57,7 @@ class TaskRunQueueExecutorTest {
                 .thenReturn(List.of())
                 .thenReturn(List.of(runningJob("job-1")));
         when(taskRunService.doSubmit(request, TriggerSource.MANUAL)).thenReturn(firstResult);
-        when(taskRunService.createQueuedJob(CONFIG_PATH, TriggerSource.MANUAL)).thenReturn(queued);
+        when(taskRunService.createQueuedRun(CONFIG_PATH, TriggerSource.MANUAL)).thenReturn(queued);
         when(jobRepository.findById("job-2")).thenReturn(Optional.of(queued));
 
         TaskRunSubmitResult first = executor.enqueue(CONFIG_PATH, TriggerSource.MANUAL, request);
@@ -70,7 +70,7 @@ class TaskRunQueueExecutorTest {
         assertThat(second.response().getStatus()).isEqualTo(TaskRunStatus.PENDING);
 
         verify(taskRunService).doSubmit(request, TriggerSource.MANUAL);
-        verify(taskRunService).createQueuedJob(CONFIG_PATH, TriggerSource.MANUAL);
+        verify(taskRunService).createQueuedRun(CONFIG_PATH, TriggerSource.MANUAL);
     }
 
     @Test
@@ -87,7 +87,7 @@ class TaskRunQueueExecutorTest {
                 .thenReturn(List.of())
                 .thenReturn(List.of(runningJob("job-1")));
         when(taskRunService.doSubmit(firstRequest, TriggerSource.MANUAL)).thenReturn(firstResult);
-        when(taskRunService.createQueuedJob(CONFIG_PATH, TriggerSource.MANUAL)).thenReturn(queued);
+        when(taskRunService.createQueuedRun(CONFIG_PATH, TriggerSource.MANUAL)).thenReturn(queued);
         when(jobRepository.findById("job-2")).thenReturn(Optional.of(queued));
 
         executor.enqueue(CONFIG_PATH, TriggerSource.MANUAL, firstRequest);

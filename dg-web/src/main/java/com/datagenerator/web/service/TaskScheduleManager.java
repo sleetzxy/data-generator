@@ -53,7 +53,7 @@ public class TaskScheduleManager {
         futures.values().forEach(future -> future.cancel(false));
         futures.clear();
 
-        List<TaskConfigResponse> definitions = definitionService.list();
+        List<TaskConfigResponse> definitions = definitionService.list().items();
         Set<String> configPaths = definitions.stream()
                 .map(TaskConfigResponse::getPath)
                 .collect(Collectors.toSet());
@@ -65,7 +65,7 @@ public class TaskScheduleManager {
     }
 
     public void reschedule(String configPath) {
-        boolean builtin = definitionService.list().stream()
+        boolean builtin = definitionService.list().items().stream()
                 .filter(definition -> definition.getPath().equals(configPath))
                 .findFirst()
                 .map(TaskConfigResponse::isBuiltin)

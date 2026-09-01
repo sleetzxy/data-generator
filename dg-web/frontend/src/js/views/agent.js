@@ -60,12 +60,104 @@ export function initAgent() {
             panel.classList.add('hidden');
         }
     });
+
+    // 悬浮球开合抽屉：FAB / 关闭按钮 / 遮罩 / Escape
+    initAiFabDrag();
+    document.getElementById('ai-fab').addEventListener('click', function () {
+        if (aiFabWasDragged) {
+            return; // 拖动结束时触发的 click，不打开抽屉
+        }
+        openAiDrawer();
+    });
+    document.getElementById('ai-close').addEventListener('click', closeAiDrawer);
+    document.getElementById('ai-drawer-backdrop').addEventListener('click', closeAiDrawer);
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && isAiDrawerOpen()) {
+            closeAiDrawer();
+        }
+    });
 }
 
-/** 进入 AI 视图时的处理（由应用入口的视图切换调用） */
-export function onAiViewShown() {
+/** 悬浮球拖动状态：Pointer Events + setPointerCapture，位移超阈值视为拖动 */
+let aiFabDragState = null;
+let aiFabWasDragged = false;
+
+const FAB_DRAG_THRESHOLD_PX = 4;
+const FAB_VIEWPORT_MARGIN_PX = 8;
+
+function clampFabPosition(value, max) {
+    return Math.min(Math.max(value, FAB_VIEWPORT_MARGIN_PX), max - FAB_VIEWPORT_MARGIN_PX);
+}
+
+function initAiFabDrag() {
+    const fab = document.getElementById('ai-fab');
+
+    fab.addEventListener('pointerdown', function (e) {
+        aiFabDragState = { pointerId: e.pointerId, startX: e.clientX, startY: e.clientY, moved: false };
+        fab.setPointerCapture(e.pointerId);
+    });
+
+    fab.addEventListener('pointermove', function (e) {
+        if (!aiFabDragState || aiFabDragState.pointerId !== e.pointerId) {
+            return;
+        }
+        const dx = e.clientX - aiFabDragState.startX;
+        const dy = e.clientY - aiFabDragState.startY;
+        if (!aiFabDragState.moved && Math.hypot(dx, dy) < FAB_DRAG_THRESHOLD_PX) {
+            return;
+        }
+        if (!aiFabDragState.moved) {
+            // 首次移动：记录起始位置并切换到 left/top 定位
+            aiFabDragState.moved = true;
+            aiFabWasDragged = true;
+            fab.classList.add('dragging');
+            const rect = fab.getBoundingClientRect();
+            aiFabDragState.originLeft = rect.left;
+            aiFabDragState.originTop = rect.top;
+            fab.style.left = rect.left + 'px';
+            fab.style.top = rect.top + 'px';
+            fab.style.right = 'auto';
+            fab.style.bottom = 'auto';
+        }
+        const size = fab.offsetWidth;
+        fab.style.left = clampFabPosition(aiFabDragState.originLeft + dx, window.innerWidth - size) + 'px';
+        fab.style.top = clampFabPosition(aiFabDragState.originTop + dy, window.innerHeight - size) + 'px';
+    });
+
+    const endDrag = function (e) {
+        if (!aiFabDragState || aiFabDragState.pointerId !== e.pointerId) {
+            return;
+        }
+        const wasMoved = aiFabDragState.moved;
+        fab.classList.remove('dragging');
+        aiFabDragState = null;
+        if (wasMoved) {
+            // click 在 pointerup 之后派发，延迟重置避免下一次点击被吞
+            setTimeout(() => { aiFabWasDragged = false; }, 0);
+        }
+    };
+    fab.addEventListener('pointerup', endDrag);
+    fab.addEventListener('pointercancel', endDrag);
+}
+
+function isAiDrawerOpen() {
+    return document.getElementById('ai-drawer').classList.contains('open');
+}
+
+/** 打开抽屉浮层：显示欢迎语并聚焦输入框 */
+function openAiDrawer() {
+    document.getElementById('ai-drawer').classList.add('open');
+    document.getElementById('ai-drawer-backdrop').classList.add('open');
+    document.getElementById('ai-fab').classList.add('hidden');
     document.getElementById('ai-history-panel').classList.add('hidden');
     showWelcomeIfEmpty();
+    setTimeout(() => document.getElementById('ai-input').focus(), 250);
+}
+
+function closeAiDrawer() {
+    document.getElementById('ai-drawer').classList.remove('open');
+    document.getElementById('ai-drawer-backdrop').classList.remove('open');
+    document.getElementById('ai-fab').classList.remove('hidden');
 }
 
 async function ensureChat() {

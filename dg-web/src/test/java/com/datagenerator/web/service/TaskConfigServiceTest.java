@@ -105,7 +105,7 @@ class TaskConfigServiceTest {
         ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlayDir);
         TaskConfigService builtinService = createService(resolver);
 
-        assertThat(builtinService.list())
+        assertThat(builtinService.list().items())
                 .extracting("fileName", "builtin", "readOnly")
                 .containsExactly(org.assertj.core.api.Assertions.tuple("builtin", true, true));
     }
@@ -143,7 +143,7 @@ class TaskConfigServiceTest {
         Files.writeString(primaryDir.resolve("task-configs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
         Files.writeString(primaryDir.resolve("task-configs/beta.yaml"), "id: beta\nname: Beta 演示\ntables: []");
 
-        assertThat(service.list("alpha"))
+        assertThat(service.list("alpha").items())
                 .extracting("fileName", "name")
                 .containsExactly(org.assertj.core.api.Assertions.tuple("alpha", "Alpha 任务"));
     }
@@ -153,7 +153,7 @@ class TaskConfigServiceTest {
         Files.createDirectories(primaryDir.resolve("task-configs"));
         Files.writeString(primaryDir.resolve("task-configs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
 
-        assertThat(service.list("ALPHA"))
+        assertThat(service.list("ALPHA").items())
                 .extracting("fileName")
                 .containsExactly("alpha");
     }
@@ -164,7 +164,7 @@ class TaskConfigServiceTest {
         Files.writeString(primaryDir.resolve("task-configs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
         Files.writeString(primaryDir.resolve("task-configs/beta.yaml"), "id: beta\nname: Beta 演示\ntables: []");
 
-        assertThat(service.list("   "))
+        assertThat(service.list("   ").items())
                 .extracting("fileName")
                 .containsExactly("alpha", "beta");
     }
@@ -174,7 +174,7 @@ class TaskConfigServiceTest {
         Files.createDirectories(primaryDir.resolve("task-configs"));
         Files.writeString(primaryDir.resolve("task-configs/alpha.yaml"), "id: alpha\nname: Alpha 任务\ntables: []");
 
-        assertThat(service.list())
+        assertThat(service.list().items())
                 .extracting("fileName", "name", "id", "builtin")
                 .containsExactly(org.assertj.core.api.Assertions.tuple("alpha", "Alpha 任务", "alpha", true));
     }
@@ -201,7 +201,7 @@ class TaskConfigServiceTest {
                     count: 1
                 """);
 
-        assertThat(service.list())
+        assertThat(service.list().items())
                 .extracting("fileName", "id")
                 .containsExactly(org.assertj.core.api.Assertions.tuple("top", "top"));
     }
@@ -226,7 +226,7 @@ class TaskConfigServiceTest {
                 """.formatted(created.getId())));
         Thread.sleep(20);
 
-        assertThat(service.list())
+        assertThat(service.list().items())
                 .extracting("fileName")
                 .containsExactly("builtin", "newer_job", "older_job");
     }
@@ -242,7 +242,7 @@ class TaskConfigServiceTest {
         Thread.sleep(20);
         service.create(request("newer_job", "新任务", "tables: []"));
 
-        assertThat(service.list())
+        assertThat(service.list().items())
                 .extracting("fileName")
                 .containsExactly("builtin", "newer_job", "older_job");
     }

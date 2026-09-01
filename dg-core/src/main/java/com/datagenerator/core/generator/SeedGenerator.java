@@ -6,7 +6,7 @@ import com.datagenerator.spi.model.GenerationContext;
 import java.util.Map;
 
 /**
- * 从 Job 级 seed 采样结果中复制字段值。
+ * 从任务级 seed 采样结果中复制字段值。
  */
 public class SeedGenerator extends AbstractValueGenerator {
 

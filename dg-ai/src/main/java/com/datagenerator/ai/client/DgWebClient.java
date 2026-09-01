@@ -62,8 +62,10 @@ public class DgWebClient {
                 return List.of();
             }
             List<ConfigSummary> result = new ArrayList<>();
-            if (resp.getBody() != null && resp.getBody().isArray()) {
-                for (JsonNode node : resp.getBody()) {
+            JsonNode body = resp.getBody();
+            JsonNode items = body != null && body.has("items") ? body.get("items") : body;
+            if (items != null && items.isArray()) {
+                for (JsonNode node : items) {
                     result.add(new ConfigSummary(
                             getText(node, "id"),
                             getText(node, "name"),

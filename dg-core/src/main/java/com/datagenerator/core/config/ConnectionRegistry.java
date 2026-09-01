@@ -27,7 +27,7 @@ public class ConnectionRegistry {
     }
 
     /**
-     * 合并 Job 级 connections 覆盖层；同名连接以 overlay 为准。
+     * 合并任务级 connections 覆盖层；同名连接以 overlay 为准。
      */
     public ConnectionRegistry withOverlay(Map<String, Map<String, Object>> overlay) {
         if (overlay == null || overlay.isEmpty()) {
