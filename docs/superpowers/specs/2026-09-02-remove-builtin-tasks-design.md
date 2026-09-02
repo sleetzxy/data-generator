@@ -1,7 +1,7 @@
 # 设计规格：移除内置任务与任务类型，任务元数据入 SQLite 主表
 
 > 日期：2026-09-02
-> 状态：已批准
+> 状态：已批准（含实施期修订：config-dir 删除、ConfigPathResolver 单目录收敛，见决策记录）
 > 相关代码：dg-web（TaskConfigService、TaskScheduleService、TaskScheduleManager、storage）、dg-core（YamlConfigLoader）、dg-ai（ConfigTools、SystemPrompt）、前端
 
 ## 背景与动机
@@ -19,7 +19,7 @@
 | classpath 内置任务 YAML（29 个，其中顶层 6 个实际被列为内置任务） | 直接删除整个 configs 目录，jar 不再携带任务配置 | 用户指定 |
 | 现有数据迁移 | 不迁移（方案 C），老任务与老调度记录丢弃，用户手工重建 | 用户指定；避免迁移逻辑复杂度 |
 | dg-core TaskConfig 模型 | 不变，web 层运行时从主表注入 id/name | core 引擎仅将 id/name 用于错误消息，注入即可 |
-| config-dir 配置项 | 保留不动 | classpath:configs 目录缺失或为空均无害；ConfigPathResolver 机制仍供 references/constraints 等引用文件使用 |
+| config-dir 配置项 | ~~保留不动~~ → **删除**（实施期修订） | 内置任务移除后 classpath 来源失去意义；writable-config-dir 成为唯一配置目录，references/constraints 等引用文件统一从该目录读取 |
 | task_schedules 表 | 启动时 DROP，调度字段并入 tasks 主表 | 调度配置是任务元数据的一部分 |
 
 ## 1. 领域模型
@@ -78,7 +78,7 @@ DTO 变化：
 ## 6. 配置与删除清单
 
 - 删除 `dg-web/src/main/resources/configs/` 整个目录（29 个内置 YAML，其中顶层 6 个实际被列为内置任务）
-- `config-dir` 配置项保留不动；`ConfigPathResolver` 多来源机制保留（供引用文件使用），仅任务文件读写不再经过它
+- ~~`config-dir` 配置项保留不动；`ConfigPathResolver` 多来源机制保留（供引用文件使用）~~ → 实施期修订：删除 `config-dir` 配置项与 `ConfigPathResolver.existsOnClasspath`，装配收敛为主目录与可写层指向同一目录（writable-config-dir），所有 YAML 业务配置统一从该目录读写
 - 删除类/资源：`TaskScheduleRepository`、`ReadOnlyScheduleException`、`TaskConfigSkipInfo`
 - `SqliteSchemaInitializer`：建 `tasks` 表 + 索引 + `DROP TABLE IF EXISTS task_schedules`，移除 task_schedules 建表语句与 `ensureColumn` 调用
 

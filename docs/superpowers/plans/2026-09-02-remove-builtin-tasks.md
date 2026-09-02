@@ -1385,7 +1385,7 @@ git rm -r dg-web/src/main/resources/configs/
 grep -rn "classpath:configs\|configs/task-configs" --include="*.java" --include="*.yml" --include="*.md" dg-web dg-ai scripts docs 2>/dev/null | grep -v "data/configs" | head -50
 ```
 
-检查结果：`application.yml`/`application-local.yml` 的 `config-dir: classpath:configs` 按规格保留；其余测试 fixture 若引用 classpath 资源则同步调整（测试改用 `@TempDir` 或内存 YAML 字符串）。`ConfigPathResolver` 在资源为空时枚举返回空（评审已确认安全）。
+检查结果（含后续修订）：`config-dir` 配置项最终删除（提交 b7025ca），`writable-config-dir` 成为唯一配置目录；测试 fixture 已同步调整（test-resources 显式指定 `writable-config-dir`）。`ConfigPathResolver` 在资源为空时枚举返回空（评审已确认安全）。
 
 - [ ] **Step 3: 运行确认通过**
 
@@ -1533,7 +1533,7 @@ git commit -m "docs: 新增移除内置任务设计规格与实现计划"
 
 ## 风险与备注
 
-1. **TaskRunService 文件读取路径**：保留 `ConfigPathResolver.open` 多来源读取。classpath/主目录已无 task-configs 资源，行为等效单一来源；若评审认为应显式单一来源，在 Task 6 补充直接读 overlay 文件的实现。
+1. **TaskRunService 文件读取路径**：~~保留 `ConfigPathResolver.open` 多来源读取~~ → 最终实现（提交 b7025ca）：删除 `config-dir` 配置项，`ConfigPathResolver` 装配收敛为单目录（主目录 = 可写层 = writable-config-dir），多来源机制移除。
 2. **`task_runs.config_path` 兼容**：老运行记录的 `task-configs/xxx.yaml` 引用失效任务时，"查看配置/重跑"返回 404（`TaskConfigNotFoundException`）——与规格 §7 一致（不迁移决策的自然后果）。
 3. **并发创建**：`generateUniqueTaskId` 的检查-插入非原子；单实例部署可接受（现状同为非原子）。
 4. **dto 包内 `name` 语义**：请求 `fileName`、响应 `name`（=display_name），前端与 dg-ai 已按本计划对齐，新调用方注意区分。

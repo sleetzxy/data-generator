@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThatCode;
 
-/** 验证受控测试 fixture（内置配置的等价物）可通过完整加载校验 */
+/** 验证受控测试 fixture 的示例任务配置可通过完整加载校验 */
 class TaskConfigLoadFixtureTest {
 
     @Test

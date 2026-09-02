@@ -200,7 +200,7 @@ tables:
 ### 4.2 dg-web / 文档
 
 - ~~更新 `config-guide.md`~~（已完成 v1.1）：Job 级 seeds、`link.match`/`sources`、启动预加载；删除 schema.seed / mutate 章节。
-- 部署方自行维护 Job YAML（`config-dir/jobs/` 或 `writable-config-dir/task-configs/`），不随公开仓库发布。
+- 部署方自行维护 Job YAML（`writable-config-dir/task-configs/`），不随公开仓库发布。
 - 控制台默认模板无需 seed（保持简单）。
 
 ### 4.3 dg-spi

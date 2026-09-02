@@ -538,7 +538,7 @@ configs/
 ```yaml
 # application.yml
 data-generator:
-  config-dir: /data/configs
+  writable-config-dir: /data/configs
   connections:
     dev-pg:
       type: postgresql
