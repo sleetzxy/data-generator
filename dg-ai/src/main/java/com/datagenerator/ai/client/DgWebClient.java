@@ -105,7 +105,7 @@ public class DgWebClient {
         }
     }
 
-    /** 新建配置并持久化。文件名由服务端根据 YAML id 自动生成。 */
+    /** 新建配置并持久化。文件名由服务端生成（taskId），或由请求中的 fileName 字段显式指定。 */
     public ConfigDetail createConfig(String displayName, String yaml) {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("displayName", displayName);
