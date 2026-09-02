@@ -249,14 +249,13 @@ public class TaskRunService {
         Map<String, String> displayNames = resolveDisplayNamesByPaths(rawTopConfigs.stream()
                 .map(ConfigVolumeStat::configPath)
                 .toList());
+        // 仓储 SQL 已 COALESCE(config_path, '')，configPath 恒非 null（可能为空串，解析后 displayName 为 null，由前端回退）
         List<ConfigVolumeStat> topConfigs = rawTopConfigs.stream()
-                .map(stat -> stat.configPath() == null
-                        ? stat
-                        : new ConfigVolumeStat(
-                                stat.configPath(),
-                                displayNames.get(TaskConfigPaths.toFileName(stat.configPath())),
-                                stat.runCount(),
-                                stat.writtenRows()))
+                .map(stat -> new ConfigVolumeStat(
+                        stat.configPath(),
+                        displayNames.get(TaskConfigPaths.toFileName(stat.configPath())),
+                        stat.runCount(),
+                        stat.writtenRows()))
                 .toList();
 
         LocalDate start = LocalDate.now(ZoneId.systemDefault()).minusDays(STATS_DAILY_DAYS - 1L);
