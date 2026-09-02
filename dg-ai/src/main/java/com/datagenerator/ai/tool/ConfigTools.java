@@ -12,7 +12,6 @@ import io.agentscope.core.tool.ToolParam;
 import io.agentscope.harness.agent.HarnessAgent;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.slf4j.Logger;
@@ -32,10 +31,6 @@ public class ConfigTools {
 
     private static final Pattern YAML_FENCE = Pattern.compile(
             "```yaml\\s*\\n?(.*?)\\n?\\s*```", Pattern.DOTALL);
-    private static final Pattern ID_PATTERN = Pattern.compile(
-            "^id:\\s*\"?([a-zA-Z0-9_-]+)\"?\\s*$", Pattern.MULTILINE);
-    private static final Pattern NAME_PATTERN = Pattern.compile(
-            "^name:\\s*\"?([^\"]+?)\"?\\s*$", Pattern.MULTILINE);
 
     private static final int SMALL_TABLE_FIELD_HINT = 30;
 
@@ -174,10 +169,10 @@ public class ConfigTools {
 
     // ==================== 草稿生命周期 ====================
 
-    @Tool(name = "startConfigDraft", description = "新建配置草稿。传入草稿标识和 header YAML（id、name、writer 等顶级字段，不含 tables）")
+    @Tool(name = "startConfigDraft", description = "新建配置草稿。传入草稿标识（即配置文件名）和 header YAML（writer/writers 等顶层生成配置，不含 tables；不写 id/name，任务 id 由系统生成）")
     public String startConfigDraft(
-            @ToolParam(name = "draftId", description = "草稿标识，建议使用配置的文件名") String draftId,
-            @ToolParam(name = "headerYaml", description = "配置 header YAML（id/name/writer/writers 等，不含 tables）") String headerYaml,
+            @ToolParam(name = "draftId", description = "配置文件名（草稿标识）：字母开头，仅含字母、数字、下划线、连字符") String draftId,
+            @ToolParam(name = "headerYaml", description = "配置 header YAML（writer/writers 等，不含 tables；不写 id/name/schedule，显示名通过 saveConfigDraft 的 displayName 字段提交，调度通过调度接口配置）") String headerYaml,
             ToolEmitter emitter, RuntimeContext rc) {
         if (draftId == null || draftId.isBlank()) {
             return emitAndReturn(emitter, "错误：draftId 不能为空");
@@ -222,9 +217,10 @@ public class ConfigTools {
         }
     }
 
-    @Tool(name = "saveConfigDraft", description = "合并草稿所有分段文件为完整 YAML，校验后保存到 dg-web。自动判断新建或更新")
+    @Tool(name = "saveConfigDraft", description = "合并草稿所有分段文件为完整 YAML，校验后保存到 dg-web。自动判断新建或更新；新建时经 displayName 字段提交任务显示名")
     public String saveConfigDraft(
-            @ToolParam(name = "draftId", description = "草稿标识") String draftId,
+            @ToolParam(name = "draftId", description = "草稿标识（即配置文件名，不含扩展名）") String draftId,
+            @ToolParam(name = "displayName", description = "任务显示名称（新建时必填；编辑已有配置时可省略，省略则沿用现有显示名）") String displayName,
             ToolEmitter emitter, RuntimeContext rc) {
         if (!hasClient()) {
             return emitAndReturn(emitter, "未连接数据服务，无法保存配置");
@@ -252,12 +248,8 @@ public class ConfigTools {
                         + "\n请先补充字段定义或删除这些空 table，再保存。");
             }
 
+            // 草稿标识即配置文件名；任务 YAML 不含 id/name，显示名经请求字段提交
             String merged = draftManager.mergeToYaml(rc, draftId);
-            String fileName = extractConfigId(merged);
-            String configName = extractConfigName(merged);
-            if (configName == null || configName.isBlank()) {
-                configName = fileName;
-            }
 
             ValidationResult vr = client.validateYaml(merged);
             if (!vr.valid()) {
@@ -265,18 +257,20 @@ public class ConfigTools {
                         + String.join("\n", vr.errors()));
             }
 
-            ConfigDetail existing = client.getConfig(fileName);
+            // 以配置文件名定位已有任务，判断新建或更新
+            ConfigDetail existing = client.getConfig(draftId);
             ConfigDetail saved;
             boolean isUpdate = existing != null;
             if (isUpdate) {
-                // 编辑模式：服务端 get() 会通过 stripNameFromContent 剥离 YAML 中的 name 字段，
-                // 导致 extractConfigName 返回 null 并兜底为 id。此处用已有配置的原始显示名修正。
-                if (configName == null || configName.isBlank() || configName.equals(fileName)) {
-                    configName = existing.name();
-                }
-                saved = client.updateConfig(fileName, configName, merged);
+                // 编辑模式：省略 displayName 时沿用主表中的现有显示名（YAML 已不含 name，无法取回）
+                String effectiveName = displayName != null && !displayName.isBlank()
+                        ? displayName.trim() : existing.name();
+                saved = client.updateConfig(draftId, effectiveName, merged);
             } else {
-                saved = client.createConfig(configName, merged);
+                if (displayName == null || displayName.isBlank()) {
+                    return emitAndReturn(emitter, "保存失败：新建配置必须提供 displayName（任务显示名），任务 YAML 中不再包含 name 字段");
+                }
+                saved = client.createConfig(displayName.trim(), merged);
             }
             if (saved == null) {
                 return emitAndReturn(emitter, "保存失败：服务端返回空结果，请检查 dg-web 连接状态");
@@ -465,21 +459,5 @@ public class ConfigTools {
             return m.group(1).trim();
         }
         return yaml.trim();
-    }
-
-    private static String extractConfigId(String yaml) {
-        Matcher m = ID_PATTERN.matcher(yaml);
-        if (m.find()) {
-            return m.group(1);
-        }
-        return "generated-" + UUID.randomUUID();
-    }
-
-    private static String extractConfigName(String yaml) {
-        Matcher m = NAME_PATTERN.matcher(yaml);
-        if (m.find()) {
-            return m.group(1).trim();
-        }
-        return null;
     }
 }

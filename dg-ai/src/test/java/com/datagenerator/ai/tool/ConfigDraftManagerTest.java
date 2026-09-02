@@ -75,7 +75,7 @@ class ConfigDraftManagerTest {
 
     @Test
     void createDraft_singleTable_mergesCorrectly() {
-        String header = "id: test-job\nname: 测试\nwriter:\n  type: csv\n";
+        String header = "writer:\n  type: csv\n";
         manager.createDraft(rc, "test", header);
 
         String tableYaml = """
@@ -93,8 +93,6 @@ class ConfigDraftManagerTest {
         manager.appendTable(rc, "test", tableYaml);
 
         String merged = manager.mergeToYaml(rc, "test");
-        assertThat(merged).contains("id: test-job");
-        assertThat(merged).contains("name: 测试");
         assertThat(merged).contains("name: users");
         assertThat(merged).contains("count: 100");
         assertThat(merged).contains("name: id");
@@ -106,7 +104,7 @@ class ConfigDraftManagerTest {
 
     @Test
     void appendTableMeta_thenAppendFields_multipleBatches_mergesCorrectly() {
-        String header = "id: big-job\nname: 大配置\n";
+        String header = "writer:\n  type: csv\n";
         manager.createDraft(rc, "big", header);
 
         String metaYaml = """
@@ -149,7 +147,7 @@ class ConfigDraftManagerTest {
 
     @Test
     void updateTable_replacesExistingContent() {
-        manager.createDraft(rc, "edit", "id: edit-job\nname: 编辑测试\n");
+        manager.createDraft(rc, "edit", "writer:\n  type: csv\n");
 
         String original = """
                 name: items
@@ -177,7 +175,7 @@ class ConfigDraftManagerTest {
 
     @Test
     void removeTable_deletesTableFromMerge() {
-        manager.createDraft(rc, "rm", "id: rm-job\nname: 删除测试\n");
+        manager.createDraft(rc, "rm", "writer:\n  type: csv\n");
 
         manager.appendTable(rc, "rm", """
                 name: t1
@@ -203,7 +201,7 @@ class ConfigDraftManagerTest {
 
     @Test
     void setConstraintsAndSeeds_appearInMergedYaml() {
-        manager.createDraft(rc, "cs", "id: cs-job\nname: 约束种子测试\n");
+        manager.createDraft(rc, "cs", "writer:\n  type: csv\n");
 
         manager.setConstraints(rc, "cs", """
                 - type: unique
@@ -222,10 +220,8 @@ class ConfigDraftManagerTest {
 
     @Test
     void loadExistingAsDraft_schemaFormat_producesMergeableResult() {
-        // 标准格式：fields 嵌套在 schema 下（已有配置实际存储格式）
+        // 标准格式：fields 嵌套在 schema 下（已有配置实际存储格式，含 writer 等顶层生成配置）
         String fullYaml = """
-                id: existing-job
-                name: 已有配置
                 writer:
                   type: csv
                   output: ./data
@@ -250,7 +246,6 @@ class ConfigDraftManagerTest {
         manager.loadExistingAsDraft(rc, "existing", fullYaml);
 
         String merged = manager.mergeToYaml(rc, "existing");
-        assertThat(merged).contains("id: existing-job");
         assertThat(merged).contains("name: customers");
         assertThat(merged).contains("strategy: email");
         assertThat(merged).contains("type: not-null");
@@ -262,7 +257,7 @@ class ConfigDraftManagerTest {
 
     @Test
     void appendTable_duplicateName_throwsException() {
-        manager.createDraft(rc, "dup", "id: dup\nname: 重复测试\n");
+        manager.createDraft(rc, "dup", "writer:\n  type: csv\n");
         String tableYaml = "name: t1\ncount: 10\nfields:\n  - name: c1\n    type: string\n";
         manager.appendTable(rc, "dup", tableYaml);
 
@@ -273,7 +268,7 @@ class ConfigDraftManagerTest {
 
     @Test
     void appendFields_tableNotExists_throwsException() {
-        manager.createDraft(rc, "ne", "id: ne\nname: 不存在\n");
+        manager.createDraft(rc, "ne", "writer:\n  type: csv\n");
 
         assertThatThrownBy(() -> manager.appendFields(rc, "ne", "ghost", "fields: []"))
                 .isInstanceOf(IllegalArgumentException.class)
@@ -296,7 +291,7 @@ class ConfigDraftManagerTest {
     @Test
     void draftExists_returnsCorrectly() {
         assertThat(manager.draftExists(rc, "nonexistent")).isFalse();
-        manager.createDraft(rc, "exists", "id: test\nname: Test\n");
+        manager.createDraft(rc, "exists", "writer:\n  type: csv\n");
         assertThat(manager.draftExists(rc, "exists")).isTrue();
         manager.deleteDraft(rc, "exists");
         assertThat(manager.draftExists(rc, "exists")).isFalse();
@@ -304,7 +299,7 @@ class ConfigDraftManagerTest {
 
     @Test
     void listTableNames_returnsCorrectNames() {
-        manager.createDraft(rc, "list", "id: list\nname: 列表测试\n");
+        manager.createDraft(rc, "list", "writer:\n  type: csv\n");
         manager.appendTable(rc, "list",
                 "name: aaa\ncount: 1\nfields:\n  - name: x\n    type: string\n");
         manager.appendTable(rc, "list",

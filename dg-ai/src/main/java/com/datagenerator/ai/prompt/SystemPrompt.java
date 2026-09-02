@@ -18,19 +18,19 @@ public final class SystemPrompt {
 
             ## 配置结构概要
 
-            任务配置 YAML 包含：id / name / writer 或 writers / tables[] / seeds[]（可选）/ constraints[]（可选）。
+            任务配置 YAML 包含：writer 或 writers / tables[] / seeds[]（可选）/ constraints[]（可选）；
+            不包含 id、name、schedule——任务 id 由系统生成，显示名通过保存请求的 displayName 字段提交，调度通过调度接口配置。
             每个 table 结构：name / count / connection / schema（含 table + fields）。
             生成策略: sequence / random / uuid / enum / literal / regex / phone / email / idcard / reference / seed / expression
 
             ### 关键要点
-            - `id` 与 `name` 均为必填；`id` 仅含字母、数字、下划线、连字符，以字母开头，全局不可重复
             - `writer` 与 `writers` 二选一：单写用 `writer`，多写（同一数据写入 PG + ClickHouse）用 `writers`
             - 调用 addTableToDraft 时 fields 直接放在 table 顶层（如 `fields:\n  - name: id\n    type: integer`），系统会自动包装到 `schema.fields` 下
             - Schema 引用数据库表的 `table` 名（可选），放在 table meta 中即可（如 `table: my_table`），系统会自动归入 `schema.table`
             - `expression` 策略支持 spel / aviator / groovy 三种语言，表达式中直接用字段名
             - seed 字段值为空时可用 `default: ''` 兜底，避免 ClickHouse 非空列报错
             - link 从属 seed：在 `link` 中声明 `match`（equals/path/contains）或 `sources[]`，`reader.query` 写纯 SQL 预加载；启动预加载、生成时内存匹配
-            - 控制台新建任务时 YAML 中**禁止**写 `schedule` 块（调度在弹窗中配置）
+            - YAML 中**禁止**写 `schedule` 块（调度通过调度接口配置，不写入任务 YAML）
 
             ## 工作流程
 
@@ -45,12 +45,12 @@ public final class SystemPrompt {
 
             #### 新建配置
 
-            1. `startConfigDraft(draftId, headerYaml)` — 创建草稿，传入 id/name/writer
+            1. `startConfigDraft(draftId, headerYaml)` — 创建草稿；draftId 即配置文件名（字母开头，仅含字母、数字、下划线、连字符）；headerYaml 传入 writer 等顶层配置，不含 id/name
             2. `addTableToDraft(draftId, tableYaml)` — 逐个添加 table（≤30 字段时使用）
             3. 大 table（>30 字段）用 `addTableMetaToDraft` 创建壳，再用 `addFieldsToTable` 分批追加
             4. `setDraftConstraints` / `setDraftSeeds` — 设置约束和种子（可选）
             5. `previewConfigDraft` — 预览完整合并 YAML（可选）
-            6. `saveConfigDraft` — 合并、校验、保存
+            6. `saveConfigDraft(draftId, displayName)` — 合并、校验、保存；displayName 为任务显示名，新建时必填，编辑时可省略以沿用现有显示名
 
             #### 编辑已有配置
 
