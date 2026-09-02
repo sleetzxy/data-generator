@@ -39,7 +39,6 @@ tables:
 `;
 
 let editingDefinition = null;
-let editingScheduleEditable = false;
 let definitionsPage = 1;
 let definitionsTotal = 0;
 let definitionSearchQuery = '';
@@ -82,7 +81,6 @@ export function initTasks() {
             const action = item.dataset.action;
             // 先执行动作（confirm 等同步交互优先呈现），再关闭菜单，与原内联顺序一致
             switch (action) {
-                case 'view': viewDefinition(item.dataset.file); break;
                 case 'preview': previewDefinition(item.dataset.name, item.dataset.path); break;
                 case 'logs': viewDefinitionLogs(item.dataset.name, item.dataset.path); break;
                 case 'stop': stopRun(item.dataset.runId); break;
@@ -158,10 +156,6 @@ export async function loadDefinitions(options = {}) {
         definitionsTotal = listResult.total || 0;
         setAllDefinitionsCache(allItems);
         setDefinitionsCache(items);
-        const skipped = allListResult.skipped || [];
-        if (skipped.length) {
-            showToast(`有 ${skipped.length} 个任务配置加载失败已跳过: ${skipped.map(item => item.path).join('、')}`);
-        }
 
         if (!fullRender && canSyncDefinitionsInPlace()) {
             scheduleDefinitionsUiSync();
@@ -171,7 +165,7 @@ export async function loadDefinitions(options = {}) {
         renderDefinitionsTable();
         ensureAutoRefresh();
     } catch (err) {
-        tbody.innerHTML = `<tr class="empty-row"><td colspan="6">加载失败: ${escapeHtml(err.message)}</td></tr>`;
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="5">加载失败: ${escapeHtml(err.message)}</td></tr>`;
         renderDefinitionsPagination();
         lastRenderedPageKey = null;
     }
@@ -213,14 +207,14 @@ export function syncDefinitionsTableInPlace() {
         const path = row.dataset.definitionPath;
         const latestRun = findLatestRun(path);
         const activeRun = findActiveRun(path);
-        const statusCell = row.cells[4];
+        const statusCell = row.cells[3];
         if (statusCell) {
             const nextStatusHtml = statusBadge(latestRun?.status);
             if (statusCell.innerHTML !== nextStatusHtml) {
                 statusCell.innerHTML = nextStatusHtml;
             }
         }
-        const actionsCell = row.cells[5];
+        const actionsCell = row.cells[4];
         if (actionsCell) {
             updateStopButtonInPlace(actionsCell, activeRun);
         }
@@ -310,7 +304,7 @@ function renderDefinitionsTable() {
         const message = definitionSearchQuery
             ? `未找到匹配「${escapeHtml(definitionSearchQuery)}」的任务`
             : '暂无任务配置';
-        tbody.innerHTML = `<tr class="empty-row"><td colspan="6">${message}</td></tr>`;
+        tbody.innerHTML = `<tr class="empty-row"><td colspan="5">${message}</td></tr>`;
         renderDefinitionsPagination();
         refreshOpenLogModal();
         lastRenderedPageKey = null;
@@ -324,19 +318,15 @@ function renderDefinitionsTable() {
         const activeRun = findActiveRun(item.path);
         const fileName = item.fileName;
         const displayName = item.name || fileName;
-        const isBuiltin = item.builtin === true || item.readOnly === true;
         const scheduleEnabled = item.schedule?.enabled === true;
         const rowIndex = startIndex + index;
         return `
             <tr data-definition-path="${escapeAttr(item.path)}">
                 <td><code>${escapeHtml(item.id || '-')}</code></td>
                 <td title="${escapeAttr(displayName)}">${escapeHtml(displayName)}</td>
-                <td>${isBuiltin
-                    ? '<span class="badge builtin">内置</span>'
-                    : '<span class="badge custom">自定义</span>'}</td>
                 <td>${renderScheduleCron(item.schedule)}</td>
                 <td class="definition-status">${statusBadge(latestRun?.status)}</td>
-                <td class="actions-cell"><div class="actions">${renderActionsCell(item, rowIndex, displayName, fileName, item.path, activeRun, isBuiltin, scheduleEnabled)}</div></td>
+                <td class="actions-cell"><div class="actions">${renderActionsCell(item, rowIndex, displayName, fileName, item.path, activeRun, scheduleEnabled)}</div></td>
             </tr>`;
     }).join('');
 
@@ -347,21 +337,17 @@ function renderDefinitionsTable() {
     restoreOpenActionMenu(preservedMenuId);
 }
 
-function renderActionsCell(item, index, displayName, fileName, path, activeRun, isBuiltin, scheduleEnabled) {
+function renderActionsCell(item, index, displayName, fileName, path, activeRun, scheduleEnabled) {
     const menuId = `action-menu-${index}`;
     const stopDisabled = !activeRun;
     const stopRunId = activeRun?.runId || '';
-    let menuItems = `
-        <button type="button" class="action-menu-item" data-action="view" data-file="${escapeAttr(fileName)}">查看</button>
+    const menuItems = `
         <button type="button" class="action-menu-item" data-action="preview" data-name="${escapeAttr(displayName)}" data-path="${escapeAttr(path)}">预览</button>
         <button type="button" class="action-menu-item" data-action="logs" data-name="${escapeAttr(displayName)}" data-path="${escapeAttr(path)}">日志</button>
         <button type="button" class="action-menu-item action-stop-btn${stopDisabled ? ' disabled' : ''}" data-action="stop" data-run-id="${escapeAttr(stopRunId)}"
-            ${stopDisabled ? 'disabled title="当前无运行中的任务"' : ''}>停止</button>`;
-    if (!isBuiltin) {
-        menuItems += `
+            ${stopDisabled ? 'disabled title="当前无运行中的任务"' : ''}>停止</button>
         <button type="button" class="action-menu-item" data-action="edit" data-file="${escapeAttr(fileName)}">编辑</button>
         <button type="button" class="action-menu-item danger" data-action="delete" data-file="${escapeAttr(fileName)}">删除</button>`;
-    }
     return `
         <button type="button" class="btn small primary action-run-btn" data-path="${escapeAttr(path)}" data-schedule-enabled="${scheduleEnabled}">运行</button>
         <div class="action-menu">
@@ -388,27 +374,24 @@ function closeActionMenus() {
     openActionMenuId = null;
 }
 
-async function openDefinitionModal(fileName, content, readOnly = false, schedule = null, displayName = null) {
+async function openDefinitionModal(fileName, content, schedule = null, displayName = null) {
     editingDefinition = fileName || null;
     const title = fileName
-        ? (readOnly ? `查看任务: ${displayName || fileName}` : `编辑任务: ${displayName || fileName}`)
+        ? `编辑任务: ${displayName || fileName}`
         : '新建任务';
     document.getElementById('modal-title').textContent = title;
     document.getElementById('definition-name').value = displayName || fileName || '';
-    document.getElementById('definition-name').disabled = !!readOnly;
     document.getElementById('name-field').style.display = 'flex';
     document.getElementById('definition-content').value = content || DEFAULT_TASK_TEMPLATE;
-    document.getElementById('modal-save').style.display = readOnly ? 'none' : '';
-    document.getElementById('guide-toggle').style.display = readOnly ? 'none' : '';
-    applyScheduleFields(schedule, readOnly, !fileName);
+    applyScheduleFields(schedule, !fileName);
     document.getElementById('modal').classList.remove('hidden');
     ensureGuideLoaded();
-    await mountYamlEditor(content || DEFAULT_TASK_TEMPLATE, readOnly);
+    await mountYamlEditor(content || DEFAULT_TASK_TEMPLATE);
 }
 
-async function mountYamlEditor(content, readOnly) {
+async function mountYamlEditor(content) {
     const host = document.getElementById('definition-editor');
-    await createYamlEditor(host, content, readOnly);
+    await createYamlEditor(host, content, false);
 }
 
 function toggleGuidePanel() {
@@ -440,14 +423,11 @@ async function ensureGuideLoaded() {
     }
 }
 
-function applyScheduleFields(schedule, readOnly, isNew) {
-    const sched = schedule || { enabled: false, cron: '', editable: true };
-    editingScheduleEditable = !readOnly && sched.editable !== false;
+function applyScheduleFields(schedule, isNew) {
+    const sched = schedule || { enabled: false, cron: '' };
     document.getElementById('schedule-fields').classList.remove('hidden');
     document.getElementById('definition-schedule-enabled').checked = !!sched.enabled;
     document.getElementById('definition-schedule-cron').value = sched.cron || '';
-    document.getElementById('definition-schedule-enabled').disabled = !editingScheduleEditable;
-    document.getElementById('definition-schedule-cron').disabled = !editingScheduleEditable;
     const nextRunEl = document.getElementById('definition-schedule-next-run');
     const nextRunField = document.getElementById('definition-next-run-field');
     if (sched.nextRunAt) {
@@ -475,26 +455,12 @@ function closeModal() {
     document.getElementById('modal').classList.add('hidden');
     destroyYamlEditor();
     editingDefinition = null;
-    editingScheduleEditable = false;
-}
-
-async function viewDefinition(fileName) {
-    try {
-        const item = await api(`/task-configs/${encodeURIComponent(fileName)}`);
-        openDefinitionModal(fileName, item.content, true, item.schedule, item.name);
-    } catch (err) {
-        showToast('加载失败: ' + err.message);
-    }
 }
 
 async function editDefinition(fileName) {
     try {
         const item = await api(`/task-configs/${encodeURIComponent(fileName)}`);
-        if (item.readOnly) {
-            showToast('内置任务不可编辑');
-            return;
-        }
-        openDefinitionModal(fileName, item.content, false, item.schedule, item.name);
+        openDefinitionModal(fileName, item.content, item.schedule, item.name);
     } catch (err) {
         showToast('加载失败: ' + err.message);
     }
@@ -512,16 +478,14 @@ async function saveDefinition() {
         content
     };
     if (editingDefinition) {
-        payload.name = editingDefinition;
+        payload.fileName = editingDefinition;
     }
-    if (editingScheduleEditable) {
-        const schedule = readScheduleFromModal();
-        if (schedule.enabled && !schedule.cron) {
-            showToast('启用定时调度时请填写 Cron 表达式');
-            return;
-        }
-        payload.schedule = schedule;
+    const schedule = readScheduleFromModal();
+    if (schedule.enabled && !schedule.cron) {
+        showToast('启用定时调度时请填写 Cron 表达式');
+        return;
     }
+    payload.schedule = schedule;
     try {
         if (editingDefinition) {
             await api(`/task-configs/${encodeURIComponent(editingDefinition)}`, {

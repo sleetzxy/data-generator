@@ -214,7 +214,7 @@ bin\windows\start-ai.bat      REM dg-ai
 
 - **任务管理** — 任务配置 CRUD、Cron 定时调度、提交运行、运行记录与日志（分页）；**自动刷新**（默认开启，运行中/日志弹窗 2 秒、空闲 5 秒，增量更新状态避免整表闪烁）
 - **AI 助手**（可选）— 右下角悬浮球（机器人图标）→ 右侧抽屉**多轮对话**（同一会话内上下文连续）；支持**深度思考**模式查看 Agent 推理过程；生成任务 YAML 校验通过后可自动填入「新建任务」表单（需同时启动 dg-ai 并在 dg-web 启用 `data-generator.ai.enabled`）
-- **配置指南** — 内置 YAML 配置说明文档（可作为 RAG 知识库数据源上传至 dg-ai）
+- **配置指南** — 控制台附带的 YAML 配置说明文档（可作为 RAG 知识库数据源上传至 dg-ai）
 
 ### 运行测试
 
@@ -270,17 +270,17 @@ data-generator:
 
 ## 配置目录
 
-YAML 业务配置默认从 `data-generator.config-dir` 加载（默认 `classpath:configs`）。可将 `config-dir` 设为外部绝对路径（如 `/data/configs`），或在 `writable-config-dir` 中通过控制台维护自定义任务配置：
+YAML 业务配置默认从 `data-generator.config-dir` 加载（默认 `classpath:configs`）。可将 `config-dir` 设为外部绝对路径（如 `/data/configs`）。任务由 Web 控制台创建，配置写入 `writable-config-dir`：
 
 ```
 configs/                    # 或你指定的 config-dir 根目录
 ├── schemas/                # 可复用的表/数据集 Schema
 ├── references/             # 参考数据（维表）读取配置
 ├── constraints/            # 可复用约束规则集
-└── task-configs/           # 自行编写的多表编排任务（YAML）
+└── task-configs/           # 任务配置（控制台创建，位于 writable-config-dir）
 ```
 
-控制台新建的自定义任务配置写入 `writable-config-dir`（默认 `./data/configs/task-configs/`），与 `config-dir` 下的定义合并展示。
+任务 YAML 与元数据分开管理：控制台创建的任务写入 `writable-config-dir/task-configs/`（默认 `./data/configs/task-configs/`），元数据（ID、文件名、显示名称、调度）存 SQLite `tasks` 主表，任务列表以主表为准。
 
 ### application.yml 主要配置项
 
@@ -383,7 +383,7 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/preview \
 ```bash
 # 列出所有任务配置（响应含 fileName、name、id、schedule、createdAt 等）
 curl -b cookies.txt http://localhost:8080/api/v1/task-configs
-# 响应形状: {"items":[...],"skipped":[...],"total":3,"page":1,"size":3}
+# 响应形状: {"items":[...],"total":3,"page":1,"size":3}
 
 # 分页列出（page/size 可选；任一不传时返回全量，保持向后兼容）
 curl -b cookies.txt "http://localhost:8080/api/v1/task-configs?page=1&size=20"
@@ -391,7 +391,7 @@ curl -b cookies.txt "http://localhost:8080/api/v1/task-configs?page=1&size=20"
 # 按显示名称搜索（可与 page/size 组合）
 curl -b cookies.txt "http://localhost:8080/api/v1/task-configs?name=演示&page=1&size=20"
 
-# 查看单个配置（自定义任务返回的 content 不含顶层 name，由 displayName 维护）
+# 查看单个配置（content 为任务 YAML，不含顶层 id/name；name 为显示名称）
 curl -b cookies.txt http://localhost:8080/api/v1/task-configs/joba1b2c3d4
 
 # 仅校验 YAML（不写库、不保存）
@@ -399,7 +399,7 @@ curl -b cookies.txt -X POST "http://localhost:8080/api/v1/task-configs?validateO
   -H "Content-Type: application/json" \
   -d '{"content": "writer:\n  type: csv\n  connection: local-csv\n  mode: insert\ntables:\n  - name: t\n    count: 1\n    schema:\n      table: t\n      fields:\n        - name: id\n          type: BIGINT\n          generator: { strategy: sequence, start: 1 }"}'
 
-# 创建自定义任务（displayName 必填；id/name 写入 YAML；文件名默认用生成的 id）
+# 创建任务（displayName 必填；YAML 无需含 id/name，元数据存主表；可选 fileName 指定 ASCII 配置文件名，缺省用生成的 id）
 curl -b cookies.txt -X POST http://localhost:8080/api/v1/task-configs \
   -H "Content-Type: application/json" \
   -d '{
@@ -408,22 +408,18 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/task-configs \
     "schedule": { "enabled": true, "cron": "0 0 2 * * ?" }
   }'
 
-# 更新（fileName 为路径参数；displayName 更新 YAML name）
+# 更新（路径为配置文件名；displayName 更新显示名并重写 YAML）
 curl -b cookies.txt -X PUT http://localhost:8080/api/v1/task-configs/joba1b2c3d4 \
   -H "Content-Type: application/json" \
   -d '{"displayName":"更新后的名称","content":"..."}'
 
 curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/task-configs/joba1b2c3d4
 
-# 调度（自定义任务也可单独 PUT；内置任务只读）
-curl -b cookies.txt http://localhost:8080/api/v1/task-configs/my_builtin/schedule
+# 调度（读写 tasks 主表，可单独查询/更新）
+curl -b cookies.txt http://localhost:8080/api/v1/task-configs/joba1b2c3d4/schedule
 ```
 
-自定义任务 YAML **禁止**包含 `schedule` 块；`id` 新建时自动生成；可选 `name` 指定 ASCII 配置文件名，否则与 `id` 相同。
-
-> **破坏性变更提示**：
-> 1. `/api/v1/task-configs` 列表响应自数组改为对象 `{"items":[...],"skipped":[...],"total":N,"page":N,"size":N}`；外部 API 消费者需按 `items` 读取。已确认 dg-ai 与 Web 控制台均适配。
-> 2. 任务配置 YAML 自本版本起 **`id` 与 `name` 均为必填**（`name` 为任务显示名称）。存量只有 `id` 的配置会加载失败并在列表中以 `skipped` 提示，请升级前补全 `name` 字段。
+任务由 Web 控制台（或上述 API）创建，无内置/自定义之分：元数据（ID、文件名、显示名称、调度）统一存 SQLite `tasks` 主表，YAML 仅含生成配置（`writer`/`writers`、`tables`、`seeds` 等）。任务 YAML **禁止** `schedule` 块，也无需书写 `id`/`name`（出现时保存会被忽略）。
 
 ### 提交生成任务
 
@@ -525,7 +521,7 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/task-runs/{runId}/rec
 | 连接配置 | `application.yml` 命名连接；任务顶层 `connections` 块；reader/writer 内联连接（可混用） |
 | 表单登录 | Spring Security Session 认证，`data-generator.auth.*` 可配置 |
 | 任务持久化 | SQLite 存储任务记录；运行日志写入 `log-dir` 文件，重启后可查历史 |
-| 任务配置 CRUD | REST + Web UI；`validateOnly=true` 校验 YAML；自定义 YAML 存 `writable-config-dir`，调度存 SQLite |
+| 任务配置 CRUD | REST + Web UI；`validateOnly=true` 校验 YAML；任务元数据与调度存 SQLite `tasks` 表，YAML 存 `writable-config-dir` |
 | 任务定时调度 | Cron 触发、同配置 FIFO 排队、手动运行与调度并存 |
 | 部署打包 | `scripts/package.ps1` 生成 zip（含 dg-web + dg-ai jar）；`start-all` / `start-ai` 等启停脚本；可选内置 JDK |
 

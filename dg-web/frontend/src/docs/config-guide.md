@@ -12,9 +12,9 @@
 2. **编写任务配置** — 在控制台点击「新建任务」，填写**任务名称**与 YAML 内容（见 [编写第一个任务配置](#编写第一个任务配置)）。
 3. **运行** — 保存后点击「运行」；小任务同步完成，大行数任务自动异步执行，可在「日志」中查看进度。
 
-> **控制台提示：** 自定义任务的**显示名称**在弹窗「任务名称」中填写，**不必**在 YAML 里写顶层 `name`；`id` 也由系统自动生成。定时调度在弹窗中配置，**不要**在自定义 YAML 里写 `schedule` 块。
+> **控制台提示：** 任务的**显示名称**在弹窗「任务名称」中填写，**无需**（也不建议）在 YAML 里写顶层 `name`；`id` 由系统自动生成。定时调度在弹窗中配置，YAML **禁止** `schedule` 块。
 
-控制台内置模板可作为起点（不含 `id` / `name`，保存时自动补全）：
+控制台「新建任务」的默认模板可作为起点（不含 `id` / `name` / `schedule`）：
 
 ```yaml
 writer:
@@ -43,13 +43,13 @@ tables:
 
 | 部分 | 作用 | 配置位置 |
 |------|------|----------|
-| **任务配置** | 任务唯一 ID、描述名称、默认写入方式 | YAML 顶层 `id`、`name`、`writer` 或 `writers`；控制台自定义任务另有 UI 字段 |
+| **任务配置** | 任务唯一 ID（系统生成）、显示名称、默认写入方式 | YAML 顶层 `writer` 或 `writers`；ID、显示名与调度由界面表单维护（存 SQLite `tasks` 主表） |
 | **Seeds** | 从真实/维表数据采样作底稿，多源可关联 | 顶层 `seeds[]`（任务配置级，非 schema 内） |
 | **表任务** | 每张表生成多少行、依赖关系 | `tables[]` |
 | **Schema** | 字段列表及每列如何生成 | `tables[].schema` |
 | **约束** | 生成结果的校验规则 | `schema.constraints` 或 `tables[].constraints` |
 | **连接** | 数据库地址、CSV 目录 | `application.yml`；或 任务配置顶层 `connections` 块 / reader·writer 内联（见 [配置连接](#配置连接)） |
-| **定时调度** | Cron 自动执行 | 内置任务配置：YAML `schedule`；自定义任务配置：控制台弹窗（存 SQLite） |
+| **定时调度** | Cron 自动执行 | 控制台弹窗配置（存 SQLite `tasks` 主表） |
 
 推荐将 Schema **内联**在任务配置中（字段多、业务绑定时更清晰）；多个任务配置 共用同一 Schema 时可拆到 `schemas/*.yaml` 并用路径引用。
 
@@ -57,17 +57,16 @@ tables:
 
 ## 在控制台管理任务
 
-通过 Web 控制台新建/编辑**自定义任务**时，与手写 YAML 文件有以下区别：
+通过 Web 控制台新建/编辑任务时：
 
 | 项 | 控制台行为 | YAML 编辑区 |
 |----|------------|-------------|
-| **任务名称** | 弹窗「任务名称」填写，可中文 | **无需**写顶层 `name`，保存时自动写入 |
-| **任务 ID** | 新建时系统自动生成（`task` + 8 位 hex） | **无需**写 `id`，保存时自动写入 |
+| **显示名称** | 弹窗「任务名称」填写，可中文 | **无需**写顶层 `name` |
+| **任务 ID** | 新建时系统自动生成（`task` + 8 位 hex） | **无需**写 `id` |
 | **配置文件名** | 默认与自动生成的 `id` 相同（纯 ASCII） | 不展示；存于 `writable-config-dir/task-configs/` |
 | **定时调度** | 弹窗「定时调度」勾选并填 Cron | **禁止**写 `schedule` 块 |
-| **内置任务** | 只读；调度读 YAML，不可在 UI 修改 | 可查看完整 YAML（含 `id`、`name`） |
 
-列表按**内置任务优先**，自定义任务按**创建时间倒序**；任务列表与运行日志均支持分页浏览。
+列表按**创建时间倒序**排列；任务列表与运行日志均支持分页浏览。
 
 **自动刷新：** 工具栏默认勾选「自动刷新」。页面加载后即开始轮询；有运行中任务或打开日志弹窗时每 **2 秒** 刷新，否则每 **5 秒**。任务列表采用**增量更新**（仅刷新状态列与停止按钮），避免整表重绘导致卡顿或「更多」菜单收起；日志弹窗同步更新运行记录与展开中的详情。
 
@@ -78,16 +77,7 @@ tables:
 - 同一配置若已有运行中实例，新触发会**排队**（FIFO），不会并行重复执行
 - 已启用调度时点击「运行」，会**立即执行一次**，不影响 Cron 计划
 
-内置任务配置 可在 YAML 中声明调度：
-
-```yaml
-id: my_builtin_job
-name: 内置定时任务
-schedule:
-  enabled: true
-  cron: "0 0 2 * * ?"
-tables: []
-```
+任务 YAML **禁止** `schedule` 块，调度一律在控制台弹窗（或调度接口）中配置。
 
 ---
 
@@ -95,12 +85,9 @@ tables: []
 
 ### 最小结构
 
-手写 YAML 文件（或查看内置任务）时：
+任务 YAML 仅包含生成配置，`id` / `name` 无需（也不建议）书写——显示名在控制台表单配置，ID 由系统生成：
 
 ```yaml
-id: my_job_name           # 任务唯一标识，必填，全局不可重复
-name: 我的业务造数任务     # 任务描述名称，说明用途，可中文
-
 writer:                   # 默认写入方式（可被表级覆盖）；单写时使用
   type: csv               # csv | postgresql | clickhouse
   connection: local-csv   # 连接名，见 application.yml
@@ -122,22 +109,22 @@ tables:                   # 至少一张表
           generator: { strategy: sequence, start: 1, step: 1 }
 ```
 
-在控制台**新建自定义任务**时，编辑区只需写 `writer` / `writers`、`tables` 等业务配置；`id`、`name` 由系统与「任务名称」输入框分别维护。
+新建任务时，编辑区只需写 `writer` / `writers`、`tables` 等生成配置；`id`、显示名称与调度由界面表单维护，YAML 无需（也不建议）包含 `id` / `name`。
 
 ### 顶层字段说明
 
 | 字段 | 必填 | 说明 |
 |------|------|------|
-| `id` | 是* | 任务唯一标识，仅含字母、数字、下划线、连字符，以字母开头；全局不可重复。*控制台新建自定义任务时自动生成 |
-| `name` | 是* | 任务描述名称，可中文。*控制台自定义任务请在「任务名称」填写，保存时自动写入 |
+| `id` | 否* | 任务唯一标识（系统生成，存主表）。*YAML 无需（也不建议）包含 `id`，书写了也会在保存时忽略 |
+| `name` | 否* | 任务显示名称，可中文。*在控制台「任务名称」填写，YAML 无需（也不建议）包含 `name` |
 | `writer` | 否 | 任务配置级**单写**配置（写入一个目标），可被表级覆盖；与 `writers` **二选一** |
 | `writers` | 否 | 任务配置级**多写**配置（同一批数据写入多个目标，如 PG + ClickHouse）；与 `writer` **二选一** |
 | `seeds` | 否 | 任务配置级命名种子列表，供字段 `strategy: seed` 引用（见 [任务配置级 seeds](#任务配置级-seeds从真实数据出发)） |
-| `schedule` | 否 | 定时调度（仅**内置**任务配置；自定义任务请用控制台） |
+| `schedule` | 否 | **禁止**：YAML 不允许 `schedule` 块，调度请在控制台弹窗（或调度接口）配置 |
 | `constraints` | 否 | 引用外部约束文件或内联约束列表 |
 | `tables` | 是 | 表任务列表 |
 
-> **说明：** 顶层 `id` 与 `name` 均为必填。
+> **说明：** 任务 YAML 无需（也不建议）包含 `id` / `name`，显示名与调度在界面表单配置；YAML 中出现的 `id` / `name` 保存时自动忽略（元数据以主表为准）。
 
 ### 每个字段怎么写
 
@@ -511,9 +498,6 @@ generator:
 ### 基本写法
 
 ```yaml
-id: incident_demo
-name: 事件造数示例
-
 writer:
   type: csv
   connection: local-csv
@@ -954,9 +938,6 @@ curl -X POST http://localhost:8080/api/v1/preview \
 以下为自包含示例（表名、SQL 均为虚构，请按实际业务替换）：
 
 ```yaml
-id: incident_demo
-name: 事件造数示例
-
 writer:
   type: csv
   connection: local-csv
@@ -1034,7 +1015,7 @@ tables:
 | `task-run.batch-size` | 1000 | 写入批次；进度/日志按批更新（SQLite 持久化有节流，表完成时强制落盘） |
 | `task-run.thread-pool-size` | 4 | 异步任务线程池；单表行数 ≥5000 时并行生成行数据 |
 | `task-run.generation-parallelism` | 0 | 造数并行度；`0` 表示沿用 `thread-pool-size`；API 提交任务 时可在 `options.generationParallelism` 覆盖 |
-| `storage.sqlite-path` | `./data/dg-tasks.db` | 运行记录 SQLite 库（表 `task_runs`、`task_schedules`） |
+| `storage.sqlite-path` | `./data/dg-tasks.db` | 任务记录 SQLite 库（表 `task_runs`、`tasks`） |
 | `storage.log-dir` | `./data/task-run-logs` | 运行日志文件目录（每次运行一个 `{runId}.log`，前缀 `task-run-`） |
 
 ---
@@ -1077,11 +1058,8 @@ A：API 提交时使用 `"overrides": {"tables.incidents.count": 100}`。
 **Q：配置了 generator.prefix 但保存/运行报错 type 必须为字符串**  
 A：`prefix` 会把生成结果拼成字符串，字段 `type` 须为 `VARCHAR`、`CHAR`、`TEXT` 等字符串类型；纯数字自增且不需前缀时用 `sequence` 不配 `prefix` 即可。
 
-**Q：内置任务和自定义任务有什么区别**  
-A：内置任务随 jar 发布只读，调度可在 YAML 中配置；自定义任务保存在 `writable-config-dir/task-configs/`，可在控制台编辑，`id`/显示名称/调度由 UI 管理，YAML 中勿写 `schedule`。
-
 **Q：控制台保存后 YAML 里没有 name / id**  
-A：正常。编辑区仅展示业务配置；`name` 来自「任务名称」，`id` 与配置文件名在保存时自动生成（文件名为 ASCII，避免中文路径编码问题）。
+A：正常。任务元数据（ID、显示名称、调度）统一存 SQLite `tasks` 主表，YAML 仅保留生成配置；保存时 `id` / `name` 会被自动忽略，配置文件名由系统按任务 ID 自动生成（文件名为 ASCII，避免中文路径编码问题）。
 
 **Q：启用定时调度但未填 Cron 能否保存**  
 A：不能。启用调度时必须填写合法的 Cron 表达式，否则保存失败。
