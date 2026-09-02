@@ -3,6 +3,7 @@ package com.datagenerator.web.controller;
 import com.datagenerator.web.config.DataGeneratorProperties;
 import com.datagenerator.web.dto.TaskConfigListResponse;
 import com.datagenerator.web.dto.TaskConfigResponse;
+import com.datagenerator.web.dto.TaskConfigValidationResponse;
 import com.datagenerator.web.dto.TaskScheduleResponse;
 import com.datagenerator.web.exception.GlobalExceptionHandler;
 import com.datagenerator.web.exception.TaskConfigNotFoundException;
@@ -111,7 +112,8 @@ class TaskConfigControllerTest {
     @Test
     void getSchedule_byName_returnsSchedule() throws Exception {
         when(taskScheduleService.resolveSchedule("task-configs/demo_job.yaml"))
-                .thenReturn(new TaskScheduleResponse(true, "0 0 2 * * ?", "2026-09-03T02:00:00+08:00"));
+                .thenReturn(new TaskScheduleResponse(
+                        true, "0 0 2 * * ?", "2026-09-03T02:00:00+08:00"));
 
         mockMvc.perform(get("/api/v1/task-configs/demo_job/schedule"))
                 .andExpect(status().isOk())
@@ -133,7 +135,8 @@ class TaskConfigControllerTest {
     @Test
     void updateSchedule_withRequestBody_persistsAndReschedules() throws Exception {
         when(taskScheduleService.saveSchedule(eq("task-configs/demo_job.yaml"), any()))
-                .thenReturn(new TaskScheduleResponse(true, "0 0 2 * * ?", "2026-09-03T02:00:00+08:00"));
+                .thenReturn(new TaskScheduleResponse(
+                        true, "0 0 2 * * ?", "2026-09-03T02:00:00+08:00"));
 
         mockMvc.perform(put("/api/v1/task-configs/demo_job/schedule")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -143,6 +146,26 @@ class TaskConfigControllerTest {
                 .andExpect(jsonPath("$.cron").value("0 0 2 * * ?"));
 
         verify(scheduleManager).reschedule("task-configs/demo_job.yaml");
+    }
+
+    @Test
+    void create_validateOnlyNonMappingContent_returns200Invalid() throws Exception {
+        when(taskConfigService.validateYaml(any()))
+                .thenReturn(TaskConfigValidationResponse.fail(
+                        List.of("Task config YAML must be a mapping")));
+
+        mockMvc.perform(post("/api/v1/task-configs")
+                        .param("validateOnly", "true")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "content": "just a plain string"
+                                }
+                                """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.valid").value(false))
+                .andExpect(jsonPath("$.errors[0]")
+                        .value("Task config YAML must be a mapping"));
     }
 
     @Test

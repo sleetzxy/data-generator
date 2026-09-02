@@ -1,16 +1,15 @@
 package com.datagenerator.web.service;
 
+import com.datagenerator.core.model.ConfigLoadException;
+import com.datagenerator.core.model.ConfigPathResolver;
+import com.datagenerator.core.model.YamlConfigLoader;
 import com.datagenerator.web.dto.TaskConfigListResponse;
 import com.datagenerator.web.dto.TaskConfigRequest;
 import com.datagenerator.web.dto.TaskConfigResponse;
-import com.datagenerator.web.dto.TaskScheduleRequest;
 import com.datagenerator.web.dto.TaskConfigValidationResponse;
+import com.datagenerator.web.dto.TaskScheduleRequest;
 import com.datagenerator.web.exception.TaskConfigNotFoundException;
 import com.datagenerator.web.storage.TaskRepository;
-import com.datagenerator.core.model.ConfigLoadException;
-import com.datagenerator.core.model.ConfigPathResolver;
-import com.datagenerator.core.model.TaskConfig;
-import com.datagenerator.core.model.YamlConfigLoader;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Lazy;
@@ -58,7 +57,8 @@ public class TaskConfigService {
         try {
             configLoader.loadTaskConfigFromContent(stripMetaFields(yaml));
             return TaskConfigValidationResponse.ok();
-        } catch (ConfigLoadException exception) {
+        } catch (ConfigLoadException | IllegalArgumentException exception) {
+            // 非法输入（含非 mapping YAML）统一返回校验失败，保持 200 契约
             return TaskConfigValidationResponse.fail(List.of(exception.getMessage()));
         }
     }
@@ -82,7 +82,9 @@ public class TaskConfigService {
                     .stream()
                     .map(this::toResponse)
                     .toList();
-            return new TaskConfigListResponse(all, all.size(), 1, all.size());
+            // total 取全量计数，避免列表超过 MAX_LIST_SIZE 时被截断
+            long total = taskRepository.count(nameKeyword);
+            return new TaskConfigListResponse(all, total, 1, all.size());
         }
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), MAX_LIST_SIZE);
@@ -101,6 +103,7 @@ public class TaskConfigService {
                         "Task config not found: " + name));
         String configPath = TaskConfigPaths.toConfigPath(name);
         String content = readContent(configPath);
+        // 仅校验文件内容可正常加载；显示名与 id 均以主表为准
         configLoader.loadTaskConfigFromContent(content);
         return toResponse(task, content);
     }
@@ -126,6 +129,8 @@ public class TaskConfigService {
                     content);
         } catch (RuntimeException exception) {
             rollbackDefinition(configPath);
+            // 同步删除主表行，避免“表有行、文件缺失”的僵尸状态
+            taskRepository.deleteByFileName(fileName);
             throw exception;
         }
     }

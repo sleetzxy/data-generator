@@ -36,7 +36,9 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(TaskConfigNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleTaskConfigNotFound(
             TaskConfigNotFoundException exception) {
-        log.warn("Task config not found: {}", exception.getMessage());
+        // 异常消息本身已含“not found/file missing”上下文，
+        // 直接记录避免双前缀
+        log.warn("{}", exception.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(new ErrorResponse(HttpStatus.NOT_FOUND.value(), resolveMessage(exception)));
     }
@@ -56,7 +58,8 @@ public class GlobalExceptionHandler {
         log.warn("Unreadable request body: {}", exception.getMessage());
         return ResponseEntity.badRequest()
                 .body(new ErrorResponse(
-                        HttpStatus.BAD_REQUEST.value(), "请求体格式错误，请检查 JSON 内容"));
+                        HttpStatus.BAD_REQUEST.value(),
+                        "请求体格式错误，请检查 JSON 内容"));
     }
 
     @ExceptionHandler(IllegalStateException.class)

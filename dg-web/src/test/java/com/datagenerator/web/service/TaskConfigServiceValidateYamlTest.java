@@ -87,4 +87,14 @@ class TaskConfigServiceValidateYamlTest {
         assertThat(result.valid()).isFalse();
         assertThat(result.errors()).isNotEmpty();
     }
+
+    @Test
+    void validateYaml_nonMappingContent_returnsErrors() {
+        // 非 mapping YAML（如纯字符串）此前会泄漏 IllegalArgumentException 导致 400
+        TaskConfigValidationResponse result =
+                taskConfigService.validateYaml("just a plain string");
+
+        assertThat(result.valid()).isFalse();
+        assertThat(result.errors()).isNotEmpty();
+    }
 }

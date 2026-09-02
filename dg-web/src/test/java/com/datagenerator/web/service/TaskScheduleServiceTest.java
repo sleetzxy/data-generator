@@ -46,8 +46,8 @@ class TaskScheduleServiceTest {
     void saveSchedule_valid_updatesTasksRow() {
         insertTask("demo", false, null);
 
-        TaskScheduleResponse saved =
-                service.saveSchedule("task-configs/demo.yaml", scheduleRequest(true, "0 0 2 * * ?"));
+        TaskScheduleResponse saved = service.saveSchedule(
+                "task-configs/demo.yaml", scheduleRequest(true, "0 0 2 * * ?"));
 
         assertThat(saved.isEnabled()).isTrue();
         assertThat(saved.getCron()).isEqualTo("0 0 2 * * ?");
@@ -61,7 +61,8 @@ class TaskScheduleServiceTest {
     void saveSchedule_enabledWithoutCron_rejects() {
         insertTask("demo", false, null);
 
-        assertThatThrownBy(() -> service.saveSchedule("task-configs/demo.yaml", scheduleRequest(true, null)))
+        assertThatThrownBy(() -> service.saveSchedule(
+                "task-configs/demo.yaml", scheduleRequest(true, null)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("required when schedule is enabled");
     }
@@ -70,14 +71,16 @@ class TaskScheduleServiceTest {
     void saveSchedule_invalidCron_rejects() {
         insertTask("demo", false, null);
 
-        assertThatThrownBy(() -> service.saveSchedule("task-configs/demo.yaml", scheduleRequest(true, "not-a-cron")))
+        assertThatThrownBy(() -> service.saveSchedule(
+                "task-configs/demo.yaml", scheduleRequest(true, "not-a-cron")))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Invalid cron expression");
     }
 
     @Test
     void saveSchedule_missingRow_throws() {
-        assertThatThrownBy(() -> service.saveSchedule("task-configs/ghost.yaml", scheduleRequest(false, null)))
+        assertThatThrownBy(() -> service.saveSchedule(
+                "task-configs/ghost.yaml", scheduleRequest(false, null)))
                 .isInstanceOf(TaskConfigNotFoundException.class)
                 .hasMessageContaining("not found");
     }

@@ -19,6 +19,7 @@ import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 
@@ -79,6 +80,17 @@ class TaskConfigServiceTest {
     }
 
     @Test
+    void list_withoutPaging_totalEqualsRepositoryCount() {
+        taskRepository.insert(record("task_a", "任务 A", "2026-09-01T08:00:00Z"));
+        taskRepository.insert(record("task_b", "任务 B", "2026-09-02T08:00:00Z"));
+
+        TaskConfigListResponse all = service.list();
+
+        assertThat(all.total()).isEqualTo(taskRepository.count(null));
+        assertThat(all.items()).hasSize(2);
+    }
+
+    @Test
     void get_existing_returnsDisplayNameAndContent() throws IOException {
         taskRepository.insert(record("demo", "演示任务", "2026-09-01T08:00:00Z"));
         writeConfigFile("demo", """
@@ -115,7 +127,8 @@ class TaskConfigServiceTest {
 
     @Test
     void create_validRequest_writesFileAndInsertsRow() throws IOException {
-        TaskConfigResponse created = service.create(request("demo_job", "演示任务", VALID_YAML));
+        TaskConfigResponse created =
+                service.create(request("demo_job", "演示任务", VALID_YAML));
 
         assertThat(created.getId()).matches("task[a-f0-9]{8}");
         assertThat(created.getFileName()).isEqualTo("demo_job");
@@ -163,7 +176,8 @@ class TaskConfigServiceTest {
                     count: 10
                 """;
 
-        assertThatThrownBy(() -> service.create(request("demo_job", "演示任务", yamlWithSchedule)))
+        assertThatThrownBy(() -> service.create(
+                request("demo_job", "演示任务", yamlWithSchedule)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("schedule");
 
@@ -181,12 +195,32 @@ class TaskConfigServiceTest {
 
         TaskConfigResponse created = service.create(request);
 
-        TaskRepository.TaskRecord row = taskRepository.findByFileName("scheduled_task").orElseThrow();
+        TaskRepository.TaskRecord row =
+                taskRepository.findByFileName("scheduled_task").orElseThrow();
         assertThat(row.scheduleEnabled()).isTrue();
         assertThat(row.scheduleCron()).isEqualTo("0 0 2 * * ?");
         assertThat(created.getSchedule()).isNotNull();
         assertThat(created.getSchedule().isEnabled()).isTrue();
         assertThat(created.getSchedule().getCron()).isEqualTo("0 0 2 * * ?");
+    }
+
+    @Test
+    void create_scheduleApplyFails_removesFileAndRow() {
+        TaskConfigRequest request = request("rollback_task", "回滚任务", VALID_YAML);
+        TaskScheduleRequest schedule = new TaskScheduleRequest();
+        schedule.setEnabled(true);
+        schedule.setCron("0 0 2 * * ?");
+        request.setSchedule(schedule);
+        // 模拟行已插入后调度应用失败，验证回滚同时清理文件与主表行
+        doThrow(new RuntimeException("reschedule failed"))
+                .when(scheduleManager).reschedule("task-configs/rollback_task.yaml");
+
+        assertThatThrownBy(() -> service.create(request))
+                .isInstanceOf(RuntimeException.class)
+                .hasMessage("reschedule failed");
+
+        assertThat(taskRepository.findByFileName("rollback_task")).isEmpty();
+        assertThat(tempDir.resolve("task-configs/rollback_task.yaml")).doesNotExist();
     }
 
     @Test
@@ -208,7 +242,8 @@ class TaskConfigServiceTest {
 
     @Test
     void create_withNonAsciiFileName_rejects() {
-        assertThatThrownBy(() -> service.create(request("中文文件名", "演示任务", VALID_YAML)))
+        assertThatThrownBy(() -> service.create(
+                request("中文文件名", "演示任务", VALID_YAML)))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("ASCII");
     }
@@ -247,7 +282,8 @@ class TaskConfigServiceTest {
 
     @Test
     void update_missing_throwsNotFound() {
-        assertThatThrownBy(() -> service.update("nope", request("nope", "演示任务", VALID_YAML)))
+        assertThatThrownBy(() -> service.update(
+                "nope", request("nope", "演示任务", VALID_YAML)))
                 .isInstanceOf(TaskConfigNotFoundException.class)
                 .hasMessageContaining("not found");
     }
@@ -288,7 +324,8 @@ class TaskConfigServiceTest {
         Files.writeString(file, content);
     }
 
-    private static TaskRepository.TaskRecord record(String fileName, String displayName, String createdAt) {
+    private static TaskRepository.TaskRecord record(
+            String fileName, String displayName, String createdAt) {
         return new TaskRepository.TaskRecord(
                 fileName, fileName, displayName, false, null, createdAt, null);
     }

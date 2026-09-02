@@ -53,7 +53,8 @@ class TaskScheduleManagerTest {
         when(taskRepository.findAllEnabledSchedules())
                 .thenReturn(List.of(enabledRecord("demo")));
         when(scheduleService.resolveSchedule(CONFIG_PATH))
-                .thenReturn(new TaskScheduleResponse(true, "0 0 2 * * ?", "2026-09-03T02:00:00+08:00"));
+                .thenReturn(new TaskScheduleResponse(
+                        true, "0 0 2 * * ?", "2026-09-03T02:00:00+08:00"));
         doReturn(scheduledFuture).when(scheduler).schedule(any(Runnable.class), any(Trigger.class));
 
         manager.reloadAll();
@@ -74,7 +75,8 @@ class TaskScheduleManagerTest {
     @Test
     void cancel_existingSchedule_cancelsFuture() {
         when(scheduleService.resolveSchedule(CONFIG_PATH))
-                .thenReturn(new TaskScheduleResponse(true, "0 0 2 * * ?", "2026-09-03T02:00:00+08:00"));
+                .thenReturn(new TaskScheduleResponse(
+                        true, "0 0 2 * * ?", "2026-09-03T02:00:00+08:00"));
         doReturn(scheduledFuture).when(scheduler).schedule(any(Runnable.class), any(Trigger.class));
 
         manager.reschedule(CONFIG_PATH);

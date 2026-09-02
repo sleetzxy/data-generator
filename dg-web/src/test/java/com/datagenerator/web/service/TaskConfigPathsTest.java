@@ -10,7 +10,8 @@ class TaskConfigPathsTest {
     void toConfigPath_appendsDirAndExtension() {
         assertThat(TaskConfigPaths.toConfigPath("demo")).isEqualTo("task-configs/demo.yaml");
         assertThat(TaskConfigPaths.toConfigPath("demo.yaml")).isEqualTo("task-configs/demo.yaml");
-        assertThat(TaskConfigPaths.toConfigPath("task-configs/demo")).isEqualTo("task-configs/demo.yaml");
+        assertThat(TaskConfigPaths.toConfigPath("task-configs/demo"))
+                .isEqualTo("task-configs/demo.yaml");
     }
 
     @Test
