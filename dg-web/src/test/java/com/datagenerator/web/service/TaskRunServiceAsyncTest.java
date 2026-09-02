@@ -125,7 +125,8 @@ class TaskRunServiceAsyncTest {
                 context.taskRunLogRepository(),
                 context.asyncTaskRunExecutor(),
                 context.cancellationRegistry(),
-                context.scheduleExecutor());
+                context.scheduleExecutor(),
+                context.taskRepository());
         TaskRunServiceTestSupport.wireEnqueueToDoSubmit(taskRunService, context.scheduleExecutor());
 
         TaskRunSubmitRequest request = new TaskRunSubmitRequest();

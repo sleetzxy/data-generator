@@ -7,7 +7,9 @@ import com.datagenerator.web.dto.TaskRunProgress;
 import com.datagenerator.web.dto.TaskRunResponse;
 import com.datagenerator.web.dto.TaskRunStatsResponse;
 import com.datagenerator.web.dto.TaskRunStatus;
+import com.datagenerator.web.dto.TaskRunSubmitRequest;
 import com.datagenerator.web.dto.TriggerSource;
+import com.datagenerator.web.exception.TaskConfigNotFoundException;
 import com.datagenerator.web.storage.TaskRunRepository;
 import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintLoader;
@@ -21,6 +23,7 @@ import java.time.ZoneId;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
@@ -32,12 +35,13 @@ class TaskRunServiceTest {
     private TaskRunOrchestrator orchestrator;
     private TaskRunService taskRunService;
     private TaskRunRepository taskRunRepository;
+    private TaskRunServiceTestSupport.TaskRunServiceContext context;
 
     @BeforeEach
     void setUp() {
         orchestrator = mock(TaskRunOrchestrator.class);
         TaskRunRuntimeSettings runtimeSettings = new TaskRunRuntimeSettings(5000, 1000, 2);
-        TaskRunServiceTestSupport.TaskRunServiceContext context = TaskRunServiceTestSupport.createContext(runtimeSettings);
+        context = TaskRunServiceTestSupport.createContext(runtimeSettings);
         taskRunRepository = context.taskRunRepository();
         taskRunService = new TaskRunService(
                 orchestrator,
@@ -50,7 +54,9 @@ class TaskRunServiceTest {
                 context.taskRunLogRepository(),
                 context.asyncTaskRunExecutor(),
                 context.cancellationRegistry(),
-                context.scheduleExecutor());
+                context.scheduleExecutor(),
+                context.taskRepository());
+        TaskRunServiceTestSupport.wireEnqueueToDoSubmit(taskRunService, context.scheduleExecutor());
     }
 
     @Test
@@ -120,6 +126,16 @@ class TaskRunServiceTest {
         assertThat(response.getTotal()).isEqualTo(2);
         assertThat(response.getItems()).extracting(item -> item.getRunId())
                 .containsExactlyInAnyOrder("r1", "r2");
+    }
+
+    @Test
+    void submit_withUnknownConfigPath_throwsNotFound() {
+        TaskRunSubmitRequest request = new TaskRunSubmitRequest();
+        request.setConfigPath("task-configs/nonexistent.yaml");
+
+        assertThatThrownBy(() -> taskRunService.submit(request))
+                .isInstanceOf(TaskConfigNotFoundException.class)
+                .hasMessageContaining("not found");
     }
 
     private void insertRun(String runId, String configPath, TaskRunStatus status, long writtenRows, String submittedAt) {

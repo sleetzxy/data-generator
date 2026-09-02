@@ -37,7 +37,8 @@ class TaskRunServiceWriterResolutionTest {
                 context.taskRunLogRepository(),
                 context.asyncTaskRunExecutor(),
                 context.cancellationRegistry(),
-                context.scheduleExecutor());
+                context.scheduleExecutor(),
+                context.taskRepository());
     }
 
     @Test

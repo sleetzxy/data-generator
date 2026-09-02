@@ -21,6 +21,7 @@ import com.datagenerator.web.dto.PreviewResponse;
 import com.datagenerator.web.dto.PreviewTableResponse;
 import com.datagenerator.web.dto.TableDetail;
 import com.datagenerator.web.dto.TriggerSource;
+import com.datagenerator.web.exception.TaskConfigNotFoundException;
 import com.datagenerator.web.exception.TaskRunNotFoundException;
 import com.datagenerator.web.internal.CollectingWriter;
 import com.datagenerator.core.config.ConnectionRegistry;
@@ -42,6 +43,7 @@ import com.datagenerator.core.model.TableTask;
 import com.datagenerator.spi.model.ReaderConfig;
 import com.datagenerator.spi.model.WriterConfig;
 import com.datagenerator.core.model.YamlConfigLoader;
+import com.datagenerator.web.storage.TaskRepository;
 import com.datagenerator.web.storage.TaskRunLogRepository;
 import com.datagenerator.web.storage.TaskRunRepository;
 import org.slf4j.Logger;
@@ -95,6 +97,7 @@ public class TaskRunService {
     private final TaskRunRepository taskRunRepository;
     private final TaskRunCancellationRegistry cancellationRegistry;
     private final TaskRunQueueExecutor scheduleExecutor;
+    private final TaskRepository taskRepository;
 
     public TaskRunService(
             TaskRunOrchestrator taskRunOrchestrator,
@@ -107,7 +110,8 @@ public class TaskRunService {
             TaskRunLogRepository taskRunLogRepository,
             AsyncTaskRunExecutor asyncTaskRunExecutor,
             TaskRunCancellationRegistry cancellationRegistry,
-            @Lazy TaskRunQueueExecutor scheduleExecutor) {
+            @Lazy TaskRunQueueExecutor scheduleExecutor,
+            TaskRepository taskRepository) {
         this.taskRunOrchestrator = taskRunOrchestrator;
         this.previewOrchestratorFactory = previewOrchestratorFactory;
         this.configLoader = configLoader;
@@ -119,6 +123,7 @@ public class TaskRunService {
         this.asyncTaskRunExecutor = asyncTaskRunExecutor;
         this.cancellationRegistry = cancellationRegistry;
         this.scheduleExecutor = scheduleExecutor;
+        this.taskRepository = taskRepository;
     }
 
     public TaskRunSubmitResult submit(TaskRunSubmitRequest request) {
@@ -511,6 +516,12 @@ public class TaskRunService {
     private TaskConfig loadAndApplyOverrides(TaskRunSubmitRequest request) {
         TaskConfig taskConfig = configLoader.loadTaskConfig(request.getConfigPath());
         applyOverrides(taskConfig, request.getOverrides());
+        // 任务元数据以主表为准：执行前注入主表的 id 与显示名
+        taskRepository.findByFileName(TaskConfigPaths.toFileName(request.getConfigPath()))
+                .ifPresent(task -> {
+                    taskConfig.setId(task.id());
+                    taskConfig.setName(task.displayName());
+                });
         return taskConfig;
     }
 
@@ -968,6 +979,11 @@ public class TaskRunService {
     private void validateConfigPath(String configPath) {
         if (configPath == null || configPath.isBlank()) {
             throw new IllegalArgumentException("configPath is required");
+        }
+        String fileName = TaskConfigPaths.toFileName(configPath);
+        if (!taskRepository.existsByFileName(fileName)) {
+            // 历史运行记录引用已删除任务时，重跑/预览返回 404
+            throw new TaskConfigNotFoundException("Task config not found: " + fileName);
         }
     }
 
