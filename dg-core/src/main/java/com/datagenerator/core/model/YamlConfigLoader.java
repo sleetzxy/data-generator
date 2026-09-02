@@ -56,16 +56,9 @@ public class YamlConfigLoader {
 
     private TaskConfig loadTaskConfigFromRoot(Map<String, Object> root) {
         TaskConfig taskConfig = new TaskConfig();
-        String name = YamlMappingUtils.asString(root.get("name"));
-        if (name == null || name.isBlank()) {
-            throw new ConfigLoadException("Task config must define 'name'");
-        }
-        String id = YamlMappingUtils.asString(root.get("id"));
-        if (id == null || id.isBlank()) {
-            throw new ConfigLoadException("Task config must define 'id'");
-        }
-        taskConfig.setName(name);
-        taskConfig.setId(id);
+        // id/name 为可选元数据（由主表管理），缺失时保留 null 不报错
+        taskConfig.setName(YamlMappingUtils.asString(root.get("name")));
+        taskConfig.setId(YamlMappingUtils.asString(root.get("id")));
         Object constraintsValue = root.get("constraints");
         if (constraintsValue instanceof List<?>) {
             taskConfig.setInlineConstraints(YamlMappingUtils.toConstraintDefinitions(constraintsValue));

@@ -138,8 +138,11 @@ class YamlConfigLoaderTest {
     }
 
     @Test
-    void loadTaskConfig_missingNameAndId_throws() {
-        assertThatThrownBy(() -> loader.loadTaskConfigFromContent("""
+    void loadTaskConfigFromContent_withoutIdAndName_accepts() {
+        TaskConfig taskConfig = loader.loadTaskConfigFromContent("""
+                writer:
+                  type: csv
+                  path: ./out
                 tables:
                   - name: t1
                     count: 1
@@ -149,18 +152,21 @@ class YamlConfigLoaderTest {
                         - name: id
                           type: BIGINT
                           generator: { strategy: sequence, start: 1, step: 1 }
-                """))
-                .isInstanceOf(ConfigLoadException.class)
-                .hasMessageContaining("name");
+                """);
+
+        assertThat(taskConfig.getId()).isNull();
+        assertThat(taskConfig.getName()).isNull();
+        assertThat(taskConfig.getTables()).hasSize(1);
     }
 
     @Test
-    void loadTaskConfig_missingName_throws() {
-        assertThatThrownBy(() -> loader.loadTaskConfigFromContent("""
-                id: overlay_only_id
+    void loadTaskConfigFromContent_withIdAndName_keepsThem() {
+        TaskConfig taskConfig = loader.loadTaskConfigFromContent("""
+                id: my_task
+                name: 我的造数任务
                 writer:
                   type: csv
-                  connection: local-csv
+                  path: ./out
                 tables:
                   - name: t1
                     count: 1
@@ -170,30 +176,10 @@ class YamlConfigLoaderTest {
                         - name: id
                           type: BIGINT
                           generator: { strategy: sequence, start: 1, step: 1 }
-                """))
-                .isInstanceOf(ConfigLoadException.class)
-                .hasMessageContaining("name");
-    }
+                """);
 
-    @Test
-    void loadTaskConfig_missingId_throws() {
-        assertThatThrownBy(() -> loader.loadTaskConfigFromContent("""
-                name: 无 id 配置
-                writer:
-                  type: csv
-                  connection: local-csv
-                tables:
-                  - name: t1
-                    count: 1
-                    schema:
-                      table: t1
-                      fields:
-                        - name: id
-                          type: BIGINT
-                          generator: { strategy: sequence, start: 1, step: 1 }
-                """))
-                .isInstanceOf(ConfigLoadException.class)
-                .hasMessageContaining("id");
+        assertThat(taskConfig.getId()).isEqualTo("my_task");
+        assertThat(taskConfig.getName()).isEqualTo("我的造数任务");
     }
 
     @Test
