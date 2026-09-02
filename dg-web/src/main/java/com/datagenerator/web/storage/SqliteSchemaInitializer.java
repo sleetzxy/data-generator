@@ -37,15 +37,21 @@ public final class SqliteSchemaInitializer {
                 ON task_runs(status, submitted_at DESC)
                 """);
         jdbcTemplate.execute("""
-                CREATE TABLE IF NOT EXISTS task_schedules (
-                    config_path TEXT PRIMARY KEY,
-                    enabled INTEGER NOT NULL DEFAULT 0,
-                    cron TEXT,
-                    updated_at TEXT NOT NULL
+                CREATE TABLE IF NOT EXISTS tasks (
+                    id TEXT PRIMARY KEY,
+                    file_name TEXT NOT NULL UNIQUE,
+                    display_name TEXT NOT NULL,
+                    schedule_enabled INTEGER NOT NULL DEFAULT 0,
+                    schedule_cron TEXT,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT
                 )
                 """);
+        jdbcTemplate.execute("""
+                CREATE INDEX IF NOT EXISTS idx_tasks_created_at
+                ON tasks(created_at)
+                """);
         ensureColumn(jdbcTemplate, "task_runs", "trigger_source", "TEXT");
-        ensureColumn(jdbcTemplate, "task_schedules", "created_at", "TEXT");
     }
 
     private static boolean tableExists(JdbcTemplate jdbcTemplate, String tableName) {

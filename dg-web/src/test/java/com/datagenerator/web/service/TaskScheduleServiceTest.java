@@ -35,6 +35,16 @@ class TaskScheduleServiceTest {
         Files.createDirectories(primaryDir);
         Files.createDirectories(overlayDir);
         JdbcTemplate jdbcTemplate = SqliteTestSupport.createInMemoryJdbcTemplate();
+        // 遗留调度表：TaskScheduleService 迁移至 tasks 主表前仍读写 task_schedules，测试单独补建
+        jdbcTemplate.execute("""
+                CREATE TABLE IF NOT EXISTS task_schedules (
+                    config_path TEXT PRIMARY KEY,
+                    enabled INTEGER NOT NULL DEFAULT 0,
+                    cron TEXT,
+                    updated_at TEXT NOT NULL,
+                    created_at TEXT
+                )
+                """);
         scheduleRepository = new TaskScheduleRepository(jdbcTemplate);
         ConfigPathResolver resolver = ConfigPathResolver.forConfigDir(primaryDir).withWritableOverlay(overlayDir);
         service = new TaskScheduleService(resolver, scheduleRepository);

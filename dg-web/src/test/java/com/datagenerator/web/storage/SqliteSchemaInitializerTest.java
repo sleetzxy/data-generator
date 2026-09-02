@@ -11,16 +11,21 @@ import static org.assertj.core.api.Assertions.assertThat;
 class SqliteSchemaInitializerTest {
 
     @Test
-    void initialize_addsTriggerSourceColumn_idempotent() {
+    void initialize_createsTasksTableWithoutTaskSchedules_idempotent() {
         JdbcTemplate jdbc = SqliteTestSupport.createJdbcTemplate();
         SqliteSchemaInitializer.initialize(jdbc);
         SqliteSchemaInitializer.initialize(jdbc);
 
-        Integer count = jdbc.queryForObject(
-                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='task_schedules'",
-                Integer.class);
-        assertThat(count).isEqualTo(1);
+        assertThat(tableExists(jdbc, "tasks")).isTrue();
+        assertThat(tableExists(jdbc, "task_schedules")).isFalse();
         assertThat(columnExists(jdbc, "task_runs", "trigger_source")).isTrue();
+
+        List<Map<String, Object>> columns = jdbc.queryForList("PRAGMA table_info(tasks)");
+        assertThat(columns).hasSize(7);
+        assertThat(columns).extracting(row -> row.get("name"))
+                .containsExactlyInAnyOrder(
+                        "id", "file_name", "display_name", "schedule_enabled",
+                        "schedule_cron", "created_at", "updated_at");
     }
 
     @Test
