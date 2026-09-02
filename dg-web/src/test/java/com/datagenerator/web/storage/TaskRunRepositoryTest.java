@@ -197,9 +197,10 @@ class TaskRunRepositoryTest {
 
         List<ConfigVolumeStat> top = repository.topWrittenByConfigPath(2);
 
+        // 仓储层不解析任务显示名，displayName 恒为 null（由服务层按任务主表补全）
         assertThat(top).containsExactly(
-                new ConfigVolumeStat("task-configs/b.yaml", 1, 30),
-                new ConfigVolumeStat("task-configs/c.yaml", 1, 20));
+                new ConfigVolumeStat("task-configs/b.yaml", null, 1, 30),
+                new ConfigVolumeStat("task-configs/c.yaml", null, 1, 20));
     }
 
     @Test

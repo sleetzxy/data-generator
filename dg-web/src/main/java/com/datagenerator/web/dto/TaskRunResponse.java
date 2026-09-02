@@ -11,6 +11,8 @@ public class TaskRunResponse {
     private TaskRunProgress progress;
     private String duration;
     private String configPath;
+    /** 任务显示名：由服务层按 config_path 关联主表解析，任务已删除时为 null */
+    private String displayName;
     private String submittedAt;
     private String errorMessage;
     private List<TableDetail> details = new ArrayList<>();
@@ -94,6 +96,14 @@ public class TaskRunResponse {
 
     public void setConfigPath(String configPath) {
         this.configPath = configPath;
+    }
+
+    public String getDisplayName() {
+        return displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        this.displayName = displayName;
     }
 
     public String getSubmittedAt() {

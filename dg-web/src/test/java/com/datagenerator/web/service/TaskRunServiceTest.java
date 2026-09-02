@@ -10,6 +10,7 @@ import com.datagenerator.web.dto.TaskRunStatus;
 import com.datagenerator.web.dto.TaskRunSubmitRequest;
 import com.datagenerator.web.dto.TriggerSource;
 import com.datagenerator.web.exception.TaskConfigNotFoundException;
+import com.datagenerator.web.storage.TaskRepository;
 import com.datagenerator.web.storage.TaskRunRepository;
 import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintLoader;
@@ -102,6 +103,21 @@ class TaskRunServiceTest {
     }
 
     @Test
+    void stats_topConfigs_resolvesDisplayNameFromTasksTable() {
+        // a.yaml 对应主表行 display_name 为 "演示任务A"；b.yaml 无主表行，模拟任务已删除
+        insertTask("a", "演示任务A");
+        insertRun("r1", "task-configs/a.yaml", TaskRunStatus.COMPLETED, 30, "2026-08-01T00:00:00Z");
+        insertRun("r2", "task-configs/a.yaml", TaskRunStatus.COMPLETED, 10, "2026-08-02T00:00:00Z");
+        insertRun("r3", "task-configs/b.yaml", TaskRunStatus.RUNNING, 5, "2026-08-03T00:00:00Z");
+
+        TaskRunStatsResponse stats = taskRunService.stats();
+
+        assertThat(stats.topConfigs().get(0).displayName()).isEqualTo("演示任务A");
+        assertThat(stats.topConfigs().get(0).runCount()).isEqualTo(2);
+        assertThat(stats.topConfigs().get(1).displayName()).isNull();
+    }
+
+    @Test
     void runIndexes_aggregatesLatestAndActivePerConfigPath() {
         insertRun("r1", "task-configs/a.yaml", TaskRunStatus.COMPLETED, 0, "2026-08-01T00:00:00Z");
         insertRun("r2", "task-configs/a.yaml", TaskRunStatus.RUNNING, 0, "2026-08-02T00:00:00Z");
@@ -136,6 +152,36 @@ class TaskRunServiceTest {
         assertThatThrownBy(() -> taskRunService.submit(request))
                 .isInstanceOf(TaskConfigNotFoundException.class)
                 .hasMessageContaining("not found");
+    }
+
+    @Test
+    void list_resolvesDisplayNameFromTasksTable() {
+        insertTask("alpha", "演示任务A");
+        insertRun("r1", "task-configs/alpha.yaml", TaskRunStatus.COMPLETED, 0, "2026-09-02T00:00:00Z");
+
+        var response = taskRunService.list(1, 10, null);
+
+        assertThat(response.getItems()).hasSize(1);
+        assertThat(response.getItems().get(0).getRunId()).isEqualTo("r1");
+        assertThat(response.getItems().get(0).getDisplayName()).isEqualTo("演示任务A");
+    }
+
+    @Test
+    void list_taskDeleted_displayNameNull() {
+        // ghost.yaml 对应任务已被删除（任务主表无行），displayName 保持 null 由前端回退
+        insertRun("r1", "task-configs/ghost.yaml", TaskRunStatus.COMPLETED, 0, "2026-09-02T00:00:00Z");
+
+        var response = taskRunService.list(1, 10, null);
+
+        assertThat(response.getItems()).hasSize(1);
+        assertThat(response.getItems().get(0).getDisplayName()).isNull();
+    }
+
+    /** 预插任务主表行（调度关闭），供 config_path 解析测试使用 */
+    private void insertTask(String fileName, String displayName) {
+        context.taskRepository().insert(new TaskRepository.TaskRecord(
+                fileName, fileName, displayName, false, null,
+                "2026-09-02T10:00:00Z", null));
     }
 
     private void insertRun(String runId, String configPath, TaskRunStatus status, long writtenRows, String submittedAt) {

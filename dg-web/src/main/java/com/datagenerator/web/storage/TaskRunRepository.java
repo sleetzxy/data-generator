@@ -189,7 +189,7 @@ public class TaskRunRepository {
         return sum == null ? 0L : sum;
     }
 
-    /** 按配置路径聚合写入行数，取前 limit 名（按累计写入行数降序） */
+    /** 按配置路径聚合写入行数，取前 limit 名（按累计写入行数降序）；displayName 由服务层按任务主表补全 */
     public List<ConfigVolumeStat> topWrittenByConfigPath(int limit) {
         return jdbcTemplate.query("""
                 SELECT COALESCE(config_path, '') AS config_path,
@@ -202,6 +202,7 @@ public class TaskRunRepository {
                 """,
                 (rs, rowNum) -> new ConfigVolumeStat(
                         rs.getString("config_path"),
+                        null,
                         rs.getLong("run_count"),
                         rs.getLong("written_rows")),
                 limit);

@@ -24,14 +24,14 @@ export function initOverview() {
     document.getElementById('overview-active-body').addEventListener('click', (event) => {
         const row = event.target.closest('tr.overview-run-row');
         if (row) {
-            viewOverviewRun(row.dataset.runId, row.dataset.configPath);
+            viewOverviewRun(row.dataset.runId, row.dataset.configPath, row.dataset.displayName);
         }
     });
 
     document.getElementById('overview-recent-body').addEventListener('click', (event) => {
         const row = event.target.closest('tr.overview-run-row');
         if (row) {
-            viewOverviewRun(row.dataset.runId, row.dataset.configPath);
+            viewOverviewRun(row.dataset.runId, row.dataset.configPath, row.dataset.displayName);
         }
     });
 }
@@ -88,10 +88,10 @@ function renderOverviewActiveRuns(runs) {
     }
 
     tbody.innerHTML = activeRuns.map(run => `
-        <tr class="overview-run-row" data-run-id="${escapeAttr(run.runId)}" data-config-path="${escapeAttr(run.configPath)}">
+        <tr class="overview-run-row" data-run-id="${escapeAttr(run.runId)}" data-config-path="${escapeAttr(run.configPath)}" data-display-name="${escapeAttr(run.displayName || '')}">
             <td><code>${escapeHtml(run.runId)}</code></td>
-            <td class="overview-config-name" title="${escapeAttr(resolveConfigDisplayName(run.configPath))}">
-                <code>${escapeHtml(resolveConfigDisplayName(run.configPath))}</code>
+            <td class="overview-config-name" title="${escapeAttr(run.displayName || resolveConfigDisplayName(run.configPath))}">
+                <code>${escapeHtml(run.displayName || resolveConfigDisplayName(run.configPath))}</code>
             </td>
             <td>${statusBadge(run.status)}</td>
             <td>${run.writtenRows ?? 0} / ${run.totalRows ?? 0}</td>
@@ -111,10 +111,10 @@ function renderOverviewRecentRuns(runs) {
     }
 
     tbody.innerHTML = recentRuns.map(run => `
-        <tr class="overview-run-row" data-run-id="${escapeAttr(run.runId)}" data-config-path="${escapeAttr(run.configPath)}">
+        <tr class="overview-run-row" data-run-id="${escapeAttr(run.runId)}" data-config-path="${escapeAttr(run.configPath)}" data-display-name="${escapeAttr(run.displayName || '')}">
             <td><code>${escapeHtml(run.runId)}</code></td>
-            <td class="overview-config-name" title="${escapeAttr(resolveConfigDisplayName(run.configPath))}">
-                <code>${escapeHtml(resolveConfigDisplayName(run.configPath))}</code>
+            <td class="overview-config-name" title="${escapeAttr(run.displayName || resolveConfigDisplayName(run.configPath))}">
+                <code>${escapeHtml(run.displayName || resolveConfigDisplayName(run.configPath))}</code>
             </td>
             <td>${statusBadge(run.status)}</td>
             <td>${escapeHtml(run.duration || '-')}</td>
@@ -132,7 +132,7 @@ function renderOverviewVolumeBars(ranking) {
     }
     const maxWritten = Math.max(...ranking.map(item => item.writtenRows), 1);
     container.innerHTML = ranking.map(item => {
-        const displayName = resolveConfigDisplayName(item.configPath);
+        const displayName = item.displayName || resolveConfigDisplayName(item.configPath);
         const width = Math.max(2, Math.round((item.writtenRows / maxWritten) * 100));
         return `
             <div class="volume-bar-row" title="${escapeAttr(`${displayName}：累计写入 ${formatCompactNumber(item.writtenRows)} 行，共 ${item.runCount} 次运行`)}">
@@ -263,8 +263,8 @@ export async function syncOverviewInPlace() {
     }
 }
 
-async function viewOverviewRun(runId, configPath) {
-    const name = resolveConfigDisplayName(configPath);
+async function viewOverviewRun(runId, configPath, displayName) {
+    const name = displayName || resolveConfigDisplayName(configPath);
     try {
         await openLogListModal(name, configPath, runId);
     } catch (err) {

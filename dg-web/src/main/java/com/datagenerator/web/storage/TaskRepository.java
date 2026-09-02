@@ -6,7 +6,10 @@ import org.springframework.stereotype.Repository;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /** 任务主表（tasks）仓储：任务元数据与调度字段的持久化 */
@@ -72,6 +75,23 @@ public class TaskRepository {
         List<TaskRecord> results = jdbcTemplate.query(
                 SELECT_COLUMNS + " WHERE id = ?", this::mapRow, id);
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
+    }
+
+    /** 按文件名批量解析任务显示名（file_name → display_name），任务不存在的键无映射 */
+    public Map<String, String> findDisplayNames(Collection<String> fileNames) {
+        if (fileNames == null || fileNames.isEmpty()) {
+            return Map.of();
+        }
+        String placeholders = String.join(",", fileNames.stream().map(name -> "?").toList());
+        List<TaskRecord> records = jdbcTemplate.query(
+                SELECT_COLUMNS + " WHERE file_name IN (" + placeholders + ")",
+                this::mapRow,
+                fileNames.toArray());
+        Map<String, String> names = new HashMap<>();
+        for (TaskRecord record : records) {
+            names.put(record.fileName(), record.displayName());
+        }
+        return names;
     }
 
     public boolean existsByFileName(String fileName) {

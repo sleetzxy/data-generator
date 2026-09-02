@@ -60,10 +60,12 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -233,6 +235,7 @@ public class TaskRunService {
         List<TaskRunSummaryResponse> items = taskRunRepository.listPage(offset, safeSize, validated).stream()
                 .map(this::toSummary)
                 .toList();
+        applyDisplayNames(items);
         return new TaskRunListResponse(items, total, safePage, safeSize);
     }
 
@@ -241,8 +244,20 @@ public class TaskRunService {
         Map<String, Long> byStatus = taskRunRepository.countByStatus();
         long totalRuns = byStatus.values().stream().mapToLong(Long::longValue).sum();
         long totalWritten = taskRunRepository.sumWrittenRows();
-        List<ConfigVolumeStat> topConfigs =
+        List<ConfigVolumeStat> rawTopConfigs =
                 taskRunRepository.topWrittenByConfigPath(STATS_TOP_CONFIG_LIMIT);
+        Map<String, String> displayNames = resolveDisplayNamesByPaths(rawTopConfigs.stream()
+                .map(ConfigVolumeStat::configPath)
+                .toList());
+        List<ConfigVolumeStat> topConfigs = rawTopConfigs.stream()
+                .map(stat -> stat.configPath() == null
+                        ? stat
+                        : new ConfigVolumeStat(
+                                stat.configPath(),
+                                displayNames.get(TaskConfigPaths.toFileName(stat.configPath())),
+                                stat.runCount(),
+                                stat.writtenRows()))
+                .toList();
 
         LocalDate start = LocalDate.now(ZoneId.systemDefault()).minusDays(STATS_DAILY_DAYS - 1L);
         Map<String, DailyRunStat> byDay = taskRunRepository.dailyRunStats(start.toString()).stream()
@@ -273,7 +288,31 @@ public class TaskRunService {
         List<TaskRunSummaryResponse> activeRuns = taskRunRepository.activeRunsByConfigPath().stream()
                 .map(this::toSummary)
                 .toList();
+        applyDisplayNames(latestRuns);
+        applyDisplayNames(activeRuns);
         return new TaskRunIndexResponse(latestRuns, activeRuns);
+    }
+
+    /** 批量注入任务显示名：按 config_path 关联主表解析，任务已删除时保持 null（由前端回退为文件名） */
+    private void applyDisplayNames(List<TaskRunSummaryResponse> summaries) {
+        Map<String, String> displayNames = resolveDisplayNamesByPaths(summaries.stream()
+                .map(TaskRunSummaryResponse::getConfigPath)
+                .toList());
+        for (TaskRunSummaryResponse summary : summaries) {
+            String configPath = summary.getConfigPath();
+            if (configPath != null) {
+                summary.setDisplayName(displayNames.get(TaskConfigPaths.toFileName(configPath)));
+            }
+        }
+    }
+
+    /** 将运行记录中的 config_path 解析为任务显示名（file_name → display_name 映射） */
+    private Map<String, String> resolveDisplayNamesByPaths(Collection<String> configPaths) {
+        Set<String> fileNames = configPaths.stream()
+                .filter(path -> path != null && !path.isBlank())
+                .map(TaskConfigPaths::toFileName)
+                .collect(Collectors.toSet());
+        return taskRepository.findDisplayNames(fileNames);
     }
 
     private static long countOfStatus(Map<String, Long> byStatus, String status) {
@@ -332,8 +371,14 @@ public class TaskRunService {
     }
 
     public TaskRunResponse getById(String runId) {
-        return taskRunRepository.findById(runId)
+        TaskRunResponse response = taskRunRepository.findById(runId)
                 .orElseThrow(() -> new TaskRunNotFoundException(runId));
+        String configPath = response.getConfigPath();
+        if (configPath != null) {
+            response.setDisplayName(resolveDisplayNamesByPaths(List.of(configPath))
+                    .get(TaskConfigPaths.toFileName(configPath)));
+        }
+        return response;
     }
 
     public List<TaskRunLogEntry> getLogs(String runId) {

@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.jdbc.core.JdbcTemplate;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -121,6 +122,25 @@ class TaskRepositoryTest {
         repository.deleteByFileName("t1");
 
         assertThat(repository.findByFileName("t1")).isEmpty();
+    }
+
+    @Test
+    void findDisplayNames_returnsMapForExistingFiles() {
+        repository.insert(record("f1", "任务A"));
+        repository.insert(record("f2", "任务B"));
+
+        Map<String, String> names = repository.findDisplayNames(List.of("f1", "f2", "f3"));
+
+        assertThat(names).hasSize(2)
+                .containsEntry("f1", "任务A")
+                .containsEntry("f2", "任务B")
+                .doesNotContainKey("f3");
+    }
+
+    @Test
+    void findDisplayNames_emptyInput_returnsEmptyMap() {
+        assertThat(repository.findDisplayNames(List.of())).isEmpty();
+        assertThat(repository.findDisplayNames(null)).isEmpty();
     }
 
     @Test

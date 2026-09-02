@@ -604,7 +604,7 @@ function renderLogsViewTable() {
         let html = `
         <tr class="log-run-row${expanded ? ' selected' : ''}" data-run-id="${escapeAttr(run.runId)}">
             <td><code>${escapeHtml(run.runId)}</code></td>
-            <td title="${escapeAttr(resolveConfigDisplayName(run.configPath))}">${escapeHtml(resolveConfigDisplayName(run.configPath))}</td>
+            <td title="${escapeAttr(run.displayName || resolveConfigDisplayName(run.configPath))}">${escapeHtml(run.displayName || resolveConfigDisplayName(run.configPath))}</td>
             <td>${statusBadge(run.status)}</td>
             <td>${escapeHtml(run.duration || '-')}</td>
             <td>${run.writtenRows ?? 0} / ${run.totalRows ?? 0}</td>
