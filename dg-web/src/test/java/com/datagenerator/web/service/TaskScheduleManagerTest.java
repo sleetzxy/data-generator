@@ -1,9 +1,7 @@
 package com.datagenerator.web.service;
 
-import com.datagenerator.web.dto.TaskConfigListResponse;
-import com.datagenerator.web.dto.TaskConfigResponse;
 import com.datagenerator.web.dto.TaskScheduleResponse;
-import com.datagenerator.web.storage.TaskScheduleRepository;
+import com.datagenerator.web.storage.TaskRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -18,6 +16,7 @@ import java.util.concurrent.ScheduledFuture;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -37,10 +36,7 @@ class TaskScheduleManagerTest {
     private TaskRunQueueExecutor executor;
 
     @Mock
-    private TaskConfigService definitionService;
-
-    @Mock
-    private TaskScheduleRepository scheduleRepository;
+    private TaskRepository taskRepository;
 
     @Mock
     private ScheduledFuture<?> scheduledFuture;
@@ -49,29 +45,36 @@ class TaskScheduleManagerTest {
 
     @BeforeEach
     void setUp() {
-        manager = new TaskScheduleManager(
-                scheduler, scheduleService, executor, definitionService, scheduleRepository);
+        manager = new TaskScheduleManager(scheduler, scheduleService, executor, taskRepository);
     }
 
     @Test
-    void reschedule_enabledWithValidCron_registersSchedule() {
-        when(definitionService.list()).thenReturn(new TaskConfigListResponse(List.of(
-                new TaskConfigResponse("demo", CONFIG_PATH, "demo-id", "Demo", true)), List.of(), 1L, 1, 1));
-        when(scheduleService.resolveSchedule(CONFIG_PATH, true))
-                .thenReturn(new TaskScheduleResponse(true, "0 0 2 * * ?", false, null));
+    void reloadAll_enabledTask_registersSchedule() {
+        when(taskRepository.findAllEnabledSchedules())
+                .thenReturn(List.of(enabledRecord("demo")));
+        when(scheduleService.resolveSchedule(CONFIG_PATH))
+                .thenReturn(new TaskScheduleResponse(true, "0 0 2 * * ?", "2026-09-03T02:00:00+08:00"));
         doReturn(scheduledFuture).when(scheduler).schedule(any(Runnable.class), any(Trigger.class));
 
-        manager.reschedule(CONFIG_PATH);
+        manager.reloadAll();
 
         verify(scheduler).schedule(any(Runnable.class), any(CronTrigger.class));
     }
 
     @Test
+    void reschedule_disabledTask_doesNotRegister() {
+        when(scheduleService.resolveSchedule(CONFIG_PATH))
+                .thenReturn(new TaskScheduleResponse(false, null, null));
+
+        manager.reschedule(CONFIG_PATH);
+
+        verify(scheduler, never()).schedule(any(Runnable.class), any(Trigger.class));
+    }
+
+    @Test
     void cancel_existingSchedule_cancelsFuture() {
-        when(definitionService.list()).thenReturn(new TaskConfigListResponse(List.of(
-                new TaskConfigResponse("demo", CONFIG_PATH, "demo-id", "Demo", true)), List.of(), 1L, 1, 1));
-        when(scheduleService.resolveSchedule(CONFIG_PATH, true))
-                .thenReturn(new TaskScheduleResponse(true, "0 0 2 * * ?", false, null));
+        when(scheduleService.resolveSchedule(CONFIG_PATH))
+                .thenReturn(new TaskScheduleResponse(true, "0 0 2 * * ?", "2026-09-03T02:00:00+08:00"));
         doReturn(scheduledFuture).when(scheduler).schedule(any(Runnable.class), any(Trigger.class));
 
         manager.reschedule(CONFIG_PATH);
@@ -79,5 +82,11 @@ class TaskScheduleManagerTest {
 
         verify(scheduledFuture).cancel(false);
         verify(scheduler, times(1)).schedule(any(Runnable.class), any(Trigger.class));
+    }
+
+    private static TaskRepository.TaskRecord enabledRecord(String fileName) {
+        return new TaskRepository.TaskRecord(
+                fileName, fileName, "演示任务", true, "0 0 2 * * ?",
+                "2026-09-02T10:00:00Z", null);
     }
 }

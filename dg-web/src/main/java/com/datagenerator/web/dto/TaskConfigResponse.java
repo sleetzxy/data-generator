@@ -1,23 +1,16 @@
 package com.datagenerator.web.dto;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
-
 public class TaskConfigResponse {
 
     /** 配置文件名（不含扩展名），用于 API 路径参数 */
     private String fileName;
-    /** YAML 中的 name 字段，任务描述名称 */
+    /** 任务显示名称（来自主表 display_name） */
     private String name;
     private String path;
     private String id;
     private String content;
-    /** 是否内置（来自 classpath / 主配置目录） */
-    private boolean builtin;
-    /** 是否只读（内置任务不可编辑/删除） */
-    @JsonProperty("readOnly")
-    private boolean readOnly;
     private TaskScheduleResponse schedule;
-    /** 自定义任务创建时间（ISO-8601），内置任务为 null */
+    /** 任务创建时间（ISO-8601） */
     private String createdAt;
 
     public TaskConfigResponse() {
@@ -28,20 +21,12 @@ public class TaskConfigResponse {
             String path,
             String id,
             String name,
-            String content,
-            boolean builtin,
-            boolean readOnly) {
+            String content) {
         this.fileName = fileName;
         this.path = path;
         this.id = id;
         this.name = name;
         this.content = content;
-        this.builtin = builtin;
-        this.readOnly = readOnly;
-    }
-
-    public TaskConfigResponse(String fileName, String path, String id, String name, boolean builtin) {
-        this(fileName, path, id, name, null, builtin, builtin);
     }
 
     public String getFileName() {
@@ -82,22 +67,6 @@ public class TaskConfigResponse {
 
     public void setContent(String content) {
         this.content = content;
-    }
-
-    public boolean isBuiltin() {
-        return builtin;
-    }
-
-    public void setBuiltin(boolean builtin) {
-        this.builtin = builtin;
-    }
-
-    public boolean isReadOnly() {
-        return readOnly;
-    }
-
-    public void setReadOnly(boolean readOnly) {
-        this.readOnly = readOnly;
     }
 
     public TaskScheduleResponse getSchedule() {

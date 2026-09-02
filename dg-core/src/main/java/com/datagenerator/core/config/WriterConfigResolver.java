@@ -75,7 +75,9 @@ public final class WriterConfigResolver {
     }
 
     public static void validateTaskConfigWriters(TaskConfig taskConfig) {
-        validateScopeWriters(taskConfig.getWriter(), taskConfig.getWriters(), "task config '" + taskConfig.getId() + "'");
+        String scope = taskConfig.getId() == null ? "task config"
+                : "task config '" + taskConfig.getId() + "'";
+        validateScopeWriters(taskConfig.getWriter(), taskConfig.getWriters(), scope);
         for (TableTask table : taskConfig.getTables()) {
             validateScopeWriters(
                     table.getWriter(),

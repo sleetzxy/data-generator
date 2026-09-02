@@ -34,10 +34,15 @@ class SqliteSchemaInitializerTest {
         SqliteSchemaInitializer.initialize(jdbc);
         SqliteSchemaInitializer.initialize(jdbc);
 
-        List<Map<String, Object>> indexes = jdbc.queryForList(
+        List<Map<String, Object>> runIndexes = jdbc.queryForList(
                 "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='task_runs'");
-        assertThat(indexes).extracting(row -> row.get("name"))
+        assertThat(runIndexes).extracting(row -> row.get("name"))
                 .contains("idx_task_runs_submitted_at", "idx_task_runs_status_submitted_at");
+
+        List<Map<String, Object>> taskIndexes = jdbc.queryForList(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='tasks'");
+        assertThat(taskIndexes).extracting(row -> row.get("name"))
+                .contains("idx_tasks_created_at");
     }
 
     private static boolean columnExists(JdbcTemplate jdbc, String table, String column) {

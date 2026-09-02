@@ -2,7 +2,7 @@ package com.datagenerator.web.service;
 
 import com.datagenerator.core.model.ConfigPathResolver;
 import com.datagenerator.web.dto.TaskConfigValidationResponse;
-import com.datagenerator.web.storage.TaskScheduleRepository;
+import com.datagenerator.web.storage.TaskRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -15,6 +15,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 class TaskConfigServiceValidateYamlTest {
 
     @Mock
+    private TaskRepository taskRepository;
+
+    @Mock
     private TaskScheduleService scheduleService;
 
     @Mock
@@ -23,23 +26,20 @@ class TaskConfigServiceValidateYamlTest {
     @Mock
     private TaskRunQueueExecutor scheduleExecutor;
 
-    @Mock
-    private TaskScheduleRepository scheduleRepository;
-
     private TaskConfigService taskConfigService;
 
     @BeforeEach
     void setUp() {
         taskConfigService = new TaskConfigService(
                 ConfigPathResolver.forClasspath(getClass().getClassLoader()),
+                taskRepository,
                 scheduleService,
                 scheduleManager,
-                scheduleExecutor,
-                scheduleRepository);
+                scheduleExecutor);
     }
 
     @Test
-    void validateYaml_valid_returnsOk() {
+    void validateYaml_withIdAndName_returnsOk() {
         String yaml = """
                 id: validate_test
                 name: 校验测试
@@ -55,6 +55,23 @@ class TaskConfigServiceValidateYamlTest {
                         - name: id
                           type: BIGINT
                           generator: { strategy: sequence, start: 1 }
+                """;
+
+        TaskConfigValidationResponse result = taskConfigService.validateYaml(yaml);
+
+        assertThat(result.valid()).isTrue();
+        assertThat(result.errors()).isEmpty();
+    }
+
+    @Test
+    void validateYaml_withoutIdAndName_returnsOk() {
+        String yaml = """
+                writer:
+                  type: csv
+                  connection: local-csv
+                tables:
+                  - name: t1
+                    count: 10
                 """;
 
         TaskConfigValidationResponse result = taskConfigService.validateYaml(yaml);

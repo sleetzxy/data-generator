@@ -5,12 +5,18 @@ import org.springframework.stereotype.Repository;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 /** 任务主表（tasks）仓储：任务元数据与调度字段的持久化 */
 @Repository
 public class TaskRepository {
+
+    private static final String SELECT_COLUMNS = """
+            SELECT id, file_name, display_name, schedule_enabled, schedule_cron, created_at, updated_at
+            FROM tasks
+            """;
 
     private final JdbcTemplate jdbcTemplate;
 
@@ -76,7 +82,7 @@ public class TaskRepository {
 
     public List<TaskRecord> listPage(int offset, int limit, String nameKeyword) {
         StringBuilder sql = new StringBuilder(SELECT_COLUMNS);
-        List<Object> args = new java.util.ArrayList<>();
+        List<Object> args = new ArrayList<>();
         if (nameKeyword != null && !nameKeyword.isBlank()) {
             sql.append(" WHERE display_name LIKE ?");
             args.add("%" + nameKeyword.trim() + "%");
@@ -89,7 +95,7 @@ public class TaskRepository {
 
     public long count(String nameKeyword) {
         StringBuilder sql = new StringBuilder("SELECT COUNT(*) FROM tasks");
-        List<Object> args = new java.util.ArrayList<>();
+        List<Object> args = new ArrayList<>();
         if (nameKeyword != null && !nameKeyword.isBlank()) {
             sql.append(" WHERE display_name LIKE ?");
             args.add("%" + nameKeyword.trim() + "%");
@@ -100,19 +106,15 @@ public class TaskRepository {
 
     /** 全部启用且配置了 cron 的任务，供启动时注册调度 */
     public List<TaskRecord> findAllEnabledSchedules() {
-        return jdbcTemplate.query(
-                SELECT_COLUMNS + " WHERE schedule_enabled = 1 AND schedule_cron IS NOT NULL ORDER BY file_name",
-                this::mapRow);
+        String sql = SELECT_COLUMNS
+                + " WHERE schedule_enabled = 1 AND schedule_cron IS NOT NULL"
+                + " ORDER BY file_name";
+        return jdbcTemplate.query(sql, this::mapRow);
     }
 
     public void deleteByFileName(String fileName) {
         jdbcTemplate.update("DELETE FROM tasks WHERE file_name = ?", fileName);
     }
-
-    private static final String SELECT_COLUMNS = """
-            SELECT id, file_name, display_name, schedule_enabled, schedule_cron, created_at, updated_at
-            FROM tasks
-            """;
 
     private TaskRecord mapRow(ResultSet rs, int rowNum) throws SQLException {
         return new TaskRecord(

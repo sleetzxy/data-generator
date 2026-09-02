@@ -33,6 +33,33 @@ class TaskRepositoryTest {
     }
 
     @Test
+    void findById_returnsTask() {
+        repository.insert(new TaskRepository.TaskRecord(
+                "taskabc123", "taskabc123", "演示任务", false, null,
+                "2026-09-02T10:00:00Z", null));
+
+        var found = repository.findById("taskabc123");
+
+        assertThat(found).isPresent();
+        assertThat(found.get().fileName()).isEqualTo("taskabc123");
+        assertThat(found.get().displayName()).isEqualTo("演示任务");
+    }
+
+    @Test
+    void update_updatesDisplayNameAndTimestamp() {
+        repository.insert(new TaskRepository.TaskRecord(
+                "taskabc123", "taskabc123", "演示任务", false, null,
+                "2026-09-02T10:00:00Z", null));
+
+        repository.update("taskabc123", "改名任务", "2026-09-02T11:00:00Z");
+
+        var found = repository.findByFileName("taskabc123").orElseThrow();
+        assertThat(found.displayName()).isEqualTo("改名任务");
+        assertThat(found.updatedAt()).isEqualTo("2026-09-02T11:00:00Z");
+        assertThat(found.createdAt()).isEqualTo("2026-09-02T10:00:00Z");
+    }
+
+    @Test
     void updateSchedule_updatesScheduleFieldsOnly() {
         repository.insert(new TaskRepository.TaskRecord(
                 "taskabc123", "taskabc123", "演示任务", false, null,

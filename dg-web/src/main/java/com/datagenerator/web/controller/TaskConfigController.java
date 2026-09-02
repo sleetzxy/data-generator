@@ -5,6 +5,7 @@ import com.datagenerator.web.dto.TaskConfigRequest;
 import com.datagenerator.web.dto.TaskConfigResponse;
 import com.datagenerator.web.dto.TaskScheduleRequest;
 import com.datagenerator.web.dto.TaskScheduleResponse;
+import com.datagenerator.web.service.TaskConfigPaths;
 import com.datagenerator.web.service.TaskConfigService;
 import com.datagenerator.web.service.TaskScheduleManager;
 import com.datagenerator.web.service.TaskScheduleService;
@@ -75,16 +76,14 @@ public class TaskConfigController {
 
     @GetMapping("/{name}/schedule")
     public TaskScheduleResponse getSchedule(@PathVariable("name") String name) {
-        TaskConfigResponse definition = taskConfigService.get(name);
-        return taskScheduleService.resolveSchedule(definition.getPath(), definition.isBuiltin());
+        return taskScheduleService.resolveSchedule(TaskConfigPaths.toConfigPath(name));
     }
 
     @PutMapping("/{name}/schedule")
     public TaskScheduleResponse updateSchedule(
             @PathVariable("name") String name,
             @RequestBody TaskScheduleRequest request) {
-        TaskConfigResponse definition = taskConfigService.get(name);
-        String configPath = definition.getPath();
+        String configPath = TaskConfigPaths.toConfigPath(name);
         TaskScheduleResponse saved = taskScheduleService.saveSchedule(configPath, request);
         scheduleManager.reschedule(configPath);
         return saved;

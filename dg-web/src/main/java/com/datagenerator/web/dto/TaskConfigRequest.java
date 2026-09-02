@@ -2,19 +2,19 @@ package com.datagenerator.web.dto;
 
 public class TaskConfigRequest {
 
-    /** 配置文件名（ASCII，新建时可选；未指定时使用自动生成的 job id）。 */
-    private String name;
-    /** 任务显示名称，写入 YAML 的 name 字段。 */
+    /** 配置文件名（ASCII，新建时可选；未指定时使用自动生成的 task id）。 */
+    private String fileName;
+    /** 任务显示名称，存主表 display_name。 */
     private String displayName;
     private String content;
     private TaskScheduleRequest schedule;
 
-    public String getName() {
-        return name;
+    public String getFileName() {
+        return fileName;
     }
 
-    public void setName(String name) {
-        this.name = name;
+    public void setFileName(String fileName) {
+        this.fileName = fileName;
     }
 
     public String getDisplayName() {

@@ -3,10 +3,10 @@ package com.datagenerator.web.service;
 import com.datagenerator.web.dto.TaskConfigListResponse;
 import com.datagenerator.web.dto.TaskConfigRequest;
 import com.datagenerator.web.dto.TaskConfigResponse;
-import com.datagenerator.web.dto.TaskConfigSkipInfo;
 import com.datagenerator.web.dto.TaskScheduleRequest;
 import com.datagenerator.web.dto.TaskConfigValidationResponse;
-import com.datagenerator.web.storage.TaskScheduleRepository;
+import com.datagenerator.web.exception.TaskConfigNotFoundException;
+import com.datagenerator.web.storage.TaskRepository;
 import com.datagenerator.core.model.ConfigLoadException;
 import com.datagenerator.core.model.ConfigPathResolver;
 import com.datagenerator.core.model.TaskConfig;
@@ -18,50 +18,45 @@ import org.springframework.stereotype.Service;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 
 @Service
 public class TaskConfigService {
 
     private static final Logger log = LoggerFactory.getLogger(TaskConfigService.class);
-    private static final String TASK_CONFIGS_DIR = "task-configs";
     private static final int MAX_LIST_SIZE = 200;
 
     private final ConfigPathResolver pathResolver;
     private final YamlConfigLoader configLoader;
+    private final TaskRepository taskRepository;
     private final TaskScheduleService scheduleService;
     private final TaskScheduleManager scheduleManager;
     private final TaskRunQueueExecutor scheduleExecutor;
-    private final TaskScheduleRepository scheduleRepository;
 
     public TaskConfigService(
             ConfigPathResolver pathResolver,
+            TaskRepository taskRepository,
             TaskScheduleService scheduleService,
             @Lazy TaskScheduleManager scheduleManager,
-            TaskRunQueueExecutor scheduleExecutor,
-            TaskScheduleRepository scheduleRepository) {
+            TaskRunQueueExecutor scheduleExecutor) {
         this.pathResolver = pathResolver;
         this.configLoader = new YamlConfigLoader(pathResolver);
+        this.taskRepository = taskRepository;
         this.scheduleService = scheduleService;
         this.scheduleManager = scheduleManager;
         this.scheduleExecutor = scheduleExecutor;
-        this.scheduleRepository = scheduleRepository;
     }
 
     public TaskConfigValidationResponse validateYaml(String yaml) {
         try {
-            configLoader.loadTaskConfigFromContent(yaml);
+            configLoader.loadTaskConfigFromContent(stripMetaFields(yaml));
             return TaskConfigValidationResponse.ok();
         } catch (ConfigLoadException exception) {
             return TaskConfigValidationResponse.fail(List.of(exception.getMessage()));
@@ -76,204 +71,140 @@ public class TaskConfigService {
         return list(nameKeyword, null, null);
     }
 
-    /** 分页查询任务配置列表；page/size 任一为空时返回全量（兼容无分页调用方） */
+    /**
+     * 分页查询任务列表；page/size 任一为空时返回全量
+     * （兼容无分页调用方）
+     */
     public TaskConfigListResponse list(String nameKeyword, Integer page, Integer size) {
-        List<TaskConfigResponse> results = new ArrayList<>();
-        List<TaskConfigSkipInfo> skipped = new ArrayList<>();
-        for (String relativePath : listIncludedTaskRelativePaths()) {
-            String fileName = toDefinitionName(relativePath);
-            String configPath = toConfigPath(relativePath);
-            try {
-                TaskConfig taskConfig = configLoader.loadTaskConfig(configPath);
-                results.add(toResponse(fileName, configPath, taskConfig, null, isBuiltin(configPath)));
-            } catch (RuntimeException exception) {
-                log.warn("跳过无法加载的任务配置 {}: {}", configPath, exception.getMessage());
-                skipped.add(new TaskConfigSkipInfo(configPath, exception.getMessage()));
-            }
-        }
-        results.sort(this::compareForList);
-        List<TaskConfigResponse> filtered = results;
-        if (nameKeyword != null && !nameKeyword.isBlank()) {
-            String keyword = nameKeyword.trim().toLowerCase();
-            filtered = results.stream()
-                    .filter(item -> matchesNameKeyword(item, keyword))
-                    .toList();
-        }
         if (page == null || size == null) {
-            return new TaskConfigListResponse(filtered, skipped, filtered.size(), 1, filtered.size());
+            List<TaskConfigResponse> all = taskRepository
+                    .listPage(0, MAX_LIST_SIZE, nameKeyword)
+                    .stream()
+                    .map(this::toResponse)
+                    .toList();
+            return new TaskConfigListResponse(all, all.size(), 1, all.size());
         }
         int safePage = Math.max(page, 1);
         int safeSize = Math.min(Math.max(size, 1), MAX_LIST_SIZE);
-        int offset = (safePage - 1) * safeSize;
-        List<TaskConfigResponse> items = offset >= filtered.size()
-                ? List.of()
-                : filtered.subList(offset, Math.min(filtered.size(), offset + safeSize));
-        return new TaskConfigListResponse(items, skipped, filtered.size(), safePage, safeSize);
-    }
-
-    private boolean matchesNameKeyword(TaskConfigResponse item, String keyword) {
-        String displayName = item.getName();
-        return displayName != null && displayName.toLowerCase().contains(keyword);
-    }
-
-    private int compareForList(TaskConfigResponse left, TaskConfigResponse right) {
-        if (left.isBuiltin() != right.isBuiltin()) {
-            return left.isBuiltin() ? -1 : 1;
-        }
-        if (left.isBuiltin()) {
-            return left.getFileName().compareToIgnoreCase(right.getFileName());
-        }
-        Instant leftCreated = parseCreatedAt(left.getCreatedAt());
-        Instant rightCreated = parseCreatedAt(right.getCreatedAt());
-        int byTime = rightCreated.compareTo(leftCreated);
-        if (byTime != 0) {
-            return byTime;
-        }
-        return right.getFileName().compareToIgnoreCase(left.getFileName());
-    }
-
-    private Instant parseCreatedAt(String createdAt) {
-        if (createdAt == null || createdAt.isBlank()) {
-            return Instant.EPOCH;
-        }
-        return Instant.parse(createdAt);
+        long total = taskRepository.count(nameKeyword);
+        List<TaskConfigResponse> items = taskRepository
+                .listPage((safePage - 1) * safeSize, safeSize, nameKeyword)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+        return new TaskConfigListResponse(items, total, safePage, safeSize);
     }
 
     public TaskConfigResponse get(String name) {
-        String configPath = toConfigPath(name);
-        String content = stripNameFromContent(readContent(configPath));
-        TaskConfig taskConfig = configLoader.loadTaskConfig(configPath);
-        return toResponse(name, configPath, taskConfig, content, isBuiltin(configPath));
+        TaskRepository.TaskRecord task = taskRepository.findByFileName(name)
+                .orElseThrow(() -> new TaskConfigNotFoundException(
+                        "Task config not found: " + name));
+        String configPath = TaskConfigPaths.toConfigPath(name);
+        String content = readContent(configPath);
+        configLoader.loadTaskConfigFromContent(content);
+        return toResponse(task, content);
     }
 
     public TaskConfigResponse create(TaskConfigRequest request) {
         String displayName = requireDisplayName(request.getDisplayName());
         TaskScheduleRequest normalizedSchedule = normalizeScheduleIfPresent(request.getSchedule());
-        String contentWithId = assignGeneratedId(request.getContent());
-        String generatedId = requireId(parseRootMapping(contentWithId));
-        String fileName = resolveCreateFileName(request, generatedId);
-        String configPath = toConfigPath(fileName);
-        if (exists(configPath)) {
+        String content = stripMetaFields(requireContent(request.getContent()));
+        validateContent(content);
+        String taskId = generateUniqueTaskId();
+        String fileName = resolveCreateFileName(request, taskId);
+        String configPath = TaskConfigPaths.toConfigPath(fileName);
+        if (taskRepository.existsByFileName(fileName)) {
             throw new IllegalArgumentException("Task config already exists: " + fileName);
         }
-        String content = injectDisplayName(contentWithId, displayName);
-        validateContent(content, null);
+        String now = Instant.now().toString();
         writeContent(configPath, content);
-        scheduleRepository.ensureCreatedAt(configPath, Instant.now().toString());
         try {
+            taskRepository.insert(new TaskRepository.TaskRecord(
+                    taskId, fileName, displayName, false, null, now, null));
             applySchedule(configPath, normalizedSchedule);
-            TaskConfig taskConfig = configLoader.loadTaskConfig(configPath);
-            return toResponse(fileName, configPath, taskConfig, stripNameFromContent(content), false);
+            return toResponse(taskRepository.findByFileName(fileName).orElseThrow(),
+                    content);
         } catch (RuntimeException exception) {
-            rollbackOverlayDefinition(configPath);
+            rollbackDefinition(configPath);
             throw exception;
         }
     }
 
     public TaskConfigResponse update(String name, TaskConfigRequest request) {
-        String configPath = toConfigPath(name);
-        if (!exists(configPath)) {
-            throw new ConfigLoadException("Task config not found: " + name);
-        }
-        if (isBuiltin(configPath)) {
-            throw new IllegalArgumentException("Built-in task config cannot be modified: " + name);
-        }
+        taskRepository.findByFileName(name)
+                .orElseThrow(() -> new TaskConfigNotFoundException(
+                        "Task config not found: " + name));
         String displayName = requireDisplayName(request.getDisplayName());
         TaskScheduleRequest normalizedSchedule = normalizeScheduleIfPresent(request.getSchedule());
-        String content = injectDisplayName(request.getContent(), displayName);
-        validateContent(content, configPath);
+        String content = stripMetaFields(requireContent(request.getContent()));
+        validateContent(content);
+        String configPath = TaskConfigPaths.toConfigPath(name);
         writeContent(configPath, content);
+        taskRepository.update(name, displayName, Instant.now().toString());
         applySchedule(configPath, normalizedSchedule);
-        TaskConfig taskConfig = configLoader.loadTaskConfig(configPath);
-        return toResponse(name, configPath, taskConfig, stripNameFromContent(content), false);
+        return toResponse(taskRepository.findByFileName(name).orElseThrow(), content);
     }
 
+    /** 以表行为准：表行存在即可删除，文件缺失不阻塞 */
     public void delete(String name) {
-        String configPath = toConfigPath(name);
-        if (isBuiltin(configPath)) {
-            throw new IllegalArgumentException("Built-in task config cannot be deleted: " + name);
-        }
-        Path overlayFile = pathResolver.resolveOverlay(configPath);
-        if (overlayFile == null || !Files.isRegularFile(overlayFile)) {
-            throw new IllegalArgumentException("Task config not found: " + name);
-        }
+        taskRepository.findByFileName(name)
+                .orElseThrow(() -> new TaskConfigNotFoundException(
+                        "Task config not found: " + name));
+        String configPath = TaskConfigPaths.toConfigPath(name);
         scheduleManager.cancel(configPath);
         scheduleExecutor.clearQueue(configPath);
-        scheduleRepository.deleteByConfigPath(configPath);
-        try {
-            Files.delete(overlayFile);
-        } catch (IOException exception) {
-            throw new ConfigLoadException("Failed to delete task config: " + name, exception);
+        taskRepository.deleteByFileName(name);
+        Path overlayFile = pathResolver.resolveOverlay(configPath);
+        if (overlayFile != null) {
+            try {
+                Files.deleteIfExists(overlayFile);
+            } catch (IOException exception) {
+                log.warn("删除任务配置文件失败 {}: {}",
+                        overlayFile, exception.getMessage());
+            }
         }
     }
 
-    private TaskConfigResponse toResponse(
-            String fileName,
-            String configPath,
-            TaskConfig taskConfig,
-            String content,
-            boolean builtin) {
-        String id = taskConfig.getId();
-        if (id == null || id.isBlank()) {
-            throw new ConfigLoadException("Task config missing id: " + configPath);
-        }
-        String displayName = taskConfig.getName();
-        if (displayName == null || displayName.isBlank()) {
-            displayName = fileName;
-        }
-        TaskConfigResponse response =
-                new TaskConfigResponse(fileName, configPath, id, displayName, content, builtin, builtin);
-        response.setSchedule(scheduleService.resolveSchedule(configPath, builtin));
-        response.setCreatedAt(resolveCreatedAt(configPath, builtin));
+    private TaskConfigResponse toResponse(TaskRepository.TaskRecord task) {
+        return toResponse(task, null);
+    }
+
+    private TaskConfigResponse toResponse(TaskRepository.TaskRecord task, String content) {
+        TaskConfigResponse response = new TaskConfigResponse(
+                task.fileName(),
+                TaskConfigPaths.toConfigPath(task.fileName()),
+                task.id(),
+                task.displayName(),
+                content);
+        String configPath = TaskConfigPaths.toConfigPath(task.fileName());
+        response.setSchedule(scheduleService.resolveSchedule(configPath));
+        response.setCreatedAt(task.createdAt());
         return response;
     }
 
-    private String resolveCreatedAt(String configPath, boolean builtin) {
-        if (builtin) {
-            return null;
+    private void validateContent(String content) {
+        Map<?, ?> root = parseRootMapping(content);
+        if (root.containsKey("schedule")) {
+            throw new IllegalArgumentException(
+                    "任务 YAML 不允许包含 schedule 块，"
+                            + "调度请通过 schedule 接口或请求字段配置");
         }
-        Optional<String> stored = scheduleRepository.findCreatedAt(configPath);
-        if (stored.isPresent()) {
-            return stored.get();
-        }
-        Path overlayFile = pathResolver.resolveOverlay(configPath);
-        if (overlayFile == null || !Files.isRegularFile(overlayFile)) {
-            return null;
-        }
-        Instant created = readFileCreationTime(overlayFile);
-        if (created == null) {
-            return null;
-        }
-        String createdAt = created.toString();
-        scheduleRepository.ensureCreatedAt(configPath, createdAt);
-        return createdAt;
+        configLoader.loadTaskConfigFromContent(content);
     }
 
-    private Instant readFileCreationTime(Path file) {
-        try {
-            BasicFileAttributes attributes = Files.readAttributes(file, BasicFileAttributes.class);
-            Instant created = attributes.creationTime().toInstant();
-            if (created.equals(Instant.EPOCH)) {
-                return null;
-            }
-            return created;
-        } catch (IOException exception) {
-            return null;
-        }
-    }
-
-    private void validateContent(String content, String excludeConfigPath) {
+    private String requireContent(String content) {
         if (content == null || content.isBlank()) {
             throw new IllegalArgumentException("Task config content is required");
         }
-        Map<?, ?> root = parseRootMapping(content);
-        boolean custom = excludeConfigPath == null || !isBuiltin(excludeConfigPath);
-        if (custom && root.containsKey("schedule")) {
-            throw new IllegalArgumentException("Custom task config YAML must not contain schedule block");
-        }
-        String id = requireId(root);
-        validateIdFormat(id);
-        validateIdUnique(id, excludeConfigPath);
+        return content;
+    }
+
+    /** 剥离 YAML 中的 id/name 元数据字段（元数据以主表为准） */
+    private String stripMetaFields(String content) {
+        Map<String, Object> root = toMutableRoot(parseRootMapping(content));
+        root.remove("id");
+        root.remove("name");
+        return new Yaml().dump(root);
     }
 
     private Map<?, ?> parseRootMapping(String content) {
@@ -282,6 +213,14 @@ public class TaskConfigService {
             throw new IllegalArgumentException("Task config YAML must be a mapping");
         }
         return root;
+    }
+
+    private Map<String, Object> toMutableRoot(Map<?, ?> root) {
+        Map<String, Object> mutable = new LinkedHashMap<>();
+        for (Map.Entry<?, ?> entry : root.entrySet()) {
+            mutable.put(String.valueOf(entry.getKey()), entry.getValue());
+        }
+        return mutable;
     }
 
     private TaskScheduleRequest normalizeScheduleIfPresent(TaskScheduleRequest schedule) {
@@ -299,37 +238,33 @@ public class TaskConfigService {
         scheduleManager.reschedule(configPath);
     }
 
-    private void rollbackOverlayDefinition(String configPath) {
+    private void rollbackDefinition(String configPath) {
         Path overlayFile = pathResolver.resolveOverlay(configPath);
-        if (overlayFile == null || !Files.isRegularFile(overlayFile)) {
+        if (overlayFile == null) {
             return;
         }
         try {
-            Files.delete(overlayFile);
+            Files.deleteIfExists(overlayFile);
         } catch (IOException exception) {
-            throw new ConfigLoadException("Failed to rollback task config: " + configPath, exception);
+            log.warn("回滚任务配置文件失败 {}: {}", overlayFile, exception.getMessage());
         }
-        scheduleRepository.deleteByConfigPath(configPath);
-        scheduleManager.cancel(configPath);
     }
 
-    private String assignGeneratedId(String content) {
-        Map<String, Object> root = toMutableRoot(parseRootMapping(content));
-        root.remove("name");
-        root.put("id", generateUniqueTaskId());
-        return new Yaml().dump(root);
+    private String resolveCreateFileName(TaskConfigRequest request, String taskId) {
+        if (request.getFileName() != null && !request.getFileName().isBlank()) {
+            String explicitName = request.getFileName().trim();
+            validateAsciiFileName(explicitName);
+            return explicitName;
+        }
+        return taskId;
     }
 
-    private String injectDisplayName(String content, String displayName) {
-        Map<String, Object> root = toMutableRoot(parseRootMapping(content));
-        root.put("name", displayName.trim());
-        return new Yaml().dump(root);
-    }
-
-    private String stripNameFromContent(String content) {
-        Map<String, Object> root = toMutableRoot(parseRootMapping(content));
-        root.remove("name");
-        return new Yaml().dump(root);
+    private void validateAsciiFileName(String fileName) {
+        if (!fileName.matches("[a-zA-Z][a-zA-Z0-9_-]*")) {
+            throw new IllegalArgumentException(
+                    "Task config file name must use ASCII letters, digits, underscore, hyphen: "
+                            + fileName);
+        }
     }
 
     private String requireDisplayName(String displayName) {
@@ -339,119 +274,24 @@ public class TaskConfigService {
         return displayName.trim();
     }
 
-    private String resolveCreateFileName(TaskConfigRequest request, String generatedId) {
-        if (request.getName() != null && !request.getName().isBlank()) {
-            String explicitName = request.getName().trim();
-            validateName(explicitName);
-            validateAsciiFileName(explicitName);
-            return explicitName;
-        }
-        return generatedId;
-    }
-
-    private void validateAsciiFileName(String name) {
-        if (!name.matches("[a-zA-Z][a-zA-Z0-9_-]*")) {
-            throw new IllegalArgumentException(
-                    "Task config file name must use ASCII letters, digits, underscore, hyphen: " + name);
-        }
-    }
-
-    private Map<String, Object> toMutableRoot(Map<?, ?> root) {
-        Map<String, Object> mutable = new LinkedHashMap<>();
-        for (Map.Entry<?, ?> entry : root.entrySet()) {
-            mutable.put(String.valueOf(entry.getKey()), entry.getValue());
-        }
-        return mutable;
-    }
-
     private String generateUniqueTaskId() {
         for (int attempt = 0; attempt < 100; attempt++) {
             String suffix = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
             String id = "task" + suffix;
-            if (validateIdFormatQuiet(id) && !idExists(id)) {
+            if (taskRepository.findById(id).isEmpty() && !taskRepository.existsByFileName(id)) {
                 return id;
             }
         }
         throw new IllegalStateException("Failed to generate unique task config id");
     }
 
-    private boolean validateIdFormatQuiet(String id) {
-        return id.matches("[a-zA-Z][a-zA-Z0-9_-]*");
-    }
-
-    private boolean idExists(String id) {
-        for (String relativePath : listIncludedTaskRelativePaths()) {
-            TaskConfig existing = configLoader.loadTaskConfig(toConfigPath(relativePath));
-            if (id.equals(existing.getId())) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private String requireId(Map<?, ?> root) {
-        Object idValue = root.get("id");
-        if (idValue == null || String.valueOf(idValue).isBlank()) {
-            throw new IllegalArgumentException("Task config YAML id field is required");
-        }
-        return String.valueOf(idValue).trim();
-    }
-
-    private void validateIdFormat(String id) {
-        if (!id.matches("[a-zA-Z][a-zA-Z0-9_-]*")) {
-            throw new IllegalArgumentException(
-                    "Invalid task config id: " + id + " (use letters, digits, underscore, hyphen; start with letter)");
-        }
-    }
-
-    private void validateIdUnique(String id, String excludeConfigPath) {
-        for (String relativePath : listIncludedTaskRelativePaths()) {
-            String configPath = toConfigPath(relativePath);
-            if (configPath.equals(excludeConfigPath)) {
-                continue;
-            }
-            TaskConfig existing = configLoader.loadTaskConfig(configPath);
-            if (id.equals(existing.getId())) {
-                throw new IllegalArgumentException("Task config id already exists: " + id);
-            }
-        }
-    }
-
-    private boolean exists(String configPath) {
-        if (pathResolver.existsOnOverlay(configPath)) {
-            return true;
-        }
-        try (InputStream inputStream = pathResolver.open(configPath)) {
-            return inputStream.read() >= 0;
-        } catch (ConfigLoadException exception) {
-            return false;
-        } catch (IOException exception) {
-            throw new ConfigLoadException("Failed to check task config: " + configPath, exception);
-        }
-    }
-
-    private boolean isBuiltin(String configPath) {
-        return pathResolver.existsOnClasspath(configPath);
-    }
-
-    private List<String> listIncludedTaskRelativePaths() {
-        List<String> included = new ArrayList<>();
-        for (String relativePath : pathResolver.listYamlRelativePaths(TASK_CONFIGS_DIR)) {
-            if (isListedTaskPath(relativePath, toConfigPath(relativePath))) {
-                included.add(relativePath);
-            }
-        }
-        return included;
-    }
-
-    /** 内置任务仅扫描 task-configs 目录直属 YAML，忽略子目录。 */
-    private boolean isListedTaskPath(String relativePath, String configPath) {
-        return !relativePath.contains("/") || !isBuiltin(configPath);
-    }
-
     private String readContent(String configPath) {
-        try (InputStream inputStream = pathResolver.open(configPath)) {
-            return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+        Path overlayFile = requireOverlayFile(configPath);
+        if (!Files.isRegularFile(overlayFile)) {
+            throw new TaskConfigNotFoundException("Task config file missing: " + configPath);
+        }
+        try {
+            return Files.readString(overlayFile, StandardCharsets.UTF_8);
         } catch (IOException exception) {
             throw new ConfigLoadException("Failed to read task config: " + configPath, exception);
         }
@@ -473,41 +313,5 @@ public class TaskConfigService {
             throw new IllegalStateException("Writable config directory is not configured");
         }
         return overlayRoot.resolve(configPath).normalize();
-    }
-
-    private void validateName(String name) {
-        if (name == null || name.isBlank()) {
-            throw new IllegalArgumentException("Task config name is required");
-        }
-        if (name.contains("..") || name.startsWith("/") || name.startsWith("\\")) {
-            throw new IllegalArgumentException("Invalid task config name: " + name);
-        }
-    }
-
-    private String toConfigPath(String name) {
-        String normalized = name.trim().replace('\\', '/');
-        while (normalized.startsWith("/")) {
-            normalized = normalized.substring(1);
-        }
-        if (normalized.startsWith(TASK_CONFIGS_DIR + "/")) {
-            normalized = normalized.substring(TASK_CONFIGS_DIR.length() + 1);
-        }
-        if (normalized.endsWith(".yaml") || normalized.endsWith(".yml")) {
-            return TASK_CONFIGS_DIR + "/" + normalized;
-        }
-        return TASK_CONFIGS_DIR + "/" + normalized + ".yaml";
-    }
-
-    private String toDefinitionName(String relativePath) {
-        return toBasename(relativePath);
-    }
-
-    private String toBasename(String relativePath) {
-        String filename = relativePath;
-        int slash = relativePath.lastIndexOf('/');
-        if (slash >= 0) {
-            filename = relativePath.substring(slash + 1);
-        }
-        return filename.replaceFirst("\\.ya?ml$", "");
     }
 }

@@ -4,16 +4,14 @@ public class TaskScheduleResponse {
 
     private boolean enabled;
     private String cron;
-    private boolean editable;
     private String nextRunAt;
 
     public TaskScheduleResponse() {
     }
 
-    public TaskScheduleResponse(boolean enabled, String cron, boolean editable, String nextRunAt) {
+    public TaskScheduleResponse(boolean enabled, String cron, String nextRunAt) {
         this.enabled = enabled;
         this.cron = cron;
-        this.editable = editable;
         this.nextRunAt = nextRunAt;
     }
 
@@ -31,14 +29,6 @@ public class TaskScheduleResponse {
 
     public void setCron(String cron) {
         this.cron = cron;
-    }
-
-    public boolean isEditable() {
-        return editable;
-    }
-
-    public void setEditable(boolean editable) {
-        this.editable = editable;
     }
 
     public String getNextRunAt() {
