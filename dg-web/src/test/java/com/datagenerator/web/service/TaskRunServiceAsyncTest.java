@@ -37,7 +37,8 @@ class TaskRunServiceAsyncTest {
 
         TaskRunSubmitResult result = taskRunService.submit(request);
         assertThat(result.async()).isTrue();
-        assertThat(result.response().getStatus()).isEqualTo(TaskRunStatus.PENDING);
+        // 异步线程可能已抢先翻 RUNNING，两者均为合法返回态
+        assertThat(result.response().getStatus()).isIn(TaskRunStatus.PENDING, TaskRunStatus.RUNNING);
 
         awaitCompletion(() -> taskRunService.getById(result.response().getRunId()).getStatus() == TaskRunStatus.COMPLETED);
         assertThat(taskRunService.getById(result.response().getRunId()).getStatus()).isEqualTo(TaskRunStatus.COMPLETED);
