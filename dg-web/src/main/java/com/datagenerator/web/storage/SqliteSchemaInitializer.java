@@ -51,6 +51,8 @@ public final class SqliteSchemaInitializer {
                 CREATE INDEX IF NOT EXISTS idx_tasks_created_at
                 ON tasks(created_at)
                 """);
+        // 旧调度表随内置任务概念一并废弃，启动时清理（无迁移，按规格丢弃旧数据）
+        jdbcTemplate.execute("DROP TABLE IF EXISTS task_schedules");
         ensureColumn(jdbcTemplate, "task_runs", "trigger_source", "TEXT");
     }
 
