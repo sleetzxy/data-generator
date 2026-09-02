@@ -77,7 +77,7 @@ flowchart TB
         svc["TaskRunService · TaskRunLogRepository"]
         sqlite[("SQLite<br/>dg-tasks.db")]
         logfiles["运行日志<br/>./data/task-run-logs"]
-        yaml["YAML 配置<br/>classpath:configs · writable-config-dir"]
+        yaml["YAML 配置<br/>writable-config-dir"]
     end
 
     subgraph dg-core
@@ -270,10 +270,10 @@ data-generator:
 
 ## 配置目录
 
-YAML 业务配置默认从 `data-generator.config-dir` 加载（默认 `classpath:configs`）。可将 `config-dir` 设为外部绝对路径（如 `/data/configs`）。任务由 Web 控制台创建，配置写入 `writable-config-dir`：
+所有 YAML 业务配置（任务文件、schemas、references、constraints）统一从 `data-generator.writable-config-dir` 加载（默认 `./data/configs`，可设为外部绝对路径）。任务由 Web 控制台创建，配置写入同一目录：
 
 ```
-configs/                    # 或你指定的 config-dir 根目录
+configs/                    # writable-config-dir 根目录（默认 ./data/configs）
 ├── schemas/                # 可复用的表/数据集 Schema
 ├── references/             # 参考数据（维表）读取配置
 ├── constraints/            # 可复用约束规则集
@@ -286,8 +286,7 @@ configs/                    # 或你指定的 config-dir 根目录
 
 ```yaml
 data-generator:
-  config-dir: classpath:configs
-  writable-config-dir: ./data/configs   # Web 控制台新建/编辑任务配置的写入目录
+  writable-config-dir: ./data/configs   # 所有 YAML 业务配置的读写目录（任务、schemas、references、constraints）
   auth:
     enabled: true                       # false 时关闭登录（仅建议本地调试）
     username: admin

@@ -31,11 +31,9 @@ public class DataGeneratorAutoConfiguration {
 
     @Bean
     ConfigPathResolver configPathResolver(DataGeneratorProperties properties) {
+        // 配置统一由 writable-config-dir 提供：主目录与可写层指向同一目录
         Path writableOverlay = Path.of(properties.getWritableConfigDir()).toAbsolutePath().normalize();
-        return ConfigPathResolver.fromSetting(
-                properties.getConfigDir(),
-                DataGeneratorAutoConfiguration.class.getClassLoader(),
-                writableOverlay);
+        return ConfigPathResolver.forConfigDir(writableOverlay).withWritableOverlay(writableOverlay);
     }
 
     @Bean

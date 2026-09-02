@@ -1,3 +1,5 @@
 data-generator:
   auth:
     enabled: false
+  # 端到端测试需真实配置文件：指向测试资源中的 configs（原依赖 classpath:configs 默认值，config-dir 移除后显式指定）
+  writable-config-dir: ${user.dir}/src/test/resources/configs

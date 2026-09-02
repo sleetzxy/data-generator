@@ -8,7 +8,6 @@ import java.util.Map;
 @ConfigurationProperties(prefix = "data-generator")
 public class DataGeneratorProperties {
 
-    private String configDir = "classpath:configs";
     private String writableConfigDir = "./data/configs";
     private Map<String, Map<String, Object>> connections = new HashMap<>();
     private TaskRunProperties taskRun = new TaskRunProperties();
@@ -16,14 +15,6 @@ public class DataGeneratorProperties {
     private AuthProperties auth = new AuthProperties();
     private AiProperties ai = new AiProperties();
     private ServiceAuthProperties serviceAuth = new ServiceAuthProperties();
-
-    public String getConfigDir() {
-        return configDir;
-    }
-
-    public void setConfigDir(String configDir) {
-        this.configDir = configDir;
-    }
 
     public String getWritableConfigDir() {
         return writableConfigDir;

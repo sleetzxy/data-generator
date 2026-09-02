@@ -6,7 +6,6 @@ spring:
     import: optional:classpath:application-local.yml
 
 data-generator:
-  config-dir: classpath:configs
   writable-config-dir: ./data/configs
   auth:
     enabled: true

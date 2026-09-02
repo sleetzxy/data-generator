@@ -41,7 +41,7 @@
 |---|---|
 | 语言 / 框架 | Java 21、Spring Boot 3.3、Spring Security |
 | 构建 | Maven 多模块 |
-| 配置 | YAML（`config-dir` / `writable-config-dir`，Job 由部署方自行维护） |
+| 配置 | YAML（`writable-config-dir`，任务由 Web 控制台创建维护） |
 | 数据源 | PostgreSQL、ClickHouse、CSV（插件化） |
 | 任务存储 | SQLite（`./data/dg-tasks.db`，任务记录）+ 文件（`./data/task-run-logs/`，运行日志） |
 
