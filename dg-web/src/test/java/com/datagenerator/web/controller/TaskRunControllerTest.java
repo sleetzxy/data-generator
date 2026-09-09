@@ -1,6 +1,5 @@
 package com.datagenerator.web.controller;
 
-import com.datagenerator.web.controller.TaskRunController;
 import com.datagenerator.web.dto.TaskRunIndexResponse;
 import com.datagenerator.web.dto.TaskRunResponse;
 import com.datagenerator.web.dto.TaskRunStatsResponse;
@@ -20,12 +19,16 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -116,5 +119,19 @@ class TaskRunControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.latestRuns").isArray())
                 .andExpect(jsonPath("$.activeRuns").isArray());
+    }
+
+    @Test
+    void downloadLogs_existingFile_returnsAttachment(@org.junit.jupiter.api.io.TempDir Path tempDir)
+            throws Exception {
+        Path logFile = tempDir.resolve("job-dl-1.log");
+        Files.writeString(logFile, "line-1\nline-2\n");
+        when(taskRunService.resolveLogFileForDownload("job-dl-1")).thenReturn(logFile);
+
+        mockMvc.perform(get("/api/v1/task-runs/job-dl-1/logs/download"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", "attachment; filename=\"job-dl-1.log\""))
+                .andExpect(content().contentTypeCompatibleWith(MediaType.TEXT_PLAIN))
+                .andExpect(content().string("line-1\nline-2\n"));
     }
 }

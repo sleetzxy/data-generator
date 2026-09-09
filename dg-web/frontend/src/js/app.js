@@ -18,7 +18,7 @@ import { initAgent } from './views/agent.js';
 const VIEW_TITLES = {
     overview: '运行概览',
     tasks: '任务管理',
-    logs: '运行日志',
+    logs: '运行记录',
     docs: '配置指南'
 };
 
@@ -56,7 +56,7 @@ function switchView(view) {
     if (view === 'overview') {
         loadOverview().catch(err => showToast('概览加载失败: ' + err.message));
     } else if (view === 'logs') {
-        loadLogsView().catch(err => showToast('运行日志加载失败: ' + err.message));
+        loadLogsView().catch(err => showToast('运行记录加载失败: ' + err.message));
     } else if (view === 'docs') {
         loadDocsView().catch(err => showToast('配置指南加载失败: ' + err.message));
     }

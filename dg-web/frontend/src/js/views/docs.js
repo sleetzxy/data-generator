@@ -1,5 +1,6 @@
 /** 配置指南视图：加载 Markdown 指南、构建目录并绑定滚动定位。 */
 
+import { fetchAuth } from '../core/api.js';
 import { escapeHtml } from '../core/ui.js';
 import { buildMarkdownToc, renderMarkdown } from '../lib/markdown.js';
 
@@ -11,7 +12,10 @@ export async function loadGuide() {
     const toc = document.getElementById('docs-toc');
 
     try {
-        const response = await fetch(DOCS_PATH, { credentials: 'same-origin' });
+        const response = await fetchAuth(DOCS_PATH);
+        if (!response) {
+            return;
+        }
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }

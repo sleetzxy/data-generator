@@ -1,6 +1,7 @@
 /** 任务管理视图：任务列表、搜索分页、动作菜单、编辑器弹窗、定时调度、运行/停止。 */
 
-import { api } from '../core/api.js';
+import { api, fetchAuth } from '../core/api.js';
+import { LIST_PAGE_SIZE } from '../core/constants.js';
 import { escapeAttr, escapeHtml, formatTime, showToast, statusBadge } from '../core/ui.js';
 import {
     findActiveRun,
@@ -17,7 +18,6 @@ import { previewDefinition } from './preview.js';
 import { buildMarkdownToc, renderMarkdown } from '../lib/markdown.js';
 import { createYamlEditor, destroyYamlEditor, getYamlEditorValue } from '../lib/yaml-editor.js';
 
-const DEFINITION_PAGE_SIZE = 20;
 const DOCS_GUIDE_PATH = '/docs/config-guide.md';
 
 const DEFAULT_TASK_TEMPLATE = `writer:
@@ -123,7 +123,7 @@ function buildTaskConfigListUrl() {
     const query = definitionSearchQuery.trim();
     const params = new URLSearchParams({
         page: String(definitionsPage),
-        size: String(DEFINITION_PAGE_SIZE)
+        size: String(LIST_PAGE_SIZE)
     });
     if (query) {
         params.set('name', query);
@@ -240,19 +240,14 @@ function updateStopButtonInPlace(actionsCell, activeRun) {
 }
 
 function getDefinitionTotalPages(total) {
-    return Math.max(1, Math.ceil(total / DEFINITION_PAGE_SIZE));
+    return Math.max(1, Math.ceil(total / LIST_PAGE_SIZE));
 }
 
 function renderDefinitionsPagination() {
     const pagination = document.getElementById('definitions-pagination');
     const totalPages = getDefinitionTotalPages(definitionsTotal);
 
-    if (definitionsTotal <= DEFINITION_PAGE_SIZE) {
-        pagination.classList.add('hidden');
-        pagination.innerHTML = '';
-        return;
-    }
-
+    // 分页控件始终可见：单页时按钮禁用，与运行记录视图保持一致
     pagination.classList.remove('hidden');
     pagination.innerHTML = `
         <button type="button" class="btn small" data-page="${definitionsPage - 1}" ${definitionsPage <= 1 ? 'disabled' : ''}>上一页</button>
@@ -312,7 +307,7 @@ function renderDefinitionsTable() {
     }
 
     const pagedItems = getDefinitionsCache();
-    const startIndex = (definitionsPage - 1) * DEFINITION_PAGE_SIZE;
+    const startIndex = (definitionsPage - 1) * LIST_PAGE_SIZE;
     tbody.innerHTML = pagedItems.map((item, index) => {
         const latestRun = findLatestRun(item.path);
         const activeRun = findActiveRun(item.path);
@@ -409,7 +404,10 @@ async function ensureGuideLoaded() {
     const body = document.getElementById('guide-body');
     const toc = document.getElementById('guide-toc');
     try {
-        const response = await fetch(DOCS_GUIDE_PATH, { credentials: 'same-origin' });
+        const response = await fetchAuth(DOCS_GUIDE_PATH);
+        if (!response) {
+            return;
+        }
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }

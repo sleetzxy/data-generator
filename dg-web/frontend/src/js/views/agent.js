@@ -1,6 +1,6 @@
 /** AI 助手视图：SSE 流式对话、思考/工具调用块渲染、会话历史管理。 */
 
-import { api } from '../core/api.js';
+import { api, fetchAuth } from '../core/api.js';
 import { escapeHtml, showToast } from '../core/ui.js';
 import { loadDefinitions } from './tasks.js';
 
@@ -993,34 +993,23 @@ function handleSseEvent(eventName, data) {
 }
 
 async function sendAgentMessage(chatId, content, onEvent) {
-    const headers = {
-        'Content-Type': 'application/json',
-        'Accept': 'text/event-stream'
-    };
-    if (typeof getCsrfToken === 'function') {
-        const csrfToken = getCsrfToken();
-        if (csrfToken) {
-            headers['X-XSRF-TOKEN'] = csrfToken;
-        }
-    }
-
     // 创建 AbortController 以支持取消进行中的流
     aiAbortController = new AbortController();
 
     // 不再传递 mode 参数，模型自动处理思考
-    const response = await fetch(
+    const response = await fetchAuth(
         `${AGENT_API_BASE}/chat/${encodeURIComponent(chatId)}`,
         {
             method: 'POST',
-            credentials: 'same-origin',
-            headers,
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'text/event-stream'
+            },
             body: JSON.stringify({ content }),
             signal: aiAbortController.signal
         }
     );
-
-    if (response.status === 401) {
-        window.location.href = '/login.html';
+    if (!response) {
         return;
     }
     if (!response.ok) {

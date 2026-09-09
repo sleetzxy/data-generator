@@ -14,6 +14,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public class TaskRunLogRepository {
@@ -57,6 +58,14 @@ public class TaskRunLogRepository {
 
     public List<TaskRunLogEntry> getLogs(String runId) {
         return findByRunId(runId);
+    }
+
+    /**
+     * 返回已存在的日志文件路径；不存在则为 empty。
+     */
+    public Optional<Path> findLogFile(String runId) {
+        Path path = logFile(runId);
+        return Files.exists(path) ? Optional.of(path) : Optional.empty();
     }
 
     public void remove(String runId) {

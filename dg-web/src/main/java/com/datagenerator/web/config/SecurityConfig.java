@@ -45,6 +45,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(
                                 LOGIN_PAGE,
+                                "/error",
                                 "/css/style.css",
                                 "/js/lib/csrf.js",
                                 "/api/v1/auth/login",
@@ -72,16 +73,32 @@ public class SecurityConfig {
         return http.build();
     }
 
+    /**
+     * API 未认证时直接写 401，避免 {@code sendError} 转发 /error 后再被当成页面请求 302 到登录页；
+     * 否则浏览器 fetch 会静默跟随重定向，地址栏不变。
+     */
     private void commenceAuthentication(
             HttpServletRequest request,
             HttpServletResponse response,
             org.springframework.security.core.AuthenticationException exception)
             throws java.io.IOException, jakarta.servlet.ServletException {
-        if (request.getRequestURI().startsWith("/api/")) {
-            response.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+        if (isApiPath(request)) {
+            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+            response.setContentType("application/json;charset=UTF-8");
+            response.getWriter().write("{\"error\":\"Unauthorized\",\"message\":\"未登录或会话已过期\"}");
             return;
         }
         new LoginUrlAuthenticationEntryPoint(LOGIN_PAGE).commence(request, response, exception);
+    }
+
+    /** 去掉 context-path 后判断是否 API 请求 */
+    private static boolean isApiPath(HttpServletRequest request) {
+        String uri = request.getRequestURI();
+        String contextPath = request.getContextPath();
+        if (contextPath != null && !contextPath.isEmpty() && uri.startsWith(contextPath)) {
+            uri = uri.substring(contextPath.length());
+        }
+        return uri.startsWith("/api/");
     }
 
     @Bean

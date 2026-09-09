@@ -1,6 +1,7 @@
 /** 运行日志弹窗视图：分页、行展开详情、滚动状态保持、自动刷新同步。 */
 
-import { api } from '../core/api.js';
+import { api, fetchAuth } from '../core/api.js';
+import { LIST_PAGE_SIZE } from '../core/constants.js';
 import {
     applyScrollState,
     cssEscape,
@@ -15,8 +16,6 @@ import {
 import { resolveConfigDisplayName } from '../core/state.js';
 import { ensureAutoRefresh } from '../core/refresh.js';
 import { initOverlayScrollbars } from '../lib/scrollbar.js';
-
-const LOG_PAGE_SIZE = 10;
 
 let logModalContext = {
     definitionName: null,
@@ -36,6 +35,14 @@ export function initLogs() {
     document.querySelector('#log-modal .modal-backdrop').addEventListener('click', closeLogModal);
 
     document.getElementById('log-runs-body').addEventListener('click', (event) => {
+        const downloadBtn = event.target.closest('[data-download-log]');
+        if (downloadBtn) {
+            event.preventDefault();
+            event.stopPropagation();
+            downloadTaskRunLog(downloadBtn.dataset.downloadLog)
+                .catch(err => showToast('日志下载失败: ' + err.message));
+            return;
+        }
         const row = event.target.closest('tr[data-run-id]');
         if (row) {
             toggleRunLogDetail(row.dataset.runId);
@@ -56,13 +63,48 @@ export function isLogModalOpen() {
 
 function buildLogDetailSummaryHtml(taskRun, progress) {
     return `
-            <div class="detail-summary log-detail-summary">
-                <div class="detail-item"><label>状态</label>${statusBadge(taskRun.status)}</div>
-                <div class="detail-item"><label>提交时间</label>${formatTime(taskRun.submittedAt)}</div>
-                <div class="detail-item"><label>耗时</label>${escapeHtml(taskRun.duration || '-')}</div>
-                <div class="detail-item"><label>写入行数</label>${progress.writtenRows ?? 0} / ${progress.totalRows ?? 0}</div>
-                ${taskRun.errorMessage ? `<div class="detail-item detail-item-wide"><label>错误</label>${escapeHtml(taskRun.errorMessage)}</div>` : ''}
+            <div class="log-detail-toolbar">
+                <div class="detail-summary log-detail-summary">
+                    <div class="detail-item"><label>状态</label>${statusBadge(taskRun.status)}</div>
+                    <div class="detail-item"><label>提交时间</label>${formatTime(taskRun.submittedAt)}</div>
+                    <div class="detail-item"><label>耗时</label>${escapeHtml(taskRun.duration || '-')}</div>
+                    <div class="detail-item"><label>写入行数</label>${progress.writtenRows ?? 0} / ${progress.totalRows ?? 0}</div>
+                    ${taskRun.errorMessage ? `<div class="detail-item detail-item-wide"><label>错误</label>${escapeHtml(taskRun.errorMessage)}</div>` : ''}
+                </div>
+                <button type="button" class="log-download-icon" data-download-log="${escapeAttr(taskRun.runId)}"
+                        title="下载日志" aria-label="下载日志">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/>
+                        <line x1="12" y1="15" x2="12" y2="3"/>
+                    </svg>
+                </button>
             </div>`;
+}
+
+/** 带登录态下载运行日志原文文件 */
+async function downloadTaskRunLog(runId) {
+    const response = await fetchAuth(`/api/v1/task-runs/${encodeURIComponent(runId)}/logs/download`);
+    if (!response) {
+        return;
+    }
+    if (!response.ok) {
+        let message = response.statusText;
+        try {
+            const body = await response.json();
+            message = body.message || body.error || message;
+        } catch (_) { /* ignore */ }
+        throw new Error(message);
+    }
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = objectUrl;
+    anchor.download = `${runId}.log`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
 }
 
 function captureLogModalScrollState() {
@@ -113,7 +155,7 @@ function syncPagedRunRowsInPlace() {
 }
 
 function getLogTotalPages(total) {
-    return Math.max(1, Math.ceil(total / LOG_PAGE_SIZE));
+    return Math.max(1, Math.ceil(total / LIST_PAGE_SIZE));
 }
 
 function isSelectedRunOnCurrentPage() {
@@ -128,7 +170,7 @@ function renderLogPagination() {
     const totalPages = getLogTotalPages(logModalContext.total);
     const { page, total } = logModalContext;
 
-    if (total <= LOG_PAGE_SIZE) {
+    if (total <= LIST_PAGE_SIZE) {
         pagination.classList.add('hidden');
         pagination.innerHTML = '';
         return;
@@ -221,7 +263,7 @@ async function fetchLogModalPage(page, options = {}) {
     let data;
     try {
         data = await api(
-            `/task-runs?configPath=${encodeURIComponent(logModalContext.definitionPath)}&page=${page}&size=${LOG_PAGE_SIZE}`
+            `/task-runs?configPath=${encodeURIComponent(logModalContext.definitionPath)}&page=${page}&size=${LIST_PAGE_SIZE}`
         );
     } catch (err) {
         if (seq === logModalRequestSeq) {
@@ -300,7 +342,7 @@ async function refreshLogDetailContent(runId, previousLogScrollState) {
         const logs = await api(`/task-runs/${encodeURIComponent(runId)}/logs`);
         logModalContext.logDetailLines[runId] = logs;
 
-        const summary = panel.querySelector('.log-detail-summary');
+        const summary = panel.querySelector('.log-detail-toolbar');
         if (summary) {
             summary.outerHTML = buildLogDetailSummaryHtml(taskRun, progress);
         } else {
@@ -339,7 +381,7 @@ export async function refreshOpenLogModal() {
     const seq = ++logModalRequestSeq;
     try {
         const data = await api(
-            `/task-runs?configPath=${encodeURIComponent(logModalContext.definitionPath)}&page=${logModalContext.page}&size=${LOG_PAGE_SIZE}`
+            `/task-runs?configPath=${encodeURIComponent(logModalContext.definitionPath)}&page=${logModalContext.page}&size=${LIST_PAGE_SIZE}`
         );
         if (seq !== logModalRequestSeq) {
             return;
@@ -437,9 +479,7 @@ async function locateLogModalPage() {
     renderLogRunsTable();
 }
 
-// ── 运行日志视图（独立页面，后端分页查询）──
-
-const LOGS_VIEW_PAGE_SIZE = 20;
+// ── 运行记录视图（独立页面，后端分页查询）──
 
 const logsViewContext = {
     page: 1,
@@ -452,14 +492,22 @@ const logsViewContext = {
 /** 日志视图分页请求序号：晚到的响应直接丢弃，避免覆盖新页 */
 let logsViewRequestSeq = 0;
 
-/** 绑定运行日志视图的查询条件、分页与行展开委托事件 */
+/** 绑定运行记录视图的查询条件、分页与行展开委托事件 */
 export function initLogsView() {
     document.getElementById('btn-refresh-logs').addEventListener('click', () => {
-        fetchLogsViewPage().catch(err => showToast('运行日志加载失败: ' + err.message));
+        fetchLogsViewPage().catch(err => showToast('运行记录加载失败: ' + err.message));
     });
     document.getElementById('btn-logs-search').addEventListener('click', applyLogsViewFilter);
     document.getElementById('btn-logs-reset').addEventListener('click', resetLogsViewFilter);
     document.getElementById('logs-view-body').addEventListener('click', (event) => {
+        const downloadBtn = event.target.closest('[data-download-log]');
+        if (downloadBtn) {
+            event.preventDefault();
+            event.stopPropagation();
+            downloadTaskRunLog(downloadBtn.dataset.downloadLog)
+                .catch(err => showToast('日志下载失败: ' + err.message));
+            return;
+        }
         const row = event.target.closest('tr[data-run-id]');
         if (row) {
             toggleLogsViewDetail(row.dataset.runId);
@@ -473,7 +521,7 @@ export function initLogsView() {
     });
 }
 
-/** 加载运行日志视图：填充任务下拉并执行首屏查询 */
+/** 加载运行记录视图：填充任务下拉并执行首屏查询 */
 export async function loadLogsView() {
     await ensureLogsViewDefinitions();
     await fetchLogsViewPage();
@@ -489,7 +537,7 @@ function applyLogsViewFilter() {
     };
     logsViewContext.page = 1;
     logsViewContext.selectedRunId = null;
-    fetchLogsViewPage().catch(err => showToast('运行日志加载失败: ' + err.message));
+    fetchLogsViewPage().catch(err => showToast('运行记录加载失败: ' + err.message));
 }
 
 function resetLogsViewFilter() {
@@ -505,7 +553,7 @@ async function fetchLogsViewPage() {
     const seq = ++logsViewRequestSeq;
     const params = new URLSearchParams({
         page: String(logsViewContext.page),
-        size: String(LOGS_VIEW_PAGE_SIZE)
+        size: String(LIST_PAGE_SIZE)
     });
     const { status, configPath, from, to } = logsViewContext.filter;
     if (status) {
@@ -564,7 +612,7 @@ async function ensureLogsViewDefinitions() {
 }
 
 function getLogsViewTotalPages() {
-    return Math.max(1, Math.ceil(logsViewContext.total / LOGS_VIEW_PAGE_SIZE));
+    return Math.max(1, Math.ceil(logsViewContext.total / LIST_PAGE_SIZE));
 }
 
 function renderLogsViewPagination() {
@@ -635,7 +683,7 @@ function changeLogsViewPage(page) {
     }
     logsViewContext.page = page;
     logsViewContext.selectedRunId = null;
-    fetchLogsViewPage().catch(err => showToast('运行日志加载失败: ' + err.message));
+    fetchLogsViewPage().catch(err => showToast('运行记录加载失败: ' + err.message));
 }
 
 function toggleLogsViewDetail(runId) {

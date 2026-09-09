@@ -52,6 +52,7 @@ import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.file.Path;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -385,6 +386,17 @@ public class TaskRunService {
             throw new TaskRunNotFoundException(runId);
         }
         return taskRunLogRepository.getLogs(runId);
+    }
+
+    /**
+     * 解析可下载的运行日志文件；任务或日志文件不存在时抛出 {@link TaskRunNotFoundException}。
+     */
+    public Path resolveLogFileForDownload(String runId) {
+        if (taskRunRepository.findById(runId).isEmpty()) {
+            throw new TaskRunNotFoundException(runId);
+        }
+        return taskRunLogRepository.findLogFile(runId)
+                .orElseThrow(() -> new TaskRunNotFoundException(runId));
     }
 
     public void cancel(String runId) {

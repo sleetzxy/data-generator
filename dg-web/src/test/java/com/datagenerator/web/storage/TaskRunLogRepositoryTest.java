@@ -42,4 +42,17 @@ class TaskRunLogRepositoryTest {
         repository.deleteByRunId("job-2");
         assertThat(repository.findByRunId("job-2")).isEmpty();
     }
+
+    @Test
+    void findLogFile_existingFile_returnsPath() {
+        repository.append("job-3", "INFO", "hello");
+        assertThat(repository.findLogFile("job-3")).isPresent();
+        assertThat(repository.findLogFile("job-3").get().getFileName().toString())
+                .isEqualTo("job-3.log");
+    }
+
+    @Test
+    void findLogFile_missingFile_returnsEmpty() {
+        assertThat(repository.findLogFile("missing-run")).isEmpty();
+    }
 }

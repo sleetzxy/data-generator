@@ -10,6 +10,10 @@ import com.datagenerator.web.dto.TaskRunSubmitRequest;
 import com.datagenerator.web.dto.TaskRunSubmitResult;
 import com.datagenerator.web.dto.TaskRunSummaryResponse;
 import com.datagenerator.web.service.TaskRunService;
+import org.springframework.core.io.FileSystemResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -20,6 +24,8 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.util.List;
 
 @RestController
@@ -70,6 +76,17 @@ public class TaskRunController {
     @GetMapping("/{id}/logs")
     public List<TaskRunLogEntry> getTaskRunLogs(@PathVariable("id") String runId) {
         return taskRunService.getLogs(runId);
+    }
+
+    @GetMapping("/{id}/logs/download")
+    public ResponseEntity<Resource> downloadTaskRunLogs(@PathVariable("id") String runId) {
+        Path logFile = taskRunService.resolveLogFileForDownload(runId);
+        Resource resource = new FileSystemResource(logFile);
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        "attachment; filename=\"" + logFile.getFileName() + "\"")
+                .contentType(new MediaType("text", "plain", StandardCharsets.UTF_8))
+                .body(resource);
     }
 
     @DeleteMapping("/{id}")
