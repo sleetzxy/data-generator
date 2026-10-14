@@ -101,7 +101,7 @@ class ConnectionRegistryTest {
     }
 
     @Test
-    void withOverlay_jobConnectionOverridesGlobal() {
+    void withOverlay_taskConnectionOverridesBase() {
         ConnectionRegistry registry = new ConnectionRegistry(Map.of(
                 "my-pg", Map.of(
                         "type", "postgresql",

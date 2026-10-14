@@ -11,6 +11,7 @@ import com.datagenerator.web.dto.TaskRunSubmitRequest;
 import com.datagenerator.web.dto.TriggerSource;
 import com.datagenerator.web.exception.TaskConfigNotFoundException;
 import com.datagenerator.web.storage.TaskRepository;
+import com.datagenerator.web.storage.TaskRunMapper;
 import com.datagenerator.web.storage.TaskRunRepository;
 import com.datagenerator.core.config.ConnectionRegistry;
 import com.datagenerator.core.constraint.ConstraintLoader;
@@ -195,6 +196,6 @@ class TaskRunServiceTest {
                 submittedAt,
                 null,
                 null);
-        taskRunRepository.insert(taskRun);
+        taskRunRepository.insert(TaskRunMapper.toRecord(taskRun));
     }
 }

@@ -4,17 +4,27 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.*;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.datagenerator.ai.client.DgWebClient;
 import com.datagenerator.ai.client.DgWebClient.ConfigDetail;
+import com.datagenerator.ai.client.DgWebClient.PreviewContentResult;
+import com.datagenerator.ai.client.DgWebClient.PreviewTableSummary;
 import com.datagenerator.ai.client.DgWebClient.ValidationResult;
-import io.agentscope.core.agent.RuntimeContext;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import io.agentscope.core.message.TextBlock;
+import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.harness.agent.HarnessAgent;
 import io.agentscope.harness.agent.workspace.WorkspaceManager;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -34,10 +44,20 @@ class ConfigToolsTest {
     @Mock private HarnessAgent harnessAgent;
     @Mock private WorkspaceManager workspaceManager;
 
-    private ConfigDraftManager draftManager;
     private ConfigTools tools;
-    private final RuntimeContext rc = RuntimeContext.empty();
+    private final ObjectMapper objectMapper = new ObjectMapper();
     private Path tempWorkspace;
+
+    private static final String SAMPLE_YAML = """
+            writer:
+              type: csv
+            tables:
+              - name: users
+                count: 10
+                fields:
+                  - name: id
+                    type: integer
+            """;
 
     @BeforeEach
     void setUp() throws Exception {
@@ -49,7 +69,9 @@ class ConfigToolsTest {
         doAnswer(inv -> {
             String path = inv.getArgument(1);
             String content = inv.getArgument(2);
-            if (content == null) return null;
+            if (content == null) {
+                return null;
+            }
             Path target = tempWorkspace.resolve(path);
             Files.createDirectories(target.getParent());
             Files.writeString(target, content);
@@ -60,146 +82,69 @@ class ConfigToolsTest {
                 .thenAnswer(inv -> {
                     String path = inv.getArgument(1);
                     Path target = tempWorkspace.resolve(path);
-                    if (Files.exists(target)) return Files.readString(target);
+                    if (Files.exists(target)) {
+                        return Files.readString(target);
+                    }
                     return null;
                 });
 
-        draftManager = new ConfigDraftManager(harnessAgentProvider);
-        tools = new ConfigTools(Optional.of(client), harnessAgentProvider, draftManager);
+        tools = new ConfigTools(Optional.of(client), harnessAgentProvider, objectMapper);
     }
 
     @Test
-    void startConfigDraft_and_saveConfigDraft_createsConfig() {
-        String result = tools.startConfigDraft("test-job",
-                "writer:\n  type: csv\n", null, rc);
-        assertThat(result).contains("已创建");
-
-        tools.addTableToDraft("test-job", """
-            name: users
-            count: 10
-            fields:
-              - name: id
-                type: integer
-            """, null, rc);
-
+    void saveConfig_create_validYaml_persists() {
         when(client.validateYaml(anyString())).thenReturn(new ValidationResult(true, List.of()));
-        when(client.getConfig("test-job")).thenReturn(null); // 新建
-        when(client.createConfig(anyString(), anyString()))
-                .thenReturn(new ConfigDetail("test-job", "测试", "test-job", "..."));
+        when(client.createConfig(eq("测试"), anyString(), isNull()))
+                .thenReturn(new ConfigDetail("t1", "测试", "t1", SAMPLE_YAML));
 
-        // YAML 不写 id/name，显示名经 saveConfigDraft 的 displayName 字段提交
-        String saveResult = tools.saveConfigDraft("test-job", "测试", null, rc);
-        assertThat(saveResult).contains("已保存");
-        verify(client).createConfig(eq("测试"), anyString());
+        String result = tools.saveConfig(SAMPLE_YAML, "测试", null, null);
+
+        assertThat(result).contains("已保存");
+        verify(client).createConfig(eq("测试"), anyString(), isNull());
     }
 
     @Test
-    void startEditDraft_and_saveConfigDraft_updatesConfig() {
-        String existingYaml = """
-            writer:
-              type: csv
-            tables:
-              - name: items
-                count: 50
-                fields:
-                  - name: old_col
-                    type: string
-            """;
-        when(client.getConfig("edit-job")).thenReturn(
-                new ConfigDetail("edit-job", "编辑配置", "edit-job", existingYaml));
+    void previewData_ok_returnsStructuredJsonWithTables() throws Exception {
+        when(client.previewByFileName("demo-job")).thenReturn(new PreviewContentResult(
+                true,
+                null,
+                List.of(new PreviewTableSummary(
+                        "users",
+                        List.of("id"),
+                        List.of(Map.of("id", 1))))));
 
-        String result = tools.startEditDraft("edit-job", null, rc);
-        assertThat(result).contains("已加载配置");
+        String result = extractToolText(tools.previewData("demo-job", null));
+        JsonNode root = objectMapper.readTree(result);
 
-        tools.updateTableInDraft("edit-job", "items", """
-            name: items
-            count: 100
-            fields:
-              - name: new_col
-                type: integer
-            """, null, rc);
-
-        when(client.validateYaml(anyString())).thenReturn(new ValidationResult(true, List.of()));
-        when(client.getConfig("edit-job")).thenReturn(
-                new ConfigDetail("edit-job", "编辑配置", "edit-job", "...")); // 已存在 → 更新
-        when(client.updateConfig(eq("edit-job"), anyString(), anyString()))
-                .thenReturn(new ConfigDetail("edit-job", "编辑配置", "edit-job", "..."));
-
-        // 省略 displayName → 沿用主表现有显示名
-        String saveResult = tools.saveConfigDraft("edit-job", null, null, rc);
-        assertThat(saveResult).contains("已更新");
-        verify(client).updateConfig(eq("edit-job"), eq("编辑配置"), anyString());
+        assertThat(root.path("ui").asText()).isEqualTo("table");
+        assertThat(root.path("title").asText()).isEqualTo("样例预览");
+        assertThat(root.path("message").asText()).contains("预览成功");
+        assertThat(root.path("tables").isArray()).isTrue();
+        assertThat(root.path("tables")).hasSize(1);
+        assertThat(root.path("tables").get(0).path("tableName").asText()).isEqualTo("users");
+        verify(client).previewByFileName("demo-job");
     }
 
     @Test
-    void saveConfigDraft_validationFailure_returnsErrors() {
-        String header = "writer:\n  type: csv\n";
-        tools.startConfigDraft("bad-job", header, null, rc);
-
-        // 添加一个简单 table 通过预检，然后测试校验失败场景
-        tools.addTableToDraft("bad-job", """
-            name: test_table
-            count: 10
-            fields:
-              - name: id
-                type: integer
-            """, null, rc);
-
-        when(client.validateYaml(anyString()))
-                .thenReturn(new ValidationResult(false, List.of("缺少 tables 字段")));
-
-        String result = tools.saveConfigDraft("bad-job", null, null, rc);
-        assertThat(result).contains("校验失败");
-        assertThat(result).contains("缺少 tables 字段");
+    void previewData_blankFileName_returnsGuidance() {
+        String result = extractToolText(tools.previewData("  ", null));
+        assertThat(result).contains("fileName");
+        verify(client, never()).previewByFileName(anyString());
     }
 
-    @Test
-    void saveConfigDraft_createWithoutDisplayName_returnsGuidance() {
-        tools.startConfigDraft("no-name-job", "writer:\n  type: csv\n", null, rc);
-        tools.addTableToDraft("no-name-job", """
-            name: test_table
-            count: 10
-            fields:
-              - name: id
-                type: integer
-            """, null, rc);
-
-        when(client.validateYaml(anyString())).thenReturn(new ValidationResult(true, List.of()));
-        when(client.getConfig("no-name-job")).thenReturn(null); // 新建
-
-        String result = tools.saveConfigDraft("no-name-job", null, null, rc);
-
-        assertThat(result).contains("displayName");
-        verify(client, never()).createConfig(anyString(), anyString());
-    }
-
-    @Test
-    void saveConfigDraft_updateWithNewDisplayName_overridesExisting() {
-        tools.startConfigDraft("rename-job", "writer:\n  type: csv\n", null, rc);
-        tools.addTableToDraft("rename-job", """
-            name: test_table
-            count: 10
-            fields:
-              - name: id
-                type: integer
-            """, null, rc);
-
-        when(client.validateYaml(anyString())).thenReturn(new ValidationResult(true, List.of()));
-        when(client.getConfig("rename-job")).thenReturn(
-                new ConfigDetail("rename-job", "旧名", "rename-job", "...")); // 已存在 → 更新
-        when(client.updateConfig(eq("rename-job"), anyString(), anyString()))
-                .thenReturn(new ConfigDetail("rename-job", "新显示名", "rename-job", "..."));
-
-        String result = tools.saveConfigDraft("rename-job", "新显示名", null, rc);
-
-        assertThat(result).contains("已更新");
-        verify(client).updateConfig(eq("rename-job"), eq("新显示名"), anyString());
-    }
-
-    // 保留原有测试
     @Test
     void cleanYamlMarkdown_extractsCodeBlock() {
         String input = "说明\n```yaml\nid: demo\nname: test\n```\n";
         assertThat(ConfigTools.cleanYamlMarkdown(input)).contains("id: demo");
+    }
+
+    private static String extractToolText(ToolResultBlock block) {
+        StringBuilder sb = new StringBuilder();
+        for (var out : block.getOutput()) {
+            if (out instanceof TextBlock tb && tb.getText() != null) {
+                sb.append(tb.getText());
+            }
+        }
+        return sb.toString();
     }
 }

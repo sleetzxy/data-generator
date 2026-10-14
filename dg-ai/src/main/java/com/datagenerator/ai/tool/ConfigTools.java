@@ -3,14 +3,23 @@ package com.datagenerator.ai.tool;
 import com.datagenerator.ai.client.DgWebClient;
 import com.datagenerator.ai.client.DgWebClient.ConfigDetail;
 import com.datagenerator.ai.client.DgWebClient.ConfigSummary;
+import com.datagenerator.ai.client.DgWebClient.PreviewContentResult;
+import com.datagenerator.ai.client.DgWebClient.PreviewTableSummary;
 import com.datagenerator.ai.client.DgWebClient.ValidationResult;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.agentscope.core.agent.RuntimeContext;
 import io.agentscope.core.message.ToolResultBlock;
 import io.agentscope.core.tool.Tool;
 import io.agentscope.core.tool.ToolEmitter;
 import io.agentscope.core.tool.ToolParam;
 import io.agentscope.harness.agent.HarnessAgent;
+import io.agentscope.harness.agent.workspace.WorkspaceManager;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -20,9 +29,7 @@ import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Component;
 
 /**
- * 配置管理工具集 — 供 HarnessAgent ReAct 循环调用。
- *
- * <p>所有配置创建和编辑统一使用草稿模式：startConfigDraft / startEditDraft → 分段添加 → saveConfigDraft。</p>
+ * 配置管理工具集 — 直接对接 dg-web 接口；大 YAML 可选写入 workspace 后一次提交。
  */
 @Component
 public class ConfigTools {
@@ -32,32 +39,42 @@ public class ConfigTools {
     private static final Pattern YAML_FENCE = Pattern.compile(
             "```yaml\\s*\\n?(.*?)\\n?\\s*```", Pattern.DOTALL);
 
-    private static final int SMALL_TABLE_FIELD_HINT = 30;
+    /** workspace 中 YAML 暂存目录前缀 */
+    private static final String YAML_DIR = "yaml";
 
     private final DgWebClient client;
     private final ObjectProvider<HarnessAgent> harnessAgentProvider;
-    private final ConfigDraftManager draftManager;
+    private final ObjectMapper objectMapper;
 
-    public ConfigTools(Optional<DgWebClient> client, ObjectProvider<HarnessAgent> harnessAgentProvider,
-            ConfigDraftManager draftManager) {
+    private volatile WorkspaceManager cachedWorkspaceManager;
+
+    public ConfigTools(
+            Optional<DgWebClient> client,
+            ObjectProvider<HarnessAgent> harnessAgentProvider,
+            ObjectMapper objectMapper) {
         this.client = client.orElse(null);
         this.harnessAgentProvider = harnessAgentProvider;
-        this.draftManager = draftManager;
+        this.objectMapper = objectMapper;
     }
 
     private boolean hasClient() {
         return client != null;
     }
 
-    /**
-     * 通过 ToolEmitter 发送工具结果，触发 TOOL_RESULT_TEXT_DELTA 事件，
-     * 使前端实时对话中能展示工具调用结果。
-     */
     private String emitAndReturn(ToolEmitter emitter, String result) {
         if (emitter != null) {
             emitter.emit(ToolResultBlock.text(result));
         }
         return result;
+    }
+
+    /** 返回 ToolResultBlock，同时经 emitter 推送，保证前端 observation 能收到 delta/result */
+    private ToolResultBlock emitAndReturnBlock(ToolEmitter emitter, String text) {
+        ToolResultBlock block = ToolResultBlock.text(text);
+        if (emitter != null) {
+            emitter.emit(block);
+        }
+        return block;
     }
 
     // ==================== CRUD ====================
@@ -79,8 +96,9 @@ public class ConfigTools {
         return emitAndReturn(emitter, sb.toString());
     }
 
-    @Tool(name = "getConfig", description = "查看指定配置的完整 YAML 内容。编辑已有配置时请先调用此工具获取内容")
-    public String getConfig(@ToolParam(name = "fileName", description = "配置文件名（不含扩展名）") String fileName,
+    @Tool(name = "getConfig", description = "查看指定配置的完整 YAML。编辑时先取回内容，改完后用 saveConfig 或 submitWorkspaceYaml 提交")
+    public String getConfig(
+            @ToolParam(name = "fileName", description = "配置文件名（不含扩展名）") String fileName,
             ToolEmitter emitter) {
         if (!hasClient()) {
             return emitAndReturn(emitter, "未连接数据服务，无法查询配置");
@@ -91,13 +109,12 @@ public class ConfigTools {
         }
         return emitAndReturn(emitter, "配置「" + d.name() + "」\n"
                 + "文件名: " + d.fileName() + "\n"
-                + "```yaml\n" + d.yaml() + "\n```\n"
-                + "（编辑已有配置请使用 startEditDraft(\""
-                + d.fileName() + "\"）");
+                + "```yaml\n" + d.yaml() + "\n```");
     }
 
     @Tool(name = "deleteConfig", description = "删除指定配置。删除前需向用户确认")
-    public String deleteConfig(@ToolParam(name = "fileName", description = "配置文件名（不含扩展名）") String fileName,
+    public String deleteConfig(
+            @ToolParam(name = "fileName", description = "配置文件名（不含扩展名）") String fileName,
             ToolEmitter emitter) {
         if (!hasClient()) {
             return emitAndReturn(emitter, "未连接数据服务，无法删除配置");
@@ -111,20 +128,6 @@ public class ConfigTools {
     }
 
     // ==================== 环境查询 ====================
-
-    @Tool(name = "listConnections", description = "查询所有可用数据库连接")
-    public String listConnections(ToolEmitter emitter) {
-        if (!hasClient()) {
-            return emitAndReturn(emitter, "当前无可用的数据连接（未连接数据服务）");
-        }
-        var conns = client.listConnections();
-        if (conns == null || conns.isEmpty()) {
-            return emitAndReturn(emitter, "当前无可用数据连接");
-        }
-        StringBuilder sb = new StringBuilder("可用连接：\n");
-        conns.forEach(c -> sb.append("- ").append(c.name()).append(" (").append(c.type()).append(")\n"));
-        return emitAndReturn(emitter, sb.toString());
-    }
 
     @Tool(name = "listTableSchemas", description = "查询所有可用表结构定义及其字段详情")
     public String listTableSchemas(ToolEmitter emitter) {
@@ -148,7 +151,8 @@ public class ConfigTools {
     }
 
     @Tool(name = "getTableSchema", description = "查看某个表结构定义的字段详情")
-    public String getTableSchema(@ToolParam(name = "name", description = "表结构定义名称") String name,
+    public String getTableSchema(
+            @ToolParam(name = "name", description = "表结构定义名称") String name,
             ToolEmitter emitter) {
         if (!hasClient()) {
             return emitAndReturn(emitter, "未连接数据服务，无法查询表结构定义");
@@ -161,294 +165,273 @@ public class ConfigTools {
                 .append(d.fields().size()).append(" 个）：\n");
         d.fields().forEach(f -> sb.append("- ").append(f.name())
                 .append(" (").append(f.type()).append(")\n"));
-        if (d.fields().size() > SMALL_TABLE_FIELD_HINT) {
-            sb.append("\n字段较多：请用 startConfigDraft 创建草稿，再分批添加字段。");
+        if (d.fields().size() > 30) {
+            sb.append("\n字段较多：可分批 writeWorkspaceYaml / appendWorkspaceYaml，再用 submitWorkspaceYaml 提交。");
         }
         return emitAndReturn(emitter, sb.toString());
     }
 
-    // ==================== 草稿生命周期 ====================
+    // ==================== 直连 YAML 接口 ====================
 
-    @Tool(name = "startConfigDraft", description = "新建配置草稿。传入草稿标识（即配置文件名）和 header YAML（writer/writers 等顶层生成配置，不含 tables；不写 id/name，任务 id 由系统生成）")
-    public String startConfigDraft(
-            @ToolParam(name = "draftId", description = "配置文件名（草稿标识）：字母开头，仅含字母、数字、下划线、连字符") String draftId,
-            @ToolParam(name = "headerYaml", description = "配置 header YAML（writer/writers 等，不含 tables；不写 id/name/schedule，显示名通过 saveConfigDraft 的 displayName 字段提交，调度通过调度接口配置）") String headerYaml,
-            ToolEmitter emitter, RuntimeContext rc) {
-        if (draftId == null || draftId.isBlank()) {
-            return emitAndReturn(emitter, "错误：draftId 不能为空");
-        }
-        try {
-            draftManager.createDraft(rc, draftId, headerYaml.trim());
-            return emitAndReturn(emitter, "草稿「" + draftId + "」已创建。接下来请用 addTableToDraft 添加表定义。");
-        } catch (Exception e) {
-            log.error("创建草稿失败: draftId={}", draftId, e);
-            return emitAndReturn(emitter, "创建草稿失败：" + e.getMessage());
-        }
-    }
-
-    @Tool(name = "startEditDraft", description = "加载已有配置为草稿以便编辑。configName 为配置文件名（不含扩展名）")
-    public String startEditDraft(
-            @ToolParam(name = "configName", description = "已有配置的文件名（不含 .yml 扩展名）") String configName,
-            ToolEmitter emitter, RuntimeContext rc) {
+    @Tool(name = "validateConfigYaml", description = "校验完整任务 YAML（不落盘）。通过后再 preview / save")
+    public String validateConfigYaml(
+            @ToolParam(name = "yaml", description = "完整任务配置 YAML") String yaml,
+            ToolEmitter emitter) {
         if (!hasClient()) {
-            return emitAndReturn(emitter, "未连接数据服务，无法加载配置");
+            return emitAndReturn(emitter, "未连接数据服务，无法校验");
         }
-        ConfigDetail detail = client.getConfig(configName);
-        if (detail == null) {
-            return emitAndReturn(emitter, "未找到配置：" + configName);
+        String cleaned = cleanYamlMarkdown(yaml);
+        if (cleaned.isBlank()) {
+            return emitAndReturn(emitter, "错误：yaml 不能为空");
+        }
+        ValidationResult vr = client.validateYaml(cleaned);
+        if (vr.valid()) {
+            return emitAndReturn(emitter, "校验通过");
+        }
+        return emitAndReturn(emitter, "校验失败：\n" + String.join("\n", vr.errors()));
+    }
+
+    /**
+     * 预览样例数据。成功时返回约定 JSON：
+     * {@code { "ui":"table", "title":"样例预览", "message":"...", "tables":[...] }}，
+     * 前端按 {@code ui} 通用地渲染，不依赖工具名。
+     */
+    @Tool(name = "previewData", description = "预览已保存任务生成的样例数据（不是预览配置文本）。须先 saveConfig / submitWorkspaceYaml；传 fileName。"
+            + "成功返回 JSON：ui=table、title、message、tables；你只需用业务语言说明")
+    public ToolResultBlock previewData(
+            @ToolParam(name = "fileName", description = "已保存配置的文件名（不含扩展名），即 saveConfig 返回的文件名") String fileName,
+            ToolEmitter emitter) {
+        if (!hasClient()) {
+            return emitAndReturnBlock(emitter, "未连接数据服务，无法预览数据");
+        }
+        if (fileName == null || fileName.isBlank()) {
+            return emitAndReturnBlock(emitter, "错误：fileName 不能为空；请先保存任务再预览数据");
         }
         try {
-            draftManager.loadExistingAsDraft(rc, configName, detail.yaml());
-            List<String> tableNames = draftManager.listTableNames(rc, configName);
-
-            // 列出各 table 及列数，帮助 LLM 了解编辑规模
-            StringBuilder tablesInfo = new StringBuilder();
-            for (String tn : tableNames) {
-                int colCount = draftManager.countTableFields(rc, configName, tn);
-                tablesInfo.append("\n  - ").append(tn).append("（").append(colCount).append(" 字段）");
+            PreviewContentResult result = client.previewByFileName(fileName.trim());
+            if (!result.ok()) {
+                String msg = result.message() == null || result.message().isBlank()
+                        ? "预览数据失败"
+                        : result.message();
+                return emitAndReturnBlock(emitter, msg);
             }
-
-            return emitAndReturn(emitter, "已加载配置「" + detail.name() + "」为草稿「" + configName + "」\n"
-                    + "共 " + tableNames.size() + " 个 table:" + tablesInfo + "\n"
-                    + "接下来可修改各部分，完成后 saveConfigDraft 保存。");
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("ui", "table");
+            payload.put("title", "样例预览");
+            payload.put("message", formatPreviewSummary(result.tables()));
+            payload.put("tables", toWireTables(result.tables()));
+            return emitAndReturnBlock(emitter, objectMapper.writeValueAsString(payload));
         } catch (Exception e) {
-            log.error("加载配置为草稿失败: configName={}", configName, e);
-            return emitAndReturn(emitter, "加载配置失败：" + e.getMessage());
+            log.warn("previewData 失败: fileName={}", fileName, e);
+            return emitAndReturnBlock(emitter, "预览数据失败：" + e.getMessage());
         }
     }
 
-    @Tool(name = "saveConfigDraft", description = "合并草稿所有分段文件为完整 YAML，校验后保存到 dg-web。自动判断新建或更新；新建时经 displayName 字段提交任务显示名")
-    public String saveConfigDraft(
-            @ToolParam(name = "draftId", description = "草稿标识（即配置文件名，不含扩展名）") String draftId,
-            @ToolParam(name = "displayName", description = "任务显示名称（新建时必填；编辑已有配置时可省略，省略则沿用现有显示名）") String displayName,
-            ToolEmitter emitter, RuntimeContext rc) {
+    @Tool(name = "saveConfig", description = "校验并保存完整 YAML。新建须 displayName；更新已有配置时传 fileName，displayName 可省略沿用原名")
+    public String saveConfig(
+            @ToolParam(name = "yaml", description = "完整任务配置 YAML") String yaml,
+            @ToolParam(name = "displayName", description = "任务显示名称（新建必填；更新可省略）") String displayName,
+            @ToolParam(name = "fileName", description = "配置文件名不含扩展名；更新必填；新建可选（不传则由服务端生成）") String fileName,
+            ToolEmitter emitter) {
         if (!hasClient()) {
             return emitAndReturn(emitter, "未连接数据服务，无法保存配置");
         }
+        String cleaned = cleanYamlMarkdown(yaml);
+        if (cleaned.isBlank()) {
+            return emitAndReturn(emitter, "错误：yaml 不能为空");
+        }
+        return emitAndReturn(emitter, persistYaml(cleaned, displayName, fileName));
+    }
+
+    // ==================== Workspace 薄层（大 YAML） ====================
+
+    @Tool(name = "writeWorkspaceYaml", description = "覆盖写入 workspace 中的 YAML 文件（大配置可分片：先 write 再多次 append）。path 为相对路径，如 my-job.yaml")
+    public String writeWorkspaceYaml(
+            @ToolParam(name = "path", description = "相对路径，如 my-job.yaml（自动落在 yaml/ 下）") String path,
+            @ToolParam(name = "content", description = "写入内容（覆盖）") String content,
+            ToolEmitter emitter,
+            RuntimeContext rc) {
         try {
-            // 轻量级预检：草稿是否存在、是否有 table（避免昂贵的合并+校验在空草稿上浪费）
-            if (!draftManager.draftExists(rc, draftId)) {
-                return emitAndReturn(emitter, "草稿「" + draftId + "」不存在或已被废弃，请检查 draftId。");
-            }
-            List<String> tableNames = draftManager.listTableNames(rc, draftId);
-            if (tableNames.isEmpty()) {
-                return emitAndReturn(emitter, "草稿「" + draftId + "」尚未包含任何 table 定义，请先用 addTableToDraft 或 addTableMetaToDraft 添加表。");
-            }
+            String rel = resolveYamlPath(path);
+            writeWorkspace(rc, rel, content == null ? "" : content);
+            return emitAndReturn(emitter, "已写入 workspace：" + rel + "（" + (content == null ? 0 : content.length()) + " 字符）");
+        } catch (Exception e) {
+            log.error("writeWorkspaceYaml 失败: path={}", path, e);
+            return emitAndReturn(emitter, "写入失败：" + e.getMessage());
+        }
+    }
 
-            // 检查是否有 table 的字段数为 0（可能是创建了壳但未追加字段）
-            StringBuilder emptyCols = new StringBuilder();
-            for (String tn : tableNames) {
-                int colCount = draftManager.countTableFields(rc, draftId, tn);
-                if (colCount == 0) {
-                    emptyCols.append("\n  - ").append(tn).append("（0 字段，请用 addFieldsToTable 追加字段或 removeTableFromDraft 删除）");
+    @Tool(name = "appendWorkspaceYaml", description = "向 workspace 中已有 YAML 文件追加内容（适合大表分批写 fields）")
+    public String appendWorkspaceYaml(
+            @ToolParam(name = "path", description = "相对路径，如 my-job.yaml") String path,
+            @ToolParam(name = "content", description = "追加内容") String content,
+            ToolEmitter emitter,
+            RuntimeContext rc) {
+        try {
+            String rel = resolveYamlPath(path);
+            String existing = readWorkspace(rc, rel);
+            String chunk = content == null ? "" : content;
+            String merged = existing == null ? chunk : existing + chunk;
+            writeWorkspace(rc, rel, merged);
+            return emitAndReturn(emitter, "已追加到 workspace：" + rel
+                    + "（本次 +" + chunk.length() + " 字符，累计 " + merged.length() + " 字符）");
+        } catch (Exception e) {
+            log.error("appendWorkspaceYaml 失败: path={}", path, e);
+            return emitAndReturn(emitter, "追加失败：" + e.getMessage());
+        }
+    }
+
+    @Tool(name = "submitWorkspaceYaml", description = "读取 workspace YAML，校验后 create/update。新建须 displayName；更新传 fileName")
+    public String submitWorkspaceYaml(
+            @ToolParam(name = "path", description = "相对路径，如 my-job.yaml") String path,
+            @ToolParam(name = "displayName", description = "任务显示名称（新建必填；更新可省略）") String displayName,
+            @ToolParam(name = "fileName", description = "配置文件名不含扩展名；更新必填；新建可选") String fileName,
+            ToolEmitter emitter,
+            RuntimeContext rc) {
+        if (!hasClient()) {
+            return emitAndReturn(emitter, "未连接数据服务，无法提交配置");
+        }
+        try {
+            String rel = resolveYamlPath(path);
+            String yaml = readWorkspace(rc, rel);
+            if (yaml == null || yaml.isBlank()) {
+                return emitAndReturn(emitter, "workspace 文件不存在或为空：" + rel
+                        + "。请先 writeWorkspaceYaml / appendWorkspaceYaml");
+            }
+            return emitAndReturn(emitter, persistYaml(cleanYamlMarkdown(yaml), displayName, fileName));
+        } catch (Exception e) {
+            log.error("submitWorkspaceYaml 失败: path={}", path, e);
+            return emitAndReturn(emitter, "提交失败：" + e.getMessage());
+        }
+    }
+
+    // ==================== 内部：落盘 ====================
+
+    private String persistYaml(String yaml, String displayName, String fileName) {
+        ValidationResult vr = client.validateYaml(yaml);
+        if (!vr.valid()) {
+            return "校验失败，未保存：\n" + String.join("\n", vr.errors());
+        }
+
+        String normalizedFileName = fileName == null || fileName.isBlank() ? null : fileName.trim();
+        try {
+            if (normalizedFileName != null) {
+                ConfigDetail existing = client.getConfig(normalizedFileName);
+                if (existing != null) {
+                    String effectiveName = displayName != null && !displayName.isBlank()
+                            ? displayName.trim() : existing.name();
+                    ConfigDetail saved = client.updateConfig(normalizedFileName, effectiveName, yaml);
+                    if (saved == null) {
+                        return "更新失败：服务端返回空结果";
+                    }
+                    return "配置已更新 ✅\n- 文件名: " + saved.fileName() + "\n- 显示名: " + saved.name();
                 }
             }
-            if (!emptyCols.isEmpty()) {
-                return emitAndReturn(emitter, "以下 table 尚未定义任何字段，无法保存：" + emptyCols
-                        + "\n请先补充字段定义或删除这些空 table，再保存。");
-            }
 
-            // 草稿标识即配置文件名；任务 YAML 不含 id/name，显示名经请求字段提交
-            String merged = draftManager.mergeToYaml(rc, draftId);
-
-            ValidationResult vr = client.validateYaml(merged);
-            if (!vr.valid()) {
-                return emitAndReturn(emitter, "校验失败，未保存。草稿保留在 workspace 中可继续修改：\n"
-                        + String.join("\n", vr.errors()));
+            if (displayName == null || displayName.isBlank()) {
+                return "保存失败：新建配置必须提供 displayName（任务显示名）";
             }
-
-            // 以配置文件名定位已有任务，判断新建或更新
-            ConfigDetail existing = client.getConfig(draftId);
-            ConfigDetail saved;
-            boolean isUpdate = existing != null;
-            if (isUpdate) {
-                // 编辑模式：省略 displayName 时沿用主表中的现有显示名（YAML 已不含 name，无法取回）
-                String effectiveName = displayName != null && !displayName.isBlank()
-                        ? displayName.trim() : existing.name();
-                saved = client.updateConfig(draftId, effectiveName, merged);
-            } else {
-                if (displayName == null || displayName.isBlank()) {
-                    return emitAndReturn(emitter, "保存失败：新建配置必须提供 displayName（任务显示名），任务 YAML 中不再包含 name 字段");
-                }
-                saved = client.createConfig(displayName.trim(), merged);
-            }
+            ConfigDetail saved = client.createConfig(displayName.trim(), yaml, normalizedFileName);
             if (saved == null) {
-                return emitAndReturn(emitter, "保存失败：服务端返回空结果，请检查 dg-web 连接状态");
+                return "保存失败：服务端返回空结果，请检查 dg-web 连接状态";
             }
-            String action = isUpdate ? "已更新" : "已保存";
-            return emitAndReturn(emitter, "配置" + action + " ✅\n- 文件名: " + saved.fileName() + "\n- 显示名: " + saved.name());
+            return "配置已保存 ✅\n- 文件名: " + saved.fileName() + "\n- 显示名: " + saved.name();
         } catch (Exception e) {
-            log.error("保存草稿失败: draftId={}", draftId, e);
-            return emitAndReturn(emitter, "保存失败：" + e.getMessage());
+            log.error("persistYaml 失败: fileName={}", normalizedFileName, e);
+            return "保存失败：" + e.getMessage();
         }
     }
 
-    @Tool(name = "discardConfigDraft", description = "废弃草稿，删除草稿目录")
-    public String discardConfigDraft(
-            @ToolParam(name = "draftId", description = "草稿标识") String draftId,
-            ToolEmitter emitter, RuntimeContext rc) {
-        try {
-            draftManager.deleteDraft(rc, draftId);
-            return emitAndReturn(emitter, "草稿「" + draftId + "」已废弃。");
-        } catch (Exception e) {
-            log.error("废弃草稿失败: draftId={}", draftId, e);
-            return emitAndReturn(emitter, "废弃草稿失败：" + e.getMessage());
-        }
-    }
+    // ==================== 内部：Workspace ====================
 
-    // ==================== Table 级别 ====================
-
-    @Tool(name = "addTableToDraft", description = "向草稿追加完整 table 定义（含 fields）。仅适用于 ≤30 字段的 table，超过请用 addTableMetaToDraft + addFieldsToTable 分批")
-    public String addTableToDraft(
-            @ToolParam(name = "draftId", description = "草稿标识") String draftId,
-            @ToolParam(name = "tableYaml", description = "完整 table YAML（含 name、count、fields 等）") String tableYaml,
-            ToolEmitter emitter, RuntimeContext rc) {
-        try {
-            String cleaned = tableYaml.trim();
-            // 预检字段数：超过阈值时给出提示但仍允许写入（LLM 可能已在分批）
-            int fieldCount = draftManager.countFields(cleaned);
-            String tableName = draftManager.appendTable(rc, draftId, cleaned);
-            String extra = "";
-            if (fieldCount > 0) {
-                extra = "（" + fieldCount + " 字段）";
+    private WorkspaceManager workspaceManager() {
+        WorkspaceManager wm = cachedWorkspaceManager;
+        if (wm == null) {
+            synchronized (this) {
+                wm = cachedWorkspaceManager;
+                if (wm == null) {
+                    wm = harnessAgentProvider.getObject().getWorkspaceManager();
+                    cachedWorkspaceManager = wm;
+                }
             }
-            if (fieldCount > SMALL_TABLE_FIELD_HINT) {
-                extra += " ⚠️ 字段较多，建议后续用 addTableMetaToDraft + addFieldsToTable 分批处理大表";
+        }
+        return wm;
+    }
+
+    static String resolveYamlPath(String path) {
+        if (path == null || path.isBlank()) {
+            throw new IllegalArgumentException("path 不能为空");
+        }
+        String normalized = path.trim().replace('\\', '/');
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
+        }
+        if (normalized.startsWith(YAML_DIR + "/")) {
+            normalized = normalized.substring(YAML_DIR.length() + 1);
+        }
+        if (normalized.contains("..") || normalized.contains(":") || normalized.isBlank()) {
+            throw new IllegalArgumentException("非法 path：" + path);
+        }
+        return YAML_DIR + "/" + normalized;
+    }
+
+    private void writeWorkspace(RuntimeContext rc, String relativePath, String content) {
+        workspaceManager().writeUtf8WorkspaceRelative(rc, relativePath, content);
+        try {
+            Path diskPath = workspaceManager().getWorkspace().resolve(relativePath);
+            Files.createDirectories(diskPath.getParent());
+            Files.writeString(diskPath, content);
+        } catch (Exception e) {
+            log.warn("本地磁盘双写失败: path={}", relativePath, e);
+        }
+    }
+
+    private String readWorkspace(RuntimeContext rc, String relativePath) {
+        try {
+            Path diskPath = workspaceManager().getWorkspace().resolve(relativePath);
+            if (Files.exists(diskPath)) {
+                return Files.readString(diskPath);
             }
-            return emitAndReturn(emitter, "table「" + tableName + "」" + extra + " 已添加到草稿「" + draftId + "」。");
         } catch (Exception e) {
-            log.error("添加 table 失败: draftId={}", draftId, e);
-            return emitAndReturn(emitter, "添加 table 失败：" + e.getMessage());
+            log.debug("磁盘读取失败，回退 WorkspaceManager: path={}", relativePath, e);
         }
+        return workspaceManager().readManagedWorkspaceFileUtf8(rc, relativePath);
     }
 
-    @Tool(name = "updateTableInDraft", description = "替换草稿中指定 table 的全部内容")
-    public String updateTableInDraft(
-            @ToolParam(name = "draftId", description = "草稿标识") String draftId,
-            @ToolParam(name = "tableName", description = "要替换的 table 名称") String tableName,
-            @ToolParam(name = "tableYaml", description = "新的完整 table YAML") String tableYaml,
-            ToolEmitter emitter, RuntimeContext rc) {
-        try {
-            draftManager.updateTable(rc, draftId, tableName, tableYaml.trim());
-            return emitAndReturn(emitter, "table「" + tableName + "」已更新。");
-        } catch (Exception e) {
-            log.error("更新 table 失败: draftId={}, tableName={}", draftId, tableName, e);
-            return emitAndReturn(emitter, "更新 table 失败：" + e.getMessage());
+    // ==================== 格式化辅助 ====================
+
+    static String formatPreviewSummary(List<PreviewTableSummary> tables) {
+        if (tables == null || tables.isEmpty()) {
+            return "预览成功，但未返回任何表数据。";
         }
-    }
-
-    @Tool(name = "removeTableFromDraft", description = "从草稿中删除指定 table")
-    public String removeTableFromDraft(
-            @ToolParam(name = "draftId", description = "草稿标识") String draftId,
-            @ToolParam(name = "tableName", description = "要删除的 table 名称") String tableName,
-            ToolEmitter emitter, RuntimeContext rc) {
-        try {
-            draftManager.removeTable(rc, draftId, tableName);
-            return emitAndReturn(emitter, "table「" + tableName + "」已从草稿「" + draftId + "」中删除。");
-        } catch (Exception e) {
-            log.error("删除 table 失败: draftId={}, tableName={}", draftId, tableName, e);
-            return emitAndReturn(emitter, "删除 table 失败：" + e.getMessage());
-        }
-    }
-
-    // ==================== Fields 级别 ====================
-
-    @Tool(name = "addTableMetaToDraft", description = "向草稿添加 table 壳子（不含 fields），返回 table 名称。适用于大 table（>30 字段），后续用 addFieldsToTable 分批追加 fields")
-    public String addTableMetaToDraft(
-            @ToolParam(name = "draftId", description = "草稿标识") String draftId,
-            @ToolParam(name = "metaYaml", description = "table 元信息 YAML（name、count、connection 等，不含 fields）") String metaYaml,
-            ToolEmitter emitter, RuntimeContext rc) {
-        try {
-            String tableName = draftManager.appendTableMeta(rc, draftId, metaYaml.trim());
-            return emitAndReturn(emitter, "table 壳「" + tableName + "」已创建（0 字段）。请用 addFieldsToTable(draftId=\""
-                    + draftId + "\", tableName=\"" + tableName + "\", fieldsYaml=...) 逐批追加字段。");
-        } catch (Exception e) {
-            log.error("添加 table meta 失败: draftId={}", draftId, e);
-            return emitAndReturn(emitter, "添加 table meta 失败：" + e.getMessage());
-        }
-    }
-
-    @Tool(name = "addFieldsToTable", description = "向草稿中指定 table 追加一批 fields。自动追加到下一批次文件")
-    public String addFieldsToTable(
-            @ToolParam(name = "draftId", description = "草稿标识") String draftId,
-            @ToolParam(name = "tableName", description = "目标 table 名称（必须已通过 addTableMetaToDraft 或 addTableToDraft 创建）") String tableName,
-            @ToolParam(name = "fieldsYaml", description = "fields YAML 片段（可只写 fields 列表，也可带外层 fields: 键）") String fieldsYaml,
-            ToolEmitter emitter, RuntimeContext rc) {
-        try {
-            ConfigDraftManager.AppendFieldsResult r =
-                    draftManager.appendFields(rc, draftId, tableName, fieldsYaml.trim());
-            return emitAndReturn(emitter, "fields 已追加到 table「" + tableName
-                    + "」（第 " + r.batchNum() + " 批，+ " + r.batchCount()
-                    + " 字段，累计 " + r.cumulativeCount() + " 字段）");
-        } catch (Exception e) {
-            log.error("追加 fields 失败: draftId={}, tableName={}", draftId, tableName, e);
-            return emitAndReturn(emitter, "追加 fields 失败：" + e.getMessage());
-        }
-    }
-
-    // ==================== Section 级别 ====================
-
-    @Tool(name = "setDraftConstraints", description = "设置草稿的 constraints（覆盖已有）")
-    public String setDraftConstraints(
-            @ToolParam(name = "draftId", description = "草稿标识") String draftId,
-            @ToolParam(name = "constraintsYaml", description = "constraints YAML 内容") String constraintsYaml,
-            ToolEmitter emitter, RuntimeContext rc) {
-        try {
-            draftManager.setConstraints(rc, draftId, constraintsYaml);
-            return emitAndReturn(emitter, "constraints 已设置。");
-        } catch (Exception e) {
-            log.error("设置 constraints 失败: draftId={}", draftId, e);
-            return emitAndReturn(emitter, "设置 constraints 失败：" + e.getMessage());
-        }
-    }
-
-    @Tool(name = "setDraftSeeds", description = "设置草稿的 seeds（覆盖已有）")
-    public String setDraftSeeds(
-            @ToolParam(name = "draftId", description = "草稿标识") String draftId,
-            @ToolParam(name = "seedsYaml", description = "seeds YAML 内容") String seedsYaml,
-            ToolEmitter emitter, RuntimeContext rc) {
-        try {
-            draftManager.setSeeds(rc, draftId, seedsYaml);
-            return emitAndReturn(emitter, "seeds 已设置。");
-        } catch (Exception e) {
-            log.error("设置 seeds 失败: draftId={}", draftId, e);
-            return emitAndReturn(emitter, "设置 seeds 失败：" + e.getMessage());
-        }
-    }
-
-    @Tool(name = "previewTableInDraft", description = "预览草稿中单个 table 的当前合并状态（meta + 所有 fields 批次），用于分批追加 fields 时验证格式和进度")
-    public String previewTableInDraft(
-            @ToolParam(name = "draftId", description = "草稿标识") String draftId,
-            @ToolParam(name = "tableName", description = "table 名称") String tableName,
-            ToolEmitter emitter, RuntimeContext rc) {
-        try {
-            String yaml = draftManager.previewTable(rc, draftId, tableName);
-            if (yaml == null) {
-                return emitAndReturn(emitter, "table「" + tableName + "」在草稿「" + draftId + "」中不存在。"
-                        + "可用 table: " + draftManager.listTableNames(rc, draftId));
+        StringBuilder sb = new StringBuilder("预览成功：");
+        for (int i = 0; i < tables.size(); i++) {
+            PreviewTableSummary table = tables.get(i);
+            String name = table.tableName() == null ? "?" : table.tableName();
+            int rows = table.rows() == null ? 0 : table.rows().size();
+            if (i > 0) {
+                sb.append('；');
             }
-            int colCount = draftManager.countTableFields(rc, draftId, tableName);
-            return emitAndReturn(emitter, "table「" + tableName + "」（" + colCount + " 字段）当前内容：\n```yaml\n" + yaml + "\n```");
-        } catch (Exception e) {
-            log.error("预览 table 失败: draftId={}, tableName={}", draftId, tableName, e);
-            return emitAndReturn(emitter, "预览 table 失败：" + e.getMessage());
+            sb.append("表 ").append(name).append(' ').append(rows).append(" 行样例");
         }
+        sb.append("。请用业务语言向用户说明样例。");
+        return sb.toString();
     }
 
-    @Tool(name = "previewConfigDraft", description = "预览草稿合并后的完整 YAML。不校验不保存，仅供检查")
-    public String previewConfigDraft(
-            @ToolParam(name = "draftId", description = "草稿标识") String draftId,
-            ToolEmitter emitter, RuntimeContext rc) {
-        try {
-            String merged = draftManager.mergeToYaml(rc, draftId);
-            return emitAndReturn(emitter, "草稿「" + draftId + "」当前配置：\n```yaml\n" + merged + "\n```");
-        } catch (Exception e) {
-            log.error("预览草稿失败: draftId={}", draftId, e);
-            return emitAndReturn(emitter, "预览失败：" + e.getMessage());
+    static List<Map<String, Object>> toWireTables(List<PreviewTableSummary> tables) {
+        if (tables == null || tables.isEmpty()) {
+            return List.of();
         }
+        List<Map<String, Object>> out = new ArrayList<>(tables.size());
+        for (PreviewTableSummary t : tables) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("tableName", t.tableName());
+            m.put("columns", t.columns() == null ? List.of() : t.columns());
+            m.put("rows", t.rows() == null ? List.of() : t.rows());
+            out.add(m);
+        }
+        return out;
     }
-
-    // ==================== 内部方法 ====================
 
     static String cleanYamlMarkdown(String yaml) {
         if (yaml == null) {

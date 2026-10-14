@@ -116,10 +116,10 @@ flowchart TB
 **要点：**
 
 - **dg-web** 负责 HTTP 适配、认证、任务调度与持久化；不直接操作数据源；可选代理 `/api/v1/agent` 至 **dg-ai**
-- **dg-ai** 独立进程，提供多轮对话任务生成（AgentScope HarnessAgent + Tool Set）；通过服务间认证头回调 dg-web 的 REST API（连接列表、任务配置校验等）
+- **dg-ai** 独立进程，提供多轮对话任务创建（HarnessAgent ReAct + Skill / ProgressStore）；通过服务间认证头回调 dg-web（连接探查、预览、任务配置等）
 - **dg-core** 纯业务引擎，按 YAML 定义驱动生成流水线，通过 SPI 调用插件
 - **插件** 各自独立 AutoConfiguration 注册，按需引入 classpath；Reader 读参考数据，Writer 写生成结果；支持任务级 **`writers` 多写**（同一批数据同时写入 PG / ClickHouse / CSV 等多个目标）
-- **连接配置** 可在 `application.yml` 集中维护，也可在任务 YAML 中用顶层 **`connections` 块**或 reader/writer **内联连接**（见配置指南）
+- **连接配置** 须在任务 YAML 中用顶层 **`connections` 块**或 reader/writer **内联连接**（见配置指南）；不支持 `application.yml` 全局连接
 - 小任务同步返回，超过 `sync-threshold` 行数转异步；任务元数据存 SQLite，运行日志按任务写入 `log-dir` 文件，批次 flush 后更新进度（节流持久化，表完成时强制落盘）
 - 单表行数 ≥ 5000 时，引擎按 `thread-pool-size` **并行生成**行数据；多表 DAG 上游表在内存中仅保留下游 `reference` / `foreign_key` 所需列
 
@@ -213,7 +213,7 @@ bin\windows\start-ai.bat      REM dg-ai
 控制台提供：
 
 - **任务管理** — 任务配置 CRUD、Cron 定时调度、提交运行、运行记录与日志（分页）；**自动刷新**（默认开启，运行中/日志弹窗 2 秒、空闲 5 秒，增量更新状态避免整表闪烁）
-- **AI 助手**（可选）— 右下角悬浮球（机器人图标）→ 右侧抽屉**多轮对话**（同一会话内上下文连续）；支持**深度思考**模式查看 Agent 推理过程；生成任务 YAML 校验通过后可自动填入「新建任务」表单（需同时启动 dg-ai 并在 dg-web 启用 `data-generator.ai.enabled`）
+- **AI 助手**（可选）— 右下角悬浮球 → 右侧抽屉**多轮对话**；步骤条引导粘贴连接 → 探表 → 确认计划 → 预览样例 → 一键确认保存（YAML 对用户隐藏；需同时启动 dg-ai 并启用 `data-generator.ai.enabled`）
 - **配置指南** — 控制台附带的 YAML 配置说明文档（可作为 RAG 知识库数据源上传至 dg-ai）
 
 ### 运行测试
@@ -226,13 +226,14 @@ mvn clean test
 
 ## AI Agent
 
-AI 能力由 **`dg-ai` 独立 HTTP 服务**提供。浏览器经 dg-web 的 `/api/v1/agent/**` 代理与 dg-ai 对话（SSE 流式）；dg-ai 的 Tool 通过 **`X-DG-Service-Auth` 请求头**回调 dg-web 既有 REST API（如 `/api/v1/config/connections`、`/api/v1/task-configs?validateOnly=true`），无需单独暴露 agent-tools 端点。
+AI 能力由 **`dg-ai` 独立 HTTP 服务**提供。浏览器经 dg-web 的 `/api/v1/agent/**` 代理与 dg-ai 对话（SSE）；Tool 经 **`X-DG-Service-Auth`** 回调 dg-web（连接探查、预览、任务配置等）。P0 面向小白：**Skill + ReAct** + 会话级 **ProgressStore** 门闩；计划确认与「确认并保存」走特权 REST，不经模型；**YAML 默认不对用户展示**。
 
 **核心能力：**
-- **多轮对话生成** — AgentScope HarnessAgent + ReAct 循环，LLM 自主决策调用 Tool 完成任务创建
-- **RAG 知识库** — 上传 Markdown 文档 → 按标题切分 → 向量索引 → 语义检索，Agent 可按需查阅配置文档
-- **配置草稿管理** — 复杂多表任务分片持久化 + 增量 YAML 合并，突破单次 LLM token 限制
-- **SSE 流式输出** — 所有事件（文本/思考/工具调用/工具结果）无条件流式输出，前端实时渲染文本、思考过程与工具调用结果
+- **create-task 主路径** — 粘贴连接 → 探表选表 → 确认计划 → 草稿构建 → 预览样例 → 确认保存（单表灌数）
+- **Skill / ProgressStore** — `activateSkill` + 阶段门闩；跨阶段 Tool 服务端拒绝
+- **RAG 知识库** — 文档上传切分与语义检索
+- **配置写入** — 模型拼 YAML → validate / preview / save；大文件可写 workspace 后一次提交
+- **SSE** — `text` / `thinking` / 工具事件 / `done` 等流式输出
 
 ### 启动 dg-ai
 
@@ -264,9 +265,9 @@ data-generator:
     token: ai-tokens                         # dg-ai 回调时使用，两端须一致
 ```
 
-设置 `enabled=true`、两端 `service-auth.token` 一致、dg-ai 已启动且 LLM API Key 有效后，登录控制台右下角即可见 AI 悬浮球，点击弹出右侧抽屉对话浮层（不打断当前页面操作，支持多轮对话、思考/工具调用过程展示与历史会话）；校验通过的 YAML 会自动填入「新建任务」表单。
+设置 `enabled=true`、两端 `service-auth.token` 一致、dg-ai 已启动且 LLM API Key 有效后，登录控制台右下角即可见 AI 悬浮球；对话浮层含步骤条、计划确认与预览确认保存，任务落盘后出现在任务列表（无需把 YAML 填入新建表单）。
 
-能力由 **HarnessAgent**（`SystemPrompt` 系统提示 + ReAct 循环）与 **Toolkit**（`ConfigTools` + `KnowledgeTools`）组成。修改工作流程请编辑 `SystemPrompt.java` 或 Tool 实现类。详见 [`dg-ai/README.md`](dg-ai/README.md)。
+能力由 **HarnessAgent**（ReAct）+ **Skill/ProgressStore** + **Toolkit**（`SkillTools` / `ConnectionTools` / `WorkflowTools` / `ConfigTools` / `KnowledgeTools`）组成。详见 [`dg-ai/README.md`](dg-ai/README.md) 与设计规格 `docs/superpowers/specs/2026-10-14-beginner-task-agent-design.md`。
 
 ## 配置目录
 
@@ -294,12 +295,6 @@ data-generator:
   storage:
     sqlite-path: ./data/dg-tasks.db      # 任务记录 SQLite 库
     log-dir: ./data/task-run-logs      # 运行日志文件目录（每任务一个 {runId}.log）
-  connections:                          # 数据源连接（Schema/任务 YAML 引用 connection 名）
-    dev-pg:
-      type: postgresql
-      url: jdbc:postgresql://localhost:5432/dev
-      username: postgres
-      password: changeme                # 真实密码写入 application-local.yml
   job:
     sync-threshold: 5000                # 超过此行数转异步
     batch-size: 1000                    # 写入批次；进度/日志按批更新（持久化有节流）
@@ -309,7 +304,7 @@ data-generator:
     token: ai-tokens                    # dg-ai 等服务间调用共享密钥（X-DG-Service-Auth）
 ```
 
-Schema/任务 YAML 通过 `connection: dev-pg` 等形式引用连接，避免在业务配置中硬编码凭证。
+连接信息必须在任务 YAML 顶层 `connections` 块或 writer/reader 内联填写；**不支持**在 `application.yml` 注册全局连接。
 
 ### 运行时数据
 
@@ -357,12 +352,6 @@ curl http://localhost:8080/api/v1/health
 curl -b cookies.txt http://localhost:8080/api/v1/table-schemas
 ```
 
-### 列出连接（名称与类型，不含凭证）
-
-```bash
-curl -b cookies.txt http://localhost:8080/api/v1/config/connections
-```
-
 ### 预览生成（不写库）
 
 ```bash
@@ -396,14 +385,14 @@ curl -b cookies.txt http://localhost:8080/api/v1/task-configs/joba1b2c3d4
 # 仅校验 YAML（不写库、不保存）
 curl -b cookies.txt -X POST "http://localhost:8080/api/v1/task-configs?validateOnly=true" \
   -H "Content-Type: application/json" \
-  -d '{"content": "writer:\n  type: csv\n  connection: local-csv\n  mode: insert\ntables:\n  - name: t\n    count: 1\n    schema:\n      table: t\n      fields:\n        - name: id\n          type: BIGINT\n          generator: { strategy: sequence, start: 1 }"}'
+  -d '{"content": "connections:\n  my-csv:\n    type: csv\n    path: ./output\nwriter:\n  type: csv\n  connection: my-csv\n  mode: insert\ntables:\n  - name: t\n    count: 1\n    schema:\n      table: t\n      fields:\n        - name: id\n          type: BIGINT\n          generator: { strategy: sequence, start: 1 }"}'
 
 # 创建任务（displayName 必填；YAML 无需含 id/name，元数据存主表；可选 fileName 指定 ASCII 配置文件名，缺省用生成的 id）
 curl -b cookies.txt -X POST http://localhost:8080/api/v1/task-configs \
   -H "Content-Type: application/json" \
   -d '{
     "displayName": "我的测试任务",
-    "content": "writer:\n  type: csv\n  connection: local-csv\n  mode: insert\ntables: []",
+    "content": "connections:\n  my-csv:\n    type: csv\n    path: ./output\nwriter:\n  type: csv\n  connection: my-csv\n  mode: insert\ntables: []",
     "schedule": { "enabled": true, "cron": "0 0 2 * * ?" }
   }'
 
@@ -432,7 +421,7 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/task-runs \
     "overrides": { "tables.customers.count": 100 },
     "writer": {
       "type": "csv",
-      "connection": "local-csv",
+      "connection": "my-csv",
       "mode": "insert"
     }
   }'
@@ -446,13 +435,13 @@ curl -b cookies.txt -X POST http://localhost:8080/api/v1/task-runs \
   -d '{
     "configPath": "task-configs/my_job.yaml",
     "writers": [
-      { "type": "postgresql", "connection": "dev-pg", "mode": "insert" },
-      { "type": "clickhouse", "connection": "dev-ck", "mode": "insert" }
+      { "type": "postgresql", "connection": "my-pg", "mode": "insert" },
+      { "type": "clickhouse", "connection": "my-ck", "mode": "insert" }
     ]
   }'
 ```
 
-写入 PostgreSQL 时将 `type` 改为 `postgresql`，`connection` 指向 `application.yml` 中已配置的连接名。单写/多写 YAML 与优先级说明见 Web 控制台「配置指南 → 指定写入目标」。
+写入 PostgreSQL 时将 `type` 改为 `postgresql`，`connection` 指向任务 YAML `connections` 中已声明的连接名。单写/多写 YAML 与优先级说明见 Web 控制台「配置指南 → 指定写入目标」。
 
 ### 查询运行记录与日志
 
@@ -516,8 +505,8 @@ curl -b cookies.txt -X DELETE http://localhost:8080/api/v1/task-runs/{runId}/rec
 | 能力 | 说明 |
 |------|------|
 | Web 控制台 | 任务管理、任务配置编辑、Cron 调度、运行记录与日志（分页）、配置指南；自动刷新与增量 DOM 更新 |
-| AI Agent | `dg-ai` 独立服务（AgentScope HarnessAgent）+ Web FAB 多轮对话；SSE 流式输出；Tool Set 回调 dg-web |
-| 连接配置 | `application.yml` 命名连接；任务顶层 `connections` 块；reader/writer 内联连接（可混用） |
+| AI Agent | `dg-ai` Skill+ReAct + ProgressStore；FAB 步骤条/预览确认保存；YAML 对用户隐藏；Tool 回调探查/预览/任务 API |
+| 连接配置 | 任务顶层 `connections` 块；reader/writer 内联连接（可混用）；不支持 `application.yml` 全局连接 |
 | 表单登录 | Spring Security Session 认证，`data-generator.auth.*` 可配置 |
 | 任务持久化 | SQLite 存储任务记录；运行日志写入 `log-dir` 文件，重启后可查历史 |
 | 任务配置 CRUD | REST + Web UI；`validateOnly=true` 校验 YAML；任务元数据与调度存 SQLite `tasks` 表，YAML 存 `writable-config-dir` |

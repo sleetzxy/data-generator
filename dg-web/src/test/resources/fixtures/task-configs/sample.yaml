@@ -1,5 +1,9 @@
 id: fixture_sample
 name: 受控测试示例
+connections:
+  local-csv:
+    type: csv
+    path: ./output
 writer:
   type: csv
   connection: local-csv

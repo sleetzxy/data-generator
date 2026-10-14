@@ -2,14 +2,10 @@ package com.datagenerator.web.config;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
-import java.util.HashMap;
-import java.util.Map;
-
 @ConfigurationProperties(prefix = "data-generator")
 public class DataGeneratorProperties {
 
     private String writableConfigDir = "./data/configs";
-    private Map<String, Map<String, Object>> connections = new HashMap<>();
     private TaskRunProperties taskRun = new TaskRunProperties();
     private StorageProperties storage = new StorageProperties();
     private AuthProperties auth = new AuthProperties();
@@ -22,14 +18,6 @@ public class DataGeneratorProperties {
 
     public void setWritableConfigDir(String writableConfigDir) {
         this.writableConfigDir = writableConfigDir;
-    }
-
-    public Map<String, Map<String, Object>> getConnections() {
-        return connections;
-    }
-
-    public void setConnections(Map<String, Map<String, Object>> connections) {
-        this.connections = connections;
     }
 
     public TaskRunProperties getTaskRun() {

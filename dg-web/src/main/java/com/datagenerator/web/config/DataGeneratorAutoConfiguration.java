@@ -7,12 +7,16 @@ import com.datagenerator.core.constraint.ConstraintValidatorRegistry;
 import com.datagenerator.core.engine.TaskRunOrchestrator;
 import com.datagenerator.core.engine.PluginRegistry;
 import com.datagenerator.core.engine.TableGenerator;
+import com.datagenerator.core.generator.BuiltinGenerators;
 import com.datagenerator.core.generator.GeneratorRegistry;
 import com.datagenerator.core.reference.ReferenceDataLoader;
 import com.datagenerator.core.model.ConfigPathResolver;
 import com.datagenerator.core.model.YamlConfigLoader;
+import com.datagenerator.spi.generator.ValueGenerator;
+import com.datagenerator.spi.inspector.ConnectionInspector;
 import com.datagenerator.spi.reader.DataReader;
 import com.datagenerator.spi.writer.DataWriter;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -52,8 +56,9 @@ public class DataGeneratorAutoConfiguration {
     }
 
     @Bean
-    ConnectionRegistry connectionRegistry(DataGeneratorProperties properties) {
-        return new ConnectionRegistry(properties.getConnections());
+    ConnectionRegistry connectionRegistry() {
+        // 连接仅来自任务 YAML 的 connections / 内联，不再从 application.yml 注册全局连接
+        return new ConnectionRegistry();
     }
 
     @Bean
@@ -66,23 +71,34 @@ public class DataGeneratorAutoConfiguration {
     }
 
     @Bean
+    GeneratorRegistry generatorRegistry(
+            ReferenceDataLoader referenceDataLoader,
+            ObjectProvider<ValueGenerator> extraGenerators) {
+        // 内置策略先注册；插件/自定义 Bean 后注册，可覆盖同名 strategy
+        GeneratorRegistry registry = new GeneratorRegistry();
+        BuiltinGenerators.create(referenceDataLoader).forEach(registry::register);
+        extraGenerators.orderedStream().forEach(registry::register);
+        return registry;
+    }
+
+    @Bean
     PluginRegistry pluginRegistry(
             ReferenceDataLoader referenceDataLoader,
+            GeneratorRegistry generatorRegistry,
             List<DataReader> readers,
-            List<DataWriter> writers) {
-        PluginRegistry registry = new PluginRegistry(referenceDataLoader);
+            List<DataWriter> writers,
+            ObjectProvider<ConnectionInspector> inspectors) {
+        PluginRegistry registry = new PluginRegistry(referenceDataLoader, generatorRegistry);
         for (DataReader reader : readers) {
             registry.registerReader(reader.type(), reader);
         }
         for (DataWriter writer : writers) {
             registry.registerWriterPrototype(writer.type(), writer);
         }
+        // 无 inspector Bean 时为空流，便于不含插件的测试装配
+        inspectors.orderedStream()
+                .forEach(inspector -> registry.registerInspector(inspector.type(), inspector));
         return registry;
-    }
-
-    @Bean
-    GeneratorRegistry generatorRegistry(PluginRegistry pluginRegistry) {
-        return pluginRegistry.getGeneratorRegistry();
     }
 
     @Bean

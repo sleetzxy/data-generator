@@ -1,7 +1,6 @@
 package com.datagenerator.core.expression;
 
 import com.datagenerator.spi.expression.ExpressionEvaluator;
-import org.springframework.context.expression.MapAccessor;
 import org.springframework.expression.Expression;
 import org.springframework.expression.ExpressionParser;
 import org.springframework.expression.spel.standard.SpelExpressionParser;
@@ -12,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class SpelExpressionEvaluator implements ExpressionEvaluator {
 
-    private static final MapAccessor MAP_ACCESSOR = new MapAccessor();
+    private static final MapRootPropertyAccessor MAP_ACCESSOR = new MapRootPropertyAccessor();
 
     private final ExpressionParser parser = new SpelExpressionParser();
     private final ConcurrentHashMap<String, Expression> compiledExpressions = new ConcurrentHashMap<>();

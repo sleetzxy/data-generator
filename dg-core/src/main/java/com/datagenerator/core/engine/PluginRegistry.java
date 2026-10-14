@@ -5,6 +5,7 @@ import com.datagenerator.core.generator.GeneratorRegistry;
 import com.datagenerator.core.reference.ReferenceDataLoader;
 import com.datagenerator.spi.constraint.ConstraintValidator;
 import com.datagenerator.spi.generator.ValueGenerator;
+import com.datagenerator.spi.inspector.ConnectionInspector;
 import com.datagenerator.spi.reader.DataReader;
 import com.datagenerator.spi.writer.DataWriter;
 
@@ -17,6 +18,7 @@ public class PluginRegistry {
 
     private final Map<String, DataReader> readers = new HashMap<>();
     private final Map<String, Supplier<DataWriter>> writerFactories = new HashMap<>();
+    private final Map<String, ConnectionInspector> inspectors = new HashMap<>();
     private final GeneratorRegistry generatorRegistry;
     private final ConstraintValidatorRegistry constraintRegistry;
     private final ReferenceDataLoader referenceDataLoader;
@@ -24,17 +26,27 @@ public class PluginRegistry {
     public PluginRegistry() {
         this.constraintRegistry = new ConstraintValidatorRegistry();
         this.referenceDataLoader = new ReferenceDataLoader(this);
-        this.generatorRegistry = new GeneratorRegistry(referenceDataLoader);
+        this.generatorRegistry = GeneratorRegistry.withBuiltins(referenceDataLoader);
     }
 
     public PluginRegistry(ReferenceDataLoader referenceDataLoader) {
+        this(referenceDataLoader, GeneratorRegistry.withBuiltins(referenceDataLoader));
+    }
+
+    public PluginRegistry(ReferenceDataLoader referenceDataLoader, GeneratorRegistry generatorRegistry) {
         this.constraintRegistry = new ConstraintValidatorRegistry();
         this.referenceDataLoader = referenceDataLoader;
-        this.generatorRegistry = new GeneratorRegistry(referenceDataLoader);
+        this.generatorRegistry = Objects.requireNonNull(generatorRegistry, "generatorRegistry");
     }
 
     public void registerReader(String source, DataReader reader) {
         readers.put(Objects.requireNonNull(source, "source"), Objects.requireNonNull(reader, "reader"));
+    }
+
+    public void registerInspector(String type, ConnectionInspector inspector) {
+        inspectors.put(
+                Objects.requireNonNull(type, "type"),
+                Objects.requireNonNull(inspector, "inspector"));
     }
 
     /**
@@ -76,6 +88,14 @@ public class PluginRegistry {
             throw new IllegalArgumentException("Unknown reference source: " + source);
         }
         return reader;
+    }
+
+    public ConnectionInspector getInspector(String type) {
+        ConnectionInspector inspector = inspectors.get(type);
+        if (inspector == null) {
+            throw new IllegalArgumentException("Unknown inspector type: " + type);
+        }
+        return inspector;
     }
 
     public DataWriter getWriter(String type) {

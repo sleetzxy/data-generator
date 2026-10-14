@@ -22,16 +22,11 @@ let aiSessionsCache = [];
 /** 当前加载的会话消息（用于标题提取） */
 let aiCurrentMessages = [];
 
-/** 欢迎说明 */
-const AGENT_WELCOME_TEXT = `我是 Data Generator 的 AI 配置顾问，基于 ReAct（推理-行动）范式工作。
+/** 欢迎说明（LLM 用工具探库、建配置、预览并保存） */
+const AGENT_WELCOME_TEXT = `我是 Data Generator 助手。
 
-我可以帮你：
-· 创建新的数据生成任务配置（表结构、生成策略、Writer、约束、Seed）
-· 编辑已有配置
-· 查询和删除配置
-· 校验 YAML 语法
-
-我会自动规划复杂任务的执行步骤，并逐步完成。直接描述你的造数需求即可开始。`;
+描述需求即可，我会用工具探库、建配置、预览并保存。
+例如：给 users 表造 100 条测试数据，并粘贴数据库连接信息。`;
 
 /** 绑定聊天表单、头部按钮与历史面板事件（由应用入口调用） */
 export function initAgent() {
@@ -72,10 +67,28 @@ export function initAgent() {
     document.getElementById('ai-close').addEventListener('click', closeAiDrawer);
     document.getElementById('ai-drawer-backdrop').addEventListener('click', closeAiDrawer);
     document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape' && isAiDrawerOpen()) {
-            closeAiDrawer();
+        if (e.key === 'Escape') {
+            const enlarge = document.getElementById('ai-preview-enlarge-modal');
+            if (enlarge && !enlarge.classList.contains('hidden')) {
+                closeAiPreviewEnlarge();
+                e.stopPropagation();
+                return;
+            }
+            if (isAiDrawerOpen()) {
+                closeAiDrawer();
+            }
         }
     });
+
+    const enlargeClose = document.getElementById('ai-preview-enlarge-close');
+    if (enlargeClose) {
+        enlargeClose.addEventListener('click', closeAiPreviewEnlarge);
+    }
+    const enlargeModal = document.getElementById('ai-preview-enlarge-modal');
+    if (enlargeModal) {
+        enlargeModal.querySelector('[data-ai-preview-enlarge-close]')
+            ?.addEventListener('click', closeAiPreviewEnlarge);
+    }
 }
 
 /** 悬浮球拖动状态：Pointer Events + setPointerCapture，位移超阈值视为拖动 */
@@ -347,6 +360,7 @@ async function switchToHistory(idx) {
     aiAssistantBubble = null;
     aiToolBlocks.clear();
     aiThinkBlock = null;
+    aiLastPreviewFingerprint = '';
     // 提前设置 chatId，防止加载期间用户发送消息到错误会话
     aiChatId = item.chatId;
 
@@ -454,10 +468,7 @@ function renderHistoryBlocks(role, blocks) {
             case 'tool_result': {
                 const toolBlock = aiToolBlocks.get(block.toolCallId);
                 if (toolBlock) {
-                    const content = toolBlock.querySelector('.ai-tool-content');
-                    if (content) {
-                        content.textContent += block.text;
-                    }
+                    applyToolResultContent(toolBlock, block.text || '');
                 }
                 break;
             }
@@ -550,6 +561,7 @@ function resetSession() {
     aiAssistantBubble = null;
     aiToolBlocks.clear();
     aiThinkBlock = null;
+    aiLastPreviewFingerprint = '';
     aiCurrentMessages = [];
     document.getElementById('ai-messages').innerHTML = '';
     document.getElementById('ai-input').value = '';
@@ -783,7 +795,7 @@ function completeToolBlock(toolCallId) {
     // 不删除 map 引用，observation 事件可能在 tool_end 之后到达
 }
 
-/** 设置工具调用结果 */
+/** 设置工具调用结果（追加） */
 function setToolResult(toolCallId, text) {
     const block = aiToolBlocks.get(toolCallId);
     if (!block) return;
@@ -794,8 +806,321 @@ function setToolResult(toolCallId, text) {
     }
 }
 
+/** 覆盖工具结果文本（纯文本，不美化） */
+function setToolResultReplace(toolCallId, text) {
+    const block = aiToolBlocks.get(toolCallId);
+    if (!block) return;
+    const content = block.querySelector('.ai-tool-content');
+    if (content) {
+        content.textContent = text == null ? '' : String(text);
+        content.scrollTop = content.scrollHeight;
+    }
+}
+
+/** 避免同一预览结果重复插入气泡卡片 */
+let aiLastPreviewFingerprint = '';
+
+/**
+ * observation 结束：按工具返回 JSON 约定渲染；无约定则原样文本。
+ */
+function finalizeToolObservation(toolCallId, resultText) {
+    const block = aiToolBlocks.get(toolCallId);
+    if (!block) {
+        return;
+    }
+    const content = block.querySelector('.ai-tool-content');
+    if (!content) {
+        return;
+    }
+
+    let raw = resultText;
+    if (raw == null || String(raw).trim() === '') {
+        raw = content.textContent || '';
+    }
+    raw = String(raw || '').trim();
+    if (!raw) {
+        return;
+    }
+
+    applyToolResultContent(block, raw);
+}
+
+/**
+ * 工具结果约定（与后端 Tool 对齐）：
+ * { "ui":"table", "title"?, "message"?, "tables":[...] }
+ * 前端只认 ui，不认工具名。直播 SSE 与历史恢复共用。
+ */
+function applyToolResultContent(toolBlock, rawText) {
+    const content = toolBlock.querySelector('.ai-tool-content');
+    if (!content) {
+        return;
+    }
+    const raw = String(rawText || '').trim();
+    if (!raw) {
+        return;
+    }
+    const uiPayload = tryParseUiPayload(raw);
+    if (uiPayload && uiPayload.ui === 'table' && uiPayload.tables.length > 0) {
+        content.textContent = uiPayload.message || '预览成功';
+        appendAiPreviewCard(uiPayload.tables, uiPayload.title);
+        return;
+    }
+    content.textContent = raw;
+    toolBlock.classList.add('is-expanded');
+    content.scrollTop = content.scrollHeight;
+}
+
+/** 解析带 ui 约定的工具 JSON；失败或不含 ui 返回 null */
+function tryParseUiPayload(text) {
+    const trimmed = String(text || '').trim();
+    if (!trimmed.startsWith('{')) {
+        return null;
+    }
+    try {
+        const obj = JSON.parse(trimmed);
+        if (!obj || typeof obj.ui !== 'string' || !obj.ui) {
+            return null;
+        }
+        return {
+            ui: obj.ui,
+            title: obj.title || '',
+            message: obj.message || obj.summary || '',
+            tables: Array.isArray(obj.tables) ? normalizePreviewTables(obj.tables) : []
+        };
+    } catch (_) {
+        return null;
+    }
+}
+
+function normalizePreviewTables(tables) {
+    return tables.map((t) => ({
+        tableName: t.tableName || '未命名表',
+        columns: Array.isArray(t.columns) ? t.columns : [],
+        rows: Array.isArray(t.rows) ? t.rows : []
+    }));
+}
+
+/** 在助手气泡内追加独立预览卡（非工具样式），支持放大 */
+function appendAiPreviewCard(tables, cardTitle) {
+    const safeTables = normalizePreviewTables(tables);
+    if (!safeTables.length) {
+        return;
+    }
+    const displayTitle = (cardTitle && String(cardTitle).trim()) || '样例预览';
+    let fingerprint = '';
+    try {
+        fingerprint = JSON.stringify({ title: displayTitle, tables: safeTables });
+    } catch (_) {
+        fingerprint = String(safeTables.length);
+    }
+    if (fingerprint && fingerprint === aiLastPreviewFingerprint) {
+        return;
+    }
+    aiLastPreviewFingerprint = fingerprint;
+
+    if (!aiAssistantBubble) {
+        aiAssistantBubble = appendMessage('assistant', '');
+    }
+    hideTypingIndicator(aiAssistantBubble);
+
+    const card = document.createElement('div');
+    card.className = 'ai-preview-card';
+    card.setAttribute('data-ai-preview', '1');
+
+    const header = document.createElement('div');
+    header.className = 'ai-preview-header';
+    const title = document.createElement('span');
+    title.className = 'ai-preview-title';
+    title.textContent = displayTitle;
+    const enlargeBtn = document.createElement('button');
+    enlargeBtn.type = 'button';
+    enlargeBtn.className = 'ai-preview-enlarge-btn';
+    enlargeBtn.title = '放大查看';
+    enlargeBtn.setAttribute('aria-label', '放大查看');
+    enlargeBtn.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="14" height="14" aria-hidden="true">
+        <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/>
+        <line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+    </svg>`;
+    enlargeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openAiPreviewEnlarge(safeTables, displayTitle);
+    });
+    header.appendChild(title);
+    header.appendChild(enlargeBtn);
+    card.appendChild(header);
+    card.appendChild(buildPreviewTablesDom(safeTables, { compact: true }));
+
+    const messages = document.getElementById('ai-messages');
+    if (aiAssistantBubble && aiAssistantBubble.isConnected) {
+        aiAssistantBubble.appendChild(card);
+        const indicator = aiAssistantBubble.querySelector('.ai-typing-indicator');
+        if (indicator) {
+            aiAssistantBubble.appendChild(indicator);
+        }
+    } else if (messages) {
+        messages.appendChild(card);
+    }
+
+    requestAnimationFrame(() => {
+        if (messages) {
+            messages.scrollTop = messages.scrollHeight;
+        }
+    });
+}
+
+function openAiPreviewEnlarge(tables, cardTitle) {
+    const modal = document.getElementById('ai-preview-enlarge-modal');
+    const body = document.getElementById('ai-preview-enlarge-body');
+    const title = document.getElementById('ai-preview-enlarge-title');
+    if (!modal || !body) {
+        return;
+    }
+    if (title) {
+        title.textContent = (cardTitle && String(cardTitle).trim()) || '样例预览';
+    }
+    body.replaceChildren();
+    body.appendChild(buildPreviewTablesDom(normalizePreviewTables(tables), { compact: false }));
+    modal.classList.remove('hidden');
+}
+
+function closeAiPreviewEnlarge() {
+    const modal = document.getElementById('ai-preview-enlarge-modal');
+    const body = document.getElementById('ai-preview-enlarge-body');
+    if (modal) {
+        modal.classList.add('hidden');
+    }
+    if (body) {
+        body.replaceChildren();
+    }
+}
+
+/**
+ * @param {Array} tables 已 normalize
+ * @param {{ compact?: boolean }} options
+ */
+function buildPreviewTablesDom(tables, options = {}) {
+    const compact = options.compact !== false;
+    const wrap = document.createElement('div');
+    wrap.className = 'ai-preview-tables' + (compact ? ' is-compact' : ' is-enlarge');
+
+    if (tables.length > 1) {
+        const tabs = document.createElement('div');
+        tabs.className = 'ai-preview-tabs';
+        tabs.setAttribute('role', 'tablist');
+        tables.forEach((table, index) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'ai-preview-tab' + (index === 0 ? ' active' : '');
+            btn.setAttribute('role', 'tab');
+            btn.dataset.tabIndex = String(index);
+            btn.setAttribute('aria-selected', index === 0 ? 'true' : 'false');
+            const count = table.rows.length;
+            btn.textContent = count > 0 ? `${table.tableName} (${count})` : table.tableName;
+            tabs.appendChild(btn);
+        });
+        wrap.appendChild(tabs);
+
+        const panels = document.createElement('div');
+        panels.className = 'ai-preview-panels';
+        tables.forEach((table, index) => {
+            const panel = document.createElement('div');
+            panel.className = 'ai-preview-panel' + (index === 0 ? '' : ' hidden');
+            panel.dataset.panelIndex = String(index);
+            panel.setAttribute('role', 'tabpanel');
+            panel.appendChild(buildSinglePreviewTable(table, compact));
+            panels.appendChild(panel);
+        });
+        wrap.appendChild(panels);
+
+        tabs.querySelectorAll('.ai-preview-tab').forEach((tab) => {
+            tab.addEventListener('click', () => {
+                const index = Number(tab.dataset.tabIndex);
+                tabs.querySelectorAll('.ai-preview-tab').forEach((t) => {
+                    const on = Number(t.dataset.tabIndex) === index;
+                    t.classList.toggle('active', on);
+                    t.setAttribute('aria-selected', on ? 'true' : 'false');
+                });
+                panels.querySelectorAll('.ai-preview-panel').forEach((panel) => {
+                    panel.classList.toggle('hidden', Number(panel.dataset.panelIndex) !== index);
+                });
+            });
+        });
+        return wrap;
+    }
+
+    wrap.appendChild(buildSinglePreviewTable(tables[0], compact));
+    return wrap;
+}
+
+function buildSinglePreviewTable(table, compact) {
+    const columns = table.columns && table.columns.length
+        ? table.columns
+        : Object.keys((table.rows && table.rows[0]) || {});
+    const rows = table.rows || [];
+
+    if (!rows.length) {
+        const empty = document.createElement('p');
+        empty.className = 'ai-preview-empty';
+        empty.textContent = '该表无样例行';
+        return empty;
+    }
+
+    const scroll = document.createElement('div');
+    scroll.className = 'ai-preview-table-wrap';
+    const el = document.createElement('table');
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    for (const col of columns) {
+        const th = document.createElement('th');
+        th.textContent = String(col);
+        th.title = String(col);
+        headRow.appendChild(th);
+    }
+    thead.appendChild(headRow);
+    el.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    for (const row of rows) {
+        const tr = document.createElement('tr');
+        for (const col of columns) {
+            const td = document.createElement('td');
+            td.appendChild(formatAiPreviewCell(row ? row[col] : null, compact));
+            tr.appendChild(td);
+        }
+        tbody.appendChild(tr);
+    }
+    el.appendChild(tbody);
+    scroll.appendChild(el);
+    return scroll;
+}
+
+function formatAiPreviewCell(value, compact) {
+    const span = document.createElement('span');
+    if (value == null) {
+        span.className = 'ai-preview-null';
+        span.textContent = '—';
+        return span;
+    }
+    let text;
+    if (typeof value === 'object') {
+        try {
+            text = JSON.stringify(value);
+        } catch (_) {
+            text = String(value);
+        }
+    } else {
+        text = String(value);
+    }
+    span.className = 'ai-preview-cell' + (compact ? ' is-compact' : '');
+    span.textContent = text;
+    span.title = text;
+    return span;
+}
+
 function handleAgentTaskConfigSaved() {
-    loadDefinitions({ fullRender: true });
+    if (typeof loadDefinitions === 'function') {
+        loadDefinitions({ fullRender: true });
+    }
 }
 
 function appendToAssistantBubble(text) {
@@ -863,7 +1188,7 @@ function handleSseEvent(eventName, data) {
                 if (!aiToolBlocks.has(toolCallId)) {
                     createToolBlock(toolName, toolCallId);
                 }
-                if (parsed.name === 'saveConfig') {
+                if (toolName === 'saveConfig' || toolName === 'saveConfigDraft') {
                     handleAgentTaskConfigSaved();
                 }
             } catch (_) {
@@ -899,15 +1224,10 @@ function handleSseEvent(eventName, data) {
                 if (parsed.delta) {
                     setToolResult(toolCallId, parsed.delta);
                 }
-                // result: 无流式 delta 时的完整结果（兜底，与 delta 互斥不会重复）
-                if (parsed.result) {
-                    const block = aiToolBlocks.get(toolCallId);
-                    if (block) {
-                        const content = block.querySelector('.ai-tool-content');
-                        if (content && !content.textContent.trim()) {
-                            content.textContent = parsed.result;
-                        }
-                    }
+                if (parsed.end) {
+                    finalizeToolObservation(toolCallId, parsed.result);
+                } else if (parsed.result) {
+                    setToolResultReplace(toolCallId, parsed.result);
                 }
             } catch (_) { /* ignore */ }
             break;

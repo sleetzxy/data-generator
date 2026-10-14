@@ -45,6 +45,7 @@ import com.datagenerator.spi.model.WriterConfig;
 import com.datagenerator.core.model.YamlConfigLoader;
 import com.datagenerator.web.storage.TaskRepository;
 import com.datagenerator.web.storage.TaskRunLogRepository;
+import com.datagenerator.web.storage.TaskRunMapper;
 import com.datagenerator.web.storage.TaskRunRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -148,13 +149,13 @@ public class TaskRunService {
                 null,
                 null);
         placeholder.setTriggerSource(triggerSource);
-        taskRunRepository.insert(placeholder);
+        taskRunRepository.insert(TaskRunMapper.toRecord(placeholder));
         taskRunLogRepository.info(runId, "已加入队列");
         return placeholder;
     }
 
     public void executeAccepted(String runId, TaskRunSubmitRequest request) {
-        TaskRunResponse stored = taskRunRepository.findById(runId)
+        TaskRunResponse stored = taskRunRepository.findById(runId).map(TaskRunMapper::toResponse)
                 .orElseThrow(() -> new TaskRunNotFoundException(runId));
         TaskConfig taskConfig = loadAndApplyOverrides(request);
         GenerationOptions options = toGenerationOptions(request.getOptions());
@@ -202,7 +203,7 @@ public class TaskRunService {
                 null,
                 null);
         placeholder.setTriggerSource(triggerSource);
-        taskRunRepository.insert(placeholder);
+        taskRunRepository.insert(TaskRunMapper.toRecord(placeholder));
         taskRunLogRepository.info(runId, "任务已提交，配置文件: " + request.getConfigPath());
         taskRunLogRepository.info(runId, "预估生成行数: " + estimatedRows);
 
@@ -217,7 +218,7 @@ public class TaskRunService {
                 taskRunLogRepository.info(runId, "超过同步阈值 " + syncThreshold + "，转为异步执行");
             }
             asyncTaskRunExecutor.submit(runId, () -> executeAndStore(runId, taskConfig, resolveRuntimeWriters(taskConfig, request), options));
-            TaskRunResponse pending = taskRunRepository.findById(runId).orElseThrow();
+            TaskRunResponse pending = taskRunRepository.findById(runId).map(TaskRunMapper::toResponse).orElseThrow();
             return new TaskRunSubmitResult(pending, true);
         }
 
@@ -234,6 +235,7 @@ public class TaskRunService {
         int offset = (safePage - 1) * safeSize;
         long total = taskRunRepository.countAll(validated);
         List<TaskRunSummaryResponse> items = taskRunRepository.listPage(offset, safeSize, validated).stream()
+                .map(TaskRunMapper::toResponse)
                 .map(this::toSummary)
                 .toList();
         applyDisplayNames(items);
@@ -283,9 +285,11 @@ public class TaskRunService {
     /** 按配置路径聚合的运行索引：每路径最新一次与活跃运行 */
     public TaskRunIndexResponse runIndexes() {
         List<TaskRunSummaryResponse> latestRuns = taskRunRepository.latestRunsByConfigPath().stream()
+                .map(TaskRunMapper::toResponse)
                 .map(this::toSummary)
                 .toList();
         List<TaskRunSummaryResponse> activeRuns = taskRunRepository.activeRunsByConfigPath().stream()
+                .map(TaskRunMapper::toResponse)
                 .map(this::toSummary)
                 .toList();
         applyDisplayNames(latestRuns);
@@ -371,7 +375,7 @@ public class TaskRunService {
     }
 
     public TaskRunResponse getById(String runId) {
-        TaskRunResponse response = taskRunRepository.findById(runId)
+        TaskRunResponse response = taskRunRepository.findById(runId).map(TaskRunMapper::toResponse)
                 .orElseThrow(() -> new TaskRunNotFoundException(runId));
         String configPath = response.getConfigPath();
         if (configPath != null) {
@@ -400,7 +404,7 @@ public class TaskRunService {
     }
 
     public void cancel(String runId) {
-        TaskRunResponse response = taskRunRepository.findById(runId)
+        TaskRunResponse response = taskRunRepository.findById(runId).map(TaskRunMapper::toResponse)
                 .orElseThrow(() -> new TaskRunNotFoundException(runId));
         if (isTerminalStatus(response.getStatus())) {
             return;
@@ -411,20 +415,20 @@ public class TaskRunService {
         boolean interrupted = cancellationRegistry.interruptRunning(runId);
         if (asyncCancelled || interrupted) {
             if (!asyncCancelled) {
-                TaskRunResponse current = taskRunRepository.findById(runId).orElseThrow();
+                TaskRunResponse current = taskRunRepository.findById(runId).map(TaskRunMapper::toResponse).orElseThrow();
                 if (!isTerminalStatus(current.getStatus())) {
                     current.setStatus(TaskRunStatus.CANCELLED);
-                    taskRunRepository.update(current);
+                    taskRunRepository.update(TaskRunMapper.toRecord(current));
                     taskRunLogRepository.warn(runId, "任务已被用户取消");
                 }
             }
             scheduleExecutor.onRunTerminal(configPath);
             return;
         }
-        TaskRunResponse current = taskRunRepository.findById(runId).orElseThrow();
+        TaskRunResponse current = taskRunRepository.findById(runId).map(TaskRunMapper::toResponse).orElseThrow();
         if (current.getStatus() == TaskRunStatus.PENDING || current.getStatus() == TaskRunStatus.RUNNING) {
             current.setStatus(TaskRunStatus.CANCELLED);
-            taskRunRepository.update(current);
+            taskRunRepository.update(TaskRunMapper.toRecord(current));
             taskRunLogRepository.warn(runId, "任务已被用户取消");
             scheduleExecutor.onRunTerminal(configPath);
             return;
@@ -440,7 +444,7 @@ public class TaskRunService {
 
     @Transactional
     public void remove(String runId) {
-        TaskRunResponse response = taskRunRepository.findById(runId)
+        TaskRunResponse response = taskRunRepository.findById(runId).map(TaskRunMapper::toResponse)
                 .orElseThrow(() -> new TaskRunNotFoundException(runId));
         if (response.getStatus() == TaskRunStatus.PENDING || response.getStatus() == TaskRunStatus.RUNNING) {
             throw new IllegalArgumentException("Running task run cannot be removed: " + runId);
@@ -450,10 +454,9 @@ public class TaskRunService {
     }
 
     public PreviewResponse preview(PreviewRequest request) {
-        validateConfigPath(request.getConfigPath());
         long start = System.currentTimeMillis();
 
-        TaskConfig taskConfig = loadAndApplyOverrides(request);
+        TaskConfig taskConfig = resolvePreviewTaskConfig(request);
         TaskConfig previewTaskConfig = preparePreviewTaskConfig(taskConfig, request.getPreview());
 
         CollectingWriter collectingWriter = new CollectingWriter();
@@ -489,7 +492,7 @@ public class TaskRunService {
             List<Map<String, Object>> runtimeWriters,
             GenerationOptions options) {
         long start = System.currentTimeMillis();
-        TaskRunResponse current = taskRunRepository.findById(runId).orElse(null);
+        TaskRunResponse current = taskRunRepository.findById(runId).map(TaskRunMapper::toResponse).orElse(null);
         String configPath = current == null ? null : current.getConfigPath();
         String submittedAt = current == null ? null : current.getSubmittedAt();
         cancellationRegistry.registerRunning(runId);
@@ -500,7 +503,7 @@ public class TaskRunService {
             if (current != null) {
                 current.setStatus(TaskRunStatus.RUNNING);
                 current.setProgress(new TaskRunProgress(totalTables, 0, totalRows, 0, 0));
-                taskRunRepository.update(current);
+                taskRunRepository.update(TaskRunMapper.toRecord(current));
             }
             taskRunLogRepository.info(runId, "开始生成数据，共 " + totalTables + " 张表，目标 " + totalRows + " 行");
             logTaskRunContext(runId, taskConfig, runtimeWriters, options);
@@ -518,7 +521,7 @@ public class TaskRunService {
             }
             if (isTaskRunCancelled(runId)) {
                 taskRunLogRepository.warn(runId, "任务执行完毕但已被取消，保持 CANCELLED 状态");
-                return taskRunRepository.findById(runId).orElseThrow(
+                return taskRunRepository.findById(runId).map(TaskRunMapper::toResponse).orElseThrow(
                         () -> new IllegalStateException("Task run not found: " + runId));
             }
             TaskRunResponse response = toTaskRunResponse(
@@ -530,18 +533,18 @@ public class TaskRunService {
                     current == null ? null : current.getSubmittedAt(),
                     null,
                     null);
-            taskRunRepository.update(response);
+            taskRunRepository.update(TaskRunMapper.toRecord(response));
             taskRunLogRepository.info(
                     runId,
                     "任务完成，耗时 " + response.getDuration()
                             + "，共写入 " + result.writtenRows() + " 行");
             return response;
         } catch (TaskRunCancelledException cancelled) {
-            TaskRunResponse latest = taskRunRepository.findById(runId).orElseThrow(
+            TaskRunResponse latest = taskRunRepository.findById(runId).map(TaskRunMapper::toResponse).orElseThrow(
                     () -> new IllegalStateException("Task run not found: " + runId));
             if (!isTerminalStatus(latest.getStatus())) {
                 latest.setStatus(TaskRunStatus.CANCELLED);
-                taskRunRepository.update(latest);
+                taskRunRepository.update(TaskRunMapper.toRecord(latest));
                 taskRunLogRepository.warn(runId, "任务已被用户取消");
             }
             return latest;
@@ -559,7 +562,7 @@ public class TaskRunService {
             failed.setStatus(TaskRunStatus.FAILED);
             failed.setErrorMessage(exception.getMessage());
             failed.setDetails(List.of(new TableDetail("_error", 0, 0, exception.getMessage())));
-            taskRunRepository.update(failed);
+            taskRunRepository.update(TaskRunMapper.toRecord(failed));
             throw exception;
         } finally {
             cancellationRegistry.unregisterRunning(runId);
@@ -579,6 +582,20 @@ public class TaskRunService {
                     taskConfig.setName(task.displayName());
                 });
         return taskConfig;
+    }
+
+    /**
+     * 预览配置解析：优先使用未落盘 {@code content}；否则走已存任务 {@code configPath}。
+     */
+    private TaskConfig resolvePreviewTaskConfig(PreviewRequest request) {
+        String content = request.getContent();
+        if (content != null && !content.isBlank()) {
+            TaskConfig taskConfig = configLoader.loadTaskConfigFromContent(content);
+            applyOverrides(taskConfig, request.getOverrides());
+            return taskConfig;
+        }
+        validateConfigPath(request.getConfigPath());
+        return loadAndApplyOverrides(request);
     }
 
     /**
@@ -847,7 +864,7 @@ public class TaskRunService {
                 submittedAt,
                 null,
                 null);
-        taskRunRepository.update(response);
+        taskRunRepository.update(TaskRunMapper.toRecord(response));
     }
 
     private void logTaskRunContext(

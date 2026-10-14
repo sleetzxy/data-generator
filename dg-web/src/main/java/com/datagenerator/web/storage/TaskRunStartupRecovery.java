@@ -1,6 +1,5 @@
 package com.datagenerator.web.storage;
 
-import com.datagenerator.web.dto.TaskRunResponse;
 import com.datagenerator.web.dto.TaskRunStatus;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
@@ -28,7 +27,7 @@ public class TaskRunStartupRecovery {
 
     void recover() {
         List<TaskRunStatus> staleStatuses = List.of(TaskRunStatus.PENDING, TaskRunStatus.RUNNING);
-        for (TaskRunResponse run : taskRunRepository.findByStatusIn(staleStatuses)) {
+        for (TaskRunRecord run : taskRunRepository.findByStatusIn(staleStatuses)) {
             run.setStatus(TaskRunStatus.CANCELLED);
             taskRunRepository.update(run);
             taskRunLogRepository.warn(run.getRunId(), "服务重启，任务已取消");

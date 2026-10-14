@@ -5,6 +5,7 @@ import com.datagenerator.ai.config.AiProperties.ModelProperties;
 import com.datagenerator.ai.embedding.SimpleEmbeddingModel;
 import com.datagenerator.ai.prompt.SystemPrompt;
 import com.datagenerator.ai.tool.ConfigTools;
+import com.datagenerator.ai.tool.ConnectionTools;
 import com.datagenerator.ai.tool.KnowledgeTools;
 import io.agentscope.core.embedding.EmbeddingModel;
 import io.agentscope.core.embedding.ollama.OllamaTextEmbedding;
@@ -118,11 +119,15 @@ public class AiAutoConfiguration {
     // ==================== Toolkit ====================
 
     @Bean
-    Toolkit agentToolkit(ConfigTools configTools, KnowledgeTools knowledgeTools) {
-        log.info("初始化 Toolkit: ConfigTools + KnowledgeTools");
+    Toolkit agentToolkit(
+            ConfigTools configTools,
+            KnowledgeTools knowledgeTools,
+            ConnectionTools connectionTools) {
+        log.info("初始化 Toolkit: ConfigTools + KnowledgeTools + ConnectionTools");
         Toolkit toolkit = new Toolkit();
         toolkit.registerTool(configTools);
         toolkit.registerTool(knowledgeTools);
+        toolkit.registerTool(connectionTools);
         return toolkit;
     }
 

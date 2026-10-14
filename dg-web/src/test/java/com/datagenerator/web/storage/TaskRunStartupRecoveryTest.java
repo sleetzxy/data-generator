@@ -1,7 +1,6 @@
 package com.datagenerator.web.storage;
 
 import com.datagenerator.web.dto.TaskRunProgress;
-import com.datagenerator.web.dto.TaskRunResponse;
 import com.datagenerator.web.dto.TaskRunStatus;
 import com.datagenerator.web.dto.TableDetail;
 import com.datagenerator.web.config.DataGeneratorProperties;
@@ -56,8 +55,8 @@ class TaskRunStartupRecoveryTest {
                 .isEqualTo(TaskRunStatus.CANCELLED);
     }
 
-    private static TaskRunResponse sampleTaskRun(String runId, TaskRunStatus status) {
-        return new TaskRunResponse(
+    private static TaskRunRecord sampleTaskRun(String runId, TaskRunStatus status) {
+        return new TaskRunRecord(
                 runId,
                 status,
                 new TaskRunProgress(0, 0, 0, 0, 0),

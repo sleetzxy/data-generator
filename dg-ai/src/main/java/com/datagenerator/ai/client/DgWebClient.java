@@ -2,6 +2,8 @@ package com.datagenerator.ai.client;
 
 import com.datagenerator.ai.config.AiProperties;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -16,8 +18,8 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
-import org.springframework.core.ParameterizedTypeReference;
 import org.springframework.web.util.UriComponentsBuilder;
+import org.springframework.web.util.UriUtils;
 
 /**
  * dg-web REST 客户端 — 通过 HTTP 调用 dg-web 的 API 接口。
@@ -29,6 +31,7 @@ import org.springframework.web.util.UriComponentsBuilder;
 public class DgWebClient {
 
     private static final Logger log = LoggerFactory.getLogger(DgWebClient.class);
+    private static final ObjectMapper ERROR_MAPPER = new ObjectMapper();
 
     private final RestTemplate restTemplate;
     private final String baseUrl;
@@ -96,7 +99,7 @@ public class DgWebClient {
                     getText(body, "fileName"),
                     getText(body, "content"));
         } catch (org.springframework.web.client.HttpClientErrorException.NotFound e) {
-            // 404 在 saveConfigDraft 中是正常流程：配置尚不存在 → 新建而非更新
+            // 404 在 saveConfig / submitWorkspaceYaml 中是正常流程：配置尚不存在 → 新建
             log.debug("getConfig({}) 配置不存在，将作为新建处理", fileName);
             return null;
         } catch (Exception e) {
@@ -105,11 +108,23 @@ public class DgWebClient {
         }
     }
 
-    /** 新建配置并持久化。文件名由服务端生成（taskId），或由请求中的 fileName 字段显式指定。 */
+    /** 新建配置并持久化。文件名由服务端生成（taskId）。 */
     public ConfigDetail createConfig(String displayName, String yaml) {
+        return createConfig(displayName, yaml, null);
+    }
+
+    /**
+     * 新建配置并持久化。
+     *
+     * @param fileName 可选；非空时作为任务配置文件名（不含扩展名）
+     */
+    public ConfigDetail createConfig(String displayName, String yaml, String fileName) {
         Map<String, Object> request = new LinkedHashMap<>();
         request.put("displayName", displayName);
         request.put("content", yaml);
+        if (fileName != null && !fileName.isBlank()) {
+            request.put("fileName", fileName.trim());
+        }
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -239,41 +254,198 @@ public class DgWebClient {
         }
     }
 
-    // ==================== Connection ====================
+    // ==================== 预览（已落盘任务） ====================
 
-    /** 列出所有可用数据连接的摘要 */
-    public List<ConnectionInfo> listConnections() {
+    /**
+     * 按已保存任务文件名预览样例。
+     * 对应 {@code POST /api/v1/preview}，body 含 {@code configPath} 与 {@code preview}。
+     */
+    public PreviewContentResult previewByFileName(String fileName) {
+        if (fileName == null || fileName.isBlank()) {
+            return new PreviewContentResult(false, "fileName 不能为空", List.of());
+        }
+        String configPath = toConfigPath(fileName.trim());
+        Map<String, Object> request = new LinkedHashMap<>();
+        request.put("configPath", configPath);
+        Map<String, Object> preview = new LinkedHashMap<>();
+        preview.put("limit", 10);
+        request.put("preview", preview);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(request, headers);
+
         try {
-            ResponseEntity<JsonNode> resp = restTemplate.getForEntity(
-                    baseUrl + "/api/v1/config/connections", JsonNode.class);
+            ResponseEntity<JsonNode> resp = restTemplate.exchange(
+                    baseUrl + "/api/v1/preview",
+                    HttpMethod.POST,
+                    entity,
+                    JsonNode.class);
             if (!resp.getStatusCode().is2xxSuccessful()) {
-                log.warn("listConnections 返回非 2xx: {}", resp.getStatusCode());
-                return List.of();
+                return new PreviewContentResult(
+                        false, "预览失败: HTTP " + resp.getStatusCode(), List.of());
             }
-            List<ConnectionInfo> result = new ArrayList<>();
-            if (resp.getBody() != null && resp.getBody().isArray()) {
-                for (JsonNode node : resp.getBody()) {
-                    result.add(new ConnectionInfo(
-                            getText(node, "name"),
-                            getText(node, "type")));
-                }
+            JsonNode body = resp.getBody();
+            if (body == null) {
+                return new PreviewContentResult(false, "预览失败: 无响应", List.of());
             }
-            return result;
+            List<PreviewTableSummary> tables = parsePreviewTables(body);
+            return new PreviewContentResult(true, null, tables);
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            return new PreviewContentResult(
+                    false, extractErrorMessage(e, "预览失败"), List.of());
         } catch (Exception e) {
-            log.warn("调用 listConnections 失败", e);
-            return List.of();
+            log.warn("调用 previewByFileName 失败: fileName={}", fileName, e);
+            return new PreviewContentResult(false, "预览失败: " + e.getMessage(), List.of());
         }
     }
 
-    /** 获取指定连接的完整详情，不存在返回 null */
-    public ConnectionDetail getConnectionDetail(String name) {
-        List<ConnectionInfo> conns = listConnections();
-        for (ConnectionInfo c : conns) {
-            if (c.name().equals(name)) {
-                return new ConnectionDetail(c.name(), c.type(), null, null, null);
-            }
+    /** 与 dg-web TaskConfigPaths.toConfigPath 对齐：fileName → task-configs/{name}.yaml */
+    static String toConfigPath(String fileName) {
+        String normalized = fileName.trim().replace('\\', '/');
+        while (normalized.startsWith("/")) {
+            normalized = normalized.substring(1);
         }
-        return null;
+        if (normalized.startsWith("task-configs/")) {
+            normalized = normalized.substring("task-configs/".length());
+        }
+        if (normalized.endsWith(".yaml") || normalized.endsWith(".yml")) {
+            return "task-configs/" + normalized;
+        }
+        return "task-configs/" + normalized + ".yaml";
+    }
+
+    private static List<PreviewTableSummary> parsePreviewTables(JsonNode body) {
+        if (body == null || !body.has("tables") || !body.get("tables").isArray()) {
+            return List.of();
+        }
+        List<PreviewTableSummary> tables = new ArrayList<>();
+        for (JsonNode t : body.get("tables")) {
+            String tableName = getText(t, "tableName");
+            List<String> columns = new ArrayList<>();
+            if (t.has("columns") && t.get("columns").isArray()) {
+                t.get("columns").forEach(c -> columns.add(c.asText()));
+            }
+            List<Map<String, Object>> rows = new ArrayList<>();
+            if (t.has("rows") && t.get("rows").isArray()) {
+                for (JsonNode rowNode : t.get("rows")) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    if (rowNode != null && rowNode.isObject()) {
+                        rowNode.fields().forEachRemaining(e -> row.put(e.getKey(), jsonToSimple(e.getValue())));
+                    }
+                    rows.add(row);
+                }
+            }
+            tables.add(new PreviewTableSummary(tableName, columns, rows));
+        }
+        return tables;
+    }
+
+    private static Object jsonToSimple(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return null;
+        }
+        if (node.isNumber()) {
+            return node.numberValue();
+        }
+        if (node.isBoolean()) {
+            return node.asBoolean();
+        }
+        if (node.isTextual()) {
+            return node.asText();
+        }
+        return node.toString();
+    }
+
+    // ==================== 连接探查 ====================
+
+    /**
+     * 测通远程连接。对应 {@code POST /api/v1/connections/test}。
+     * <p>probe 字段与 dg-web ConnectionProbeRequest 对齐：
+     * type / url / path / username / password / schema / pattern。</p>
+     */
+    public ConnectionTestResult testConnection(Map<String, Object> probe) {
+        try {
+            ResponseEntity<JsonNode> resp = postProbe("/api/v1/connections/test", probe);
+            if (!resp.getStatusCode().is2xxSuccessful()) {
+                return new ConnectionTestResult(false, "连接测试失败: HTTP " + resp.getStatusCode());
+            }
+            JsonNode body = resp.getBody();
+            if (body == null) {
+                return new ConnectionTestResult(false, "连接测试失败: 无响应");
+            }
+            boolean ok = body.has("ok") && body.get("ok").asBoolean();
+            String message = getText(body, "message");
+            return new ConnectionTestResult(ok, message);
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            return new ConnectionTestResult(false, extractErrorMessage(e, "连接测试失败"));
+        } catch (Exception e) {
+            log.warn("调用 testConnection 失败", e);
+            return new ConnectionTestResult(false, "连接测试失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 列出远程库表。对应 {@code POST /api/v1/connections/tables}。
+     */
+    public List<String> listRemoteTables(Map<String, Object> probe) {
+        try {
+            ResponseEntity<JsonNode> resp = postProbe("/api/v1/connections/tables", probe);
+            if (!resp.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException("列出表失败: HTTP " + resp.getStatusCode());
+            }
+            JsonNode body = resp.getBody();
+            if (body == null || !body.has("tables") || !body.get("tables").isArray()) {
+                return List.of();
+            }
+            List<String> tables = new ArrayList<>();
+            body.get("tables").forEach(n -> tables.add(n.asText()));
+            return tables;
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            throw new RuntimeException(extractErrorMessage(e, "列出表失败"), e);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("调用 listRemoteTables 失败", e);
+            throw new RuntimeException("列出表失败: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * 列出远程表字段。对应 {@code POST /api/v1/connections/tables/{table}/columns}。
+     */
+    public List<RemoteColumn> listRemoteColumns(Map<String, Object> probe, String table) {
+        if (table == null || table.isBlank()) {
+            throw new IllegalArgumentException("表名 table 不能为空");
+        }
+        try {
+            String encodedTable = UriUtils.encodePathSegment(table.trim(), StandardCharsets.UTF_8);
+            ResponseEntity<JsonNode> resp = postProbe(
+                    "/api/v1/connections/tables/" + encodedTable + "/columns", probe);
+            if (!resp.getStatusCode().is2xxSuccessful()) {
+                throw new RuntimeException("列出字段失败: HTTP " + resp.getStatusCode());
+            }
+            JsonNode body = resp.getBody();
+            if (body == null || !body.has("columns") || !body.get("columns").isArray()) {
+                return List.of();
+            }
+            List<RemoteColumn> columns = new ArrayList<>();
+            for (JsonNode c : body.get("columns")) {
+                columns.add(new RemoteColumn(
+                        getText(c, "name"),
+                        getText(c, "typeName"),
+                        c.has("nullable") && c.get("nullable").asBoolean(),
+                        c.has("primaryKey") && c.get("primaryKey").asBoolean()));
+            }
+            return columns;
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            throw new RuntimeException(extractErrorMessage(e, "列出字段失败"), e);
+        } catch (RuntimeException e) {
+            throw e;
+        } catch (Exception e) {
+            log.warn("调用 listRemoteColumns 失败: table={}", table, e);
+            throw new RuntimeException("列出字段失败: " + e.getMessage(), e);
+        }
     }
 
     // ==================== 内部 Record ====================
@@ -293,13 +465,52 @@ public class DgWebClient {
     /** 字段信息 */
     public record FieldInfo(String name, String type, boolean nullable) {}
 
-    /** 数据连接摘要 */
-    public record ConnectionInfo(String name, String type) {}
+    /** 连接测通结果 */
+    public record ConnectionTestResult(boolean ok, String message) {}
 
-    /** 数据连接详情 */
-    public record ConnectionDetail(String name, String type, String url, String username, String password) {}
+    /** 远程字段元数据 */
+    public record RemoteColumn(
+            String name, String typeName, boolean nullable, boolean primaryKey) {}
+
+    /** 未落盘 YAML 预览结果 */
+    public record PreviewContentResult(boolean ok, String message, List<PreviewTableSummary> tables) {}
+
+    /** 预览表摘要（行数据供 Agent 摘要，不对用户贴完整 YAML） */
+    public record PreviewTableSummary(
+            String tableName, List<String> columns, List<Map<String, Object>> rows) {}
 
     // ==================== 内部工具 ====================
+
+    private ResponseEntity<JsonNode> postProbe(String apiPath, Map<String, Object> probe) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<Map<String, Object>> entity = new HttpEntity<>(
+                probe != null ? probe : Map.of(), headers);
+        return restTemplate.exchange(
+                baseUrl + apiPath, HttpMethod.POST, entity, JsonNode.class);
+    }
+
+    /** 从 4xx/5xx 响应体提取 message（与 dg-web ErrorResponse 对齐） */
+    private static String extractErrorMessage(
+            org.springframework.web.client.HttpStatusCodeException e, String fallback) {
+        try {
+            String body = e.getResponseBodyAsString();
+            if (body != null && !body.isBlank()) {
+                JsonNode node = ERROR_MAPPER.readTree(body);
+                String message = getText(node, "message");
+                if (message != null && !message.isBlank()) {
+                    return message;
+                }
+            }
+        } catch (Exception ignored) {
+            // 解析失败则回退
+        }
+        String statusText = e.getStatusText();
+        if (statusText != null && !statusText.isBlank()) {
+            return fallback + ": " + statusText;
+        }
+        return fallback;
+    }
 
     /** 从 JsonNode 中安全提取文本字段 */
     private static String getText(JsonNode node, String field) {

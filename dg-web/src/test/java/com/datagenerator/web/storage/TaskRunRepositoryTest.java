@@ -1,10 +1,10 @@
 package com.datagenerator.web.storage;
 
+
 import com.datagenerator.web.dto.ConfigVolumeStat;
 import com.datagenerator.web.dto.DailyRunStat;
 import com.datagenerator.web.dto.TaskRunListFilter;
 import com.datagenerator.web.dto.TaskRunProgress;
-import com.datagenerator.web.dto.TaskRunResponse;
 import com.datagenerator.web.dto.TaskRunStatus;
 import com.datagenerator.web.dto.TableDetail;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,10 +29,10 @@ class TaskRunRepositoryTest {
 
     @Test
     void insert_and_findById_returnsTaskRun() {
-        TaskRunResponse taskRun = sampleTaskRun("task-1", TaskRunStatus.PENDING);
+        TaskRunRecord taskRun = sampleTaskRun("task-1", TaskRunStatus.PENDING);
         repository.insert(taskRun);
 
-        Optional<TaskRunResponse> found = repository.findById("task-1");
+        Optional<TaskRunRecord> found = repository.findById("task-1");
         assertThat(found).isPresent();
         assertThat(found.get().getStatus()).isEqualTo(TaskRunStatus.PENDING);
         assertThat(found.get().getConfigPath()).isEqualTo("task-configs/test.yaml");
@@ -41,13 +41,13 @@ class TaskRunRepositoryTest {
     @Test
     void update_persistsStatusAndProgress() {
         repository.insert(sampleTaskRun("task-2", TaskRunStatus.PENDING));
-        TaskRunResponse running = sampleTaskRun("task-2", TaskRunStatus.RUNNING);
+        TaskRunRecord running = sampleTaskRun("task-2", TaskRunStatus.RUNNING);
         running.setProgress(new TaskRunProgress(2, 1, 100, 50, 0));
         running.setDuration("1.2s");
 
         repository.update(running);
 
-        TaskRunResponse found = repository.findById("task-2").orElseThrow();
+        TaskRunRecord found = repository.findById("task-2").orElseThrow();
         assertThat(found.getStatus()).isEqualTo(TaskRunStatus.RUNNING);
         assertThat(found.getProgress().getWrittenRows()).isEqualTo(50);
         assertThat(found.getDuration()).isEqualTo("1.2s");
@@ -55,15 +55,15 @@ class TaskRunRepositoryTest {
 
     @Test
     void listAll_ordersBySubmittedAtDesc() {
-        TaskRunResponse older = sampleTaskRun("task-old", TaskRunStatus.COMPLETED);
+        TaskRunRecord older = sampleTaskRun("task-old", TaskRunStatus.COMPLETED);
         older.setSubmittedAt("2026-01-01T00:00:00Z");
-        TaskRunResponse newer = sampleTaskRun("task-new", TaskRunStatus.COMPLETED);
+        TaskRunRecord newer = sampleTaskRun("task-new", TaskRunStatus.COMPLETED);
         newer.setSubmittedAt("2026-06-01T00:00:00Z");
         repository.insert(older);
         repository.insert(newer);
 
-        List<TaskRunResponse> all = repository.listAll();
-        assertThat(all).extracting(TaskRunResponse::getRunId).containsExactly("task-new", "task-old");
+        List<TaskRunRecord> all = repository.listAll();
+        assertThat(all).extracting(TaskRunRecord::getRunId).containsExactly("task-new", "task-old");
     }
 
     @Test
@@ -79,7 +79,7 @@ class TaskRunRepositoryTest {
         insertTaskRun("r2", "task-configs/a.yaml", TaskRunStatus.COMPLETED);
 
         assertThat(repository.findRunningByConfigPath("task-configs/a.yaml"))
-                .extracting(TaskRunResponse::getRunId)
+                .extracting(TaskRunRecord::getRunId)
                 .containsExactly("r1");
     }
 
@@ -89,14 +89,14 @@ class TaskRunRepositoryTest {
         repository.insert(sampleTaskRun("task-done", TaskRunStatus.COMPLETED));
 
         assertThat(repository.findByStatusIn(List.of(TaskRunStatus.RUNNING, TaskRunStatus.PENDING)))
-                .extracting(TaskRunResponse::getRunId)
+                .extracting(TaskRunRecord::getRunId)
                 .containsExactly("task-run");
     }
 
     @Test
     void listPage_and_countAll_supportPagination() {
         for (int index = 0; index < 5; index++) {
-            TaskRunResponse taskRun = sampleTaskRun("task-" + index, TaskRunStatus.COMPLETED);
+            TaskRunRecord taskRun = sampleTaskRun("task-" + index, TaskRunStatus.COMPLETED);
             taskRun.setSubmittedAt("2026-06-0" + (index + 1) + "T00:00:00Z");
             repository.insert(taskRun);
         }
@@ -115,7 +115,7 @@ class TaskRunRepositoryTest {
         TaskRunListFilter filter = new TaskRunListFilter("RUNNING", null, null, null);
 
         assertThat(repository.countAll(filter)).isEqualTo(2);
-        assertThat(repository.listPage(0, 10, filter)).extracting(TaskRunResponse::getRunId)
+        assertThat(repository.listPage(0, 10, filter)).extracting(TaskRunRecord::getRunId)
                 .containsExactlyInAnyOrder("r1", "r3");
     }
 
@@ -128,7 +128,7 @@ class TaskRunRepositoryTest {
         TaskRunListFilter filter = new TaskRunListFilter("RUNNING,PENDING", null, null, null);
 
         assertThat(repository.countAll(filter)).isEqualTo(2);
-        assertThat(repository.listPage(0, 10, filter)).extracting(TaskRunResponse::getRunId)
+        assertThat(repository.listPage(0, 10, filter)).extracting(TaskRunRecord::getRunId)
                 .containsExactlyInAnyOrder("r1", "r2");
     }
 
@@ -136,7 +136,7 @@ class TaskRunRepositoryTest {
     void listPage_withConfigPathAndTimeRange_combinesConditions() {
         insertTaskRun("r1", "task-configs/a.yaml", TaskRunStatus.COMPLETED);
         insertTaskRun("r2", "task-configs/b.yaml", TaskRunStatus.COMPLETED);
-        TaskRunResponse later = sampleTaskRun("r3", TaskRunStatus.COMPLETED);
+        TaskRunRecord later = sampleTaskRun("r3", TaskRunStatus.COMPLETED);
         later.setConfigPath("task-configs/a.yaml");
         later.setSubmittedAt("2026-07-01T00:00:00Z");
         repository.insert(later);
@@ -145,17 +145,17 @@ class TaskRunRepositoryTest {
                 null, "task-configs/a.yaml", "2026-06-01T00:00:00Z", "2026-06-30T23:59:59Z");
 
         assertThat(repository.countAll(filter)).isEqualTo(1);
-        assertThat(repository.listPage(0, 10, filter)).extracting(TaskRunResponse::getRunId)
+        assertThat(repository.listPage(0, 10, filter)).extracting(TaskRunRecord::getRunId)
                 .containsExactly("r1");
     }
 
     @Test
     void listPage_withTimeRange_includesWholeSecondRecordAtBoundary() {
         // 整秒格式（纳秒为 0 时省略小数）的记录不应被 to 边界错误排除
-        TaskRunResponse wholeSecond = sampleTaskRun("r-whole-second", TaskRunStatus.COMPLETED);
+        TaskRunRecord wholeSecond = sampleTaskRun("r-whole-second", TaskRunStatus.COMPLETED);
         wholeSecond.setSubmittedAt("2026-06-05T23:59:59Z");
         repository.insert(wholeSecond);
-        TaskRunResponse withFraction = sampleTaskRun("r-with-fraction", TaskRunStatus.COMPLETED);
+        TaskRunRecord withFraction = sampleTaskRun("r-with-fraction", TaskRunStatus.COMPLETED);
         withFraction.setSubmittedAt("2026-06-05T00:00:00.500Z");
         repository.insert(withFraction);
 
@@ -178,10 +178,10 @@ class TaskRunRepositoryTest {
 
     @Test
     void sumWrittenRows_sumsAllRuns() {
-        TaskRunResponse run1 = sampleTaskRun("r1", TaskRunStatus.COMPLETED);
+        TaskRunRecord run1 = sampleTaskRun("r1", TaskRunStatus.COMPLETED);
         run1.setProgress(new TaskRunProgress(1, 1, 100, 40, 0));
         repository.insert(run1);
-        TaskRunResponse run2 = sampleTaskRun("r2", TaskRunStatus.COMPLETED);
+        TaskRunRecord run2 = sampleTaskRun("r2", TaskRunStatus.COMPLETED);
         run2.setProgress(new TaskRunProgress(1, 1, 100, 60, 0));
         repository.insert(run2);
 
@@ -205,11 +205,11 @@ class TaskRunRepositoryTest {
 
     @Test
     void dailyRunStats_aggregatesByDay() {
-        TaskRunResponse day1 = sampleTaskRun("r1", TaskRunStatus.COMPLETED);
+        TaskRunRecord day1 = sampleTaskRun("r1", TaskRunStatus.COMPLETED);
         day1.setSubmittedAt("2026-08-20T10:00:00Z");
         day1.setProgress(new TaskRunProgress(1, 1, 10, 10, 0));
         repository.insert(day1);
-        TaskRunResponse day2 = sampleTaskRun("r2", TaskRunStatus.COMPLETED);
+        TaskRunRecord day2 = sampleTaskRun("r2", TaskRunStatus.COMPLETED);
         day2.setSubmittedAt("2026-08-22T10:00:00Z");
         day2.setProgress(new TaskRunProgress(1, 1, 20, 20, 0));
         repository.insert(day2);
@@ -228,46 +228,46 @@ class TaskRunRepositoryTest {
         insertTaskRunWithTime("r3", "task-configs/b.yaml", "2026-06-03T00:00:00Z");
 
         assertThat(repository.latestRunsByConfigPath())
-                .extracting(TaskRunResponse::getRunId)
+                .extracting(TaskRunRecord::getRunId)
                 .containsExactlyInAnyOrder("r2", "r3");
     }
 
     @Test
     void activeRunsByConfigPath_returnsOnlyActiveLatest() {
         insertTaskRunWithTime("r1", "task-configs/a.yaml", "2026-06-01T00:00:00Z");
-        TaskRunResponse running = sampleTaskRun("r2", TaskRunStatus.RUNNING);
+        TaskRunRecord running = sampleTaskRun("r2", TaskRunStatus.RUNNING);
         running.setConfigPath("task-configs/a.yaml");
         running.setSubmittedAt("2026-06-02T00:00:00Z");
         repository.insert(running);
         insertTaskRunWithTime("r3", "task-configs/b.yaml", "2026-06-03T00:00:00Z");
 
         assertThat(repository.activeRunsByConfigPath())
-                .extracting(TaskRunResponse::getRunId)
+                .extracting(TaskRunRecord::getRunId)
                 .containsExactly("r2");
     }
 
     private void insertTaskRun(String runId, String configPath, TaskRunStatus status) {
-        TaskRunResponse taskRun = sampleTaskRun(runId, status);
+        TaskRunRecord taskRun = sampleTaskRun(runId, status);
         taskRun.setConfigPath(configPath);
         repository.insert(taskRun);
     }
 
     private void insertTaskRunWithTime(String runId, String configPath, String submittedAt) {
-        TaskRunResponse taskRun = sampleTaskRun(runId, TaskRunStatus.COMPLETED);
+        TaskRunRecord taskRun = sampleTaskRun(runId, TaskRunStatus.COMPLETED);
         taskRun.setConfigPath(configPath);
         taskRun.setSubmittedAt(submittedAt);
         repository.insert(taskRun);
     }
 
     private void insertTaskRunWithWritten(String runId, String configPath, long writtenRows) {
-        TaskRunResponse taskRun = sampleTaskRun(runId, TaskRunStatus.COMPLETED);
+        TaskRunRecord taskRun = sampleTaskRun(runId, TaskRunStatus.COMPLETED);
         taskRun.setConfigPath(configPath);
         taskRun.setProgress(new TaskRunProgress(1, 1, 100, writtenRows, 0));
         repository.insert(taskRun);
     }
 
-    private static TaskRunResponse sampleTaskRun(String runId, TaskRunStatus status) {
-        return new TaskRunResponse(
+    private static TaskRunRecord sampleTaskRun(String runId, TaskRunStatus status) {
+        return new TaskRunRecord(
                 runId,
                 status,
                 new TaskRunProgress(1, 0, 10, 0, 0),

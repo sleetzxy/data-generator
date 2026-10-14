@@ -6,6 +6,7 @@ import com.datagenerator.web.dto.TaskRunStatus;
 import com.datagenerator.web.dto.TaskRunSubmitRequest;
 import com.datagenerator.web.dto.TaskRunSubmitResult;
 import com.datagenerator.web.dto.TriggerSource;
+import com.datagenerator.web.storage.TaskRunMapper;
 import com.datagenerator.web.storage.TaskRunRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,7 +21,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -55,10 +55,10 @@ class TaskRunQueueExecutorTest {
 
         when(jobRepository.findRunningByConfigPath(CONFIG_PATH))
                 .thenReturn(List.of())
-                .thenReturn(List.of(runningJob("job-1")));
+                .thenReturn(List.of(TaskRunMapper.toRecord(runningJob("job-1"))));
         when(taskRunService.doSubmit(request, TriggerSource.MANUAL)).thenReturn(firstResult);
         when(taskRunService.createQueuedRun(CONFIG_PATH, TriggerSource.MANUAL)).thenReturn(queued);
-        when(jobRepository.findById("job-2")).thenReturn(Optional.of(queued));
+        when(jobRepository.findById("job-2")).thenReturn(Optional.of(TaskRunMapper.toRecord(queued)));
 
         TaskRunSubmitResult first = executor.enqueue(CONFIG_PATH, TriggerSource.MANUAL, request);
         TaskRunSubmitResult second = executor.enqueue(CONFIG_PATH, TriggerSource.MANUAL, request);
@@ -85,10 +85,10 @@ class TaskRunQueueExecutorTest {
 
         when(jobRepository.findRunningByConfigPath(CONFIG_PATH))
                 .thenReturn(List.of())
-                .thenReturn(List.of(runningJob("job-1")));
+                .thenReturn(List.of(TaskRunMapper.toRecord(runningJob("job-1"))));
         when(taskRunService.doSubmit(firstRequest, TriggerSource.MANUAL)).thenReturn(firstResult);
         when(taskRunService.createQueuedRun(CONFIG_PATH, TriggerSource.MANUAL)).thenReturn(queued);
-        when(jobRepository.findById("job-2")).thenReturn(Optional.of(queued));
+        when(jobRepository.findById("job-2")).thenReturn(Optional.of(TaskRunMapper.toRecord(queued)));
 
         executor.enqueue(CONFIG_PATH, TriggerSource.MANUAL, firstRequest);
         executor.enqueue(CONFIG_PATH, TriggerSource.MANUAL, queuedRequest);

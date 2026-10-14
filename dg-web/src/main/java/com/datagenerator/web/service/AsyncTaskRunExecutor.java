@@ -7,6 +7,7 @@ import com.datagenerator.web.dto.TaskRunResponse;
 import com.datagenerator.web.dto.TaskRunStatus;
 import com.datagenerator.web.dto.TableDetail;
 import com.datagenerator.web.storage.TaskRunLogRepository;
+import com.datagenerator.web.storage.TaskRunMapper;
 import com.datagenerator.web.storage.TaskRunRepository;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
@@ -47,7 +48,7 @@ public class AsyncTaskRunExecutor {
     }
 
     public void submit(String runId, Runnable task) {
-        TaskRunResponse current = taskRunRepository.findById(runId).orElseGet(() -> {
+        TaskRunResponse current = taskRunRepository.findById(runId).map(TaskRunMapper::toResponse).orElseGet(() -> {
             TaskRunResponse created = new TaskRunResponse(
                     runId,
                     TaskRunStatus.PENDING,
@@ -58,7 +59,7 @@ public class AsyncTaskRunExecutor {
                     Instant.now().toString(),
                     null,
                     null);
-            taskRunRepository.insert(created);
+            taskRunRepository.insert(TaskRunMapper.toRecord(created));
             return created;
         });
         persistStatus(current, TaskRunStatus.PENDING);
@@ -93,7 +94,7 @@ public class AsyncTaskRunExecutor {
                     latest.setStatus(TaskRunStatus.FAILED);
                     latest.setErrorMessage(exception.getMessage());
                     latest.setDetails(List.of(new TableDetail("_error", 0, 0, exception.getMessage())));
-                    taskRunRepository.update(latest);
+                    taskRunRepository.update(TaskRunMapper.toRecord(latest));
                 }
             } finally {
                 futures.remove(runId);
@@ -142,12 +143,12 @@ public class AsyncTaskRunExecutor {
     }
 
     private TaskRunResponse loadRun(String runId) {
-        return taskRunRepository.findById(runId).orElseThrow(
+        return taskRunRepository.findById(runId).map(TaskRunMapper::toResponse).orElseThrow(
                 () -> new IllegalStateException("Task run not found: " + runId));
     }
 
     private TaskRunResponse loadRunOrNull(String runId) {
-        return taskRunRepository.findById(runId).orElse(null);
+        return taskRunRepository.findById(runId).map(TaskRunMapper::toResponse).orElse(null);
     }
 
     private void markCancelled(String runId) {
@@ -162,7 +163,7 @@ public class AsyncTaskRunExecutor {
             return;
         }
         current.setStatus(status);
-        taskRunRepository.update(current);
+        taskRunRepository.update(TaskRunMapper.toRecord(current));
     }
 
     private static TaskRunProgress emptyProgress() {

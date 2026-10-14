@@ -1,7 +1,10 @@
 package com.datagenerator.web;
 
 import com.datagenerator.web.storage.TaskRepository;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -68,5 +71,47 @@ class EndToEndTest {
         assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(response.getBody()).contains("\"status\":\"COMPLETED\"");
         assertThat(response.getBody()).contains("\"tables\"");
+    }
+
+    @Test
+    void preview_withRawContent_returnsRows() throws Exception {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+
+        // 未落盘 YAML：不写文件、不要求 tasks 表行
+        String yaml = """
+                connections:
+                  local-csv:
+                    type: csv
+                    path: ./output
+                writer:
+                  type: csv
+                  connection: local-csv
+                  mode: insert
+                tables:
+                  - name: customers
+                    count: 10
+                    schema:
+                      table: customers
+                      fields:
+                        - name: id
+                          type: BIGINT
+                          generator: { strategy: sequence, start: 1, step: 1 }
+                """;
+
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("content", yaml);
+        body.put("preview", Map.of("limit", 3));
+
+        ResponseEntity<String> response = restTemplate.postForEntity(
+                "/api/v1/preview",
+                new HttpEntity<>(new ObjectMapper().writeValueAsString(body), headers),
+                String.class);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(response.getBody()).contains("\"status\":\"COMPLETED\"");
+        assertThat(response.getBody()).contains("\"tables\"");
+        assertThat(response.getBody()).contains("customers");
+        assertThat(response.getBody()).contains("\"rows\"");
     }
 }

@@ -8,7 +8,7 @@
 
 完成以下三步即可生成第一批数据：
 
-1. **确认连接** — 管理员在 `application.yml` 中配置数据库 / CSV 输出目录（见 [配置连接](#配置连接)）。
+1. **填写连接** — 在任务 YAML 的 `connections` 块（或 writer/reader 内联）自行输入数据库地址 / CSV 输出目录（见 [配置连接](#配置连接)）。
 2. **编写任务配置** — 在控制台点击「新建任务」，填写**任务名称**与 YAML 内容（见 [编写第一个任务配置](#编写第一个任务配置)）。
 3. **运行** — 保存后点击「运行」；小任务同步完成，大行数任务自动异步执行，可在「日志」中查看进度。
 
@@ -17,9 +17,13 @@
 控制台「新建任务」的默认模板可作为起点（不含 `id` / `name` / `schedule`）：
 
 ```yaml
+connections:
+  my-csv:
+    type: csv
+    path: ./output          # 按需修改输出目录
 writer:
   type: csv
-  connection: local-csv
+  connection: my-csv
   mode: insert
 tables:
   - name: customers
@@ -48,7 +52,7 @@ tables:
 | **表任务** | 每张表生成多少行、依赖关系 | `tables[]` |
 | **Schema** | 字段列表及每列如何生成 | `tables[].schema` |
 | **约束** | 生成结果的校验规则 | `schema.constraints` 或 `tables[].constraints` |
-| **连接** | 数据库地址、CSV 目录 | `application.yml`；或 任务配置顶层 `connections` 块 / reader·writer 内联（见 [配置连接](#配置连接)） |
+| **连接** | 数据库地址、CSV 目录 | 任务配置顶层 `connections` 块 / reader·writer 内联（见 [配置连接](#配置连接)）；**不支持** `application.yml` 全局连接 |
 | **定时调度** | Cron 自动执行 | 控制台弹窗配置（存 SQLite `tasks` 主表） |
 
 推荐将 Schema **内联**在任务配置中（字段多、业务绑定时更清晰）；多个任务配置 共用同一 Schema 时可拆到 `schemas/*.yaml` 并用路径引用。
@@ -88,15 +92,20 @@ tables:
 任务 YAML 仅包含生成配置，`id` / `name` 无需（也不建议）书写——显示名在控制台表单配置，ID 由系统生成：
 
 ```yaml
+connections:              # 本任务自行声明连接（推荐）
+  my-csv:
+    type: csv
+    path: ./output
+
 writer:                   # 默认写入方式（可被表级覆盖）；单写时使用
   type: csv               # csv | postgresql | clickhouse
-  connection: local-csv   # 连接名，见 application.yml
+  connection: my-csv      # 引用上方 connections 中的名称
   mode: insert
 
 # 多写时使用 writers（与 writer 二选一），同一批数据写入多个库，例如：
 # writers:
-#   - { type: postgresql, connection: dev-pg, mode: insert }
-#   - { type: clickhouse, connection: dev-ck, mode: insert }
+#   - { type: postgresql, connection: my-pg, mode: insert }
+#   - { type: clickhouse, connection: my-ck, mode: insert }
 
 tables:                   # 至少一张表
   - name: customers       # 逻辑名，多表引用时用此名
@@ -147,22 +156,42 @@ tables:                   # 至少一张表
 
 ## 配置连接
 
-推荐将连接信息放在 **`application.yml`**，任务配置里通过连接**名称**引用，避免把密码写进业务配置。
+连接信息由你在任务 YAML 中自行填写。推荐在任务顶层声明 **`connections`** 块，再通过连接**名称**引用；也可在 writer/reader 上内联。
+
+### 任务配置级 connections 块（推荐）
 
 ```yaml
-data-generator:
-  connections:
-    dev-safety:              # ← 任务配置里 writer.connection 引用此名
+connections:
+  my-pg:
+    type: postgresql
+    url: jdbc:postgresql://host:5432/MY_DB
+    username: postgres
+    password: secret
+  my-csv:
+    type: csv
+    path: ./output         # CSV 输出根目录
+
+writer:
+  type: postgresql
+  connection: my-pg          # 引用上方 connections.my-pg
+  mode: insert
+
+seeds:
+  - name: sample
+    reader:
       type: postgresql
-      url: jdbc:postgresql://host:5432/SAFETY_DB
-      username: postgres
-      password: ******
-    local-csv:
-      type: csv
-      path: ./output         # CSV 输出根目录
-    traffic-output:
-      type: csv
-      path: ./output/traffic
+      connection: my-pg
+      query: SELECT 1 AS id
+
+tables:
+  - name: items
+    count: 10
+    schema:
+      table: items
+      fields:
+        - name: id
+          type: BIGINT
+          generator: { strategy: sequence, start: 1 }
 ```
 
 | 字段 | 何时必填 | 说明 |
@@ -172,11 +201,11 @@ data-generator:
 | `username` / `password` | 数据库 | 凭证 |
 | `path` | CSV | 文件输出目录 |
 
-修改 `application.yml` 中的连接后需**重启服务**。
+**不支持**在 `application.yml` 中注册全局连接；字符串形式的 `connection` 名称只能引用本任务 `connections` 块。
 
 ### 任务配置内联连接（可选）
 
-`writer` / `writers` / `seeds[].reader` 也支持在 任务配置 YAML 中**直接写连接**，无需在 `application.yml` 注册名称。两种方式可混用。
+`writer` / `writers` / `seeds[].reader` 也支持直接写连接参数，无需先声明名称。
 
 **方式一：连接字段平铺在 reader / writer 上**
 
@@ -210,56 +239,17 @@ writers:
     mode: insert
 ```
 
-**方式三：命名连接 + 局部覆盖**（仍引用 `application.yml`，但可覆盖 `url` / `username` 等）
+**方式三：命名连接 + 局部覆盖**
 
 ```yaml
 writer:
   type: postgresql
-  connection: dev-safety
-  url: jdbc:postgresql://other-host:5432/OTHER_DB   # 覆盖注册表中的 url
+  connection: my-pg
+  url: jdbc:postgresql://other-host:5432/OTHER_DB   # 覆盖 connections 中的 url
   mode: insert
 ```
 
-字段优先级（高 → 低）：reader/writer 上的直接字段 > 内联 `connection` 对象 > `application.yml` 命名连接。
-
-> 内联连接适合临时环境或一次性任务；生产环境仍建议集中维护 `application.yml`，便于轮换凭证且不把密码写入 任务配置文件。
-
-### 任务配置级 connections 块（可选）
-
-在 任务配置顶层声明命名连接，供本 任务配置内 `writer` / `writers` / `seeds[].reader` 通过**字符串** `connection` 引用。运行时与 `application.yml` 中的连接**合并**，同名以 任务配置内定义为准（覆盖 url、username 等）。
-
-```yaml
-connections:
-  my-pg:
-    type: postgresql
-    url: jdbc:postgresql://task-host:5432/taskdb
-    username: taskuser
-    password: taskpass
-
-writer:
-  type: postgresql
-  connection: my-pg          # 引用上方 connections.my-pg
-  mode: insert
-
-seeds:
-  - name: sample
-    reader:
-      type: postgresql
-      connection: my-pg
-      query: SELECT 1 AS id
-
-tables:
-  - name: items
-    count: 10
-    schema:
-      table: items
-      fields:
-        - name: id
-          type: BIGINT
-          generator: { strategy: sequence, start: 1 }
-```
-
-适合将连接与 任务配置定义打包分发（仍注意凭证安全）；若仅覆盖全局连接的个别字段，也可在 reader/writer 上写 `connection: dev-pg` 并附加 `url:` 等字段（见方式三）。
+字段优先级（高 → 低）：reader/writer 上的直接字段 > 内联 `connection` 对象 > 任务 `connections` 命名连接。
 
 ---
 
@@ -455,7 +445,7 @@ generator:
   field: code
   reader:
     type: postgresql
-    connection: dev-pg
+    connection: my-pg
     query: "SELECT code FROM regions"
 ```
 
@@ -498,16 +488,26 @@ generator:
 ### 基本写法
 
 ```yaml
+connections:
+  my-csv:
+    type: csv
+    path: ./output
+  my-pg:
+    type: postgresql
+    url: jdbc:postgresql://host:5432/ROAD_DB
+    username: postgres
+    password: secret
+
 writer:
   type: csv
-  connection: local-csv
+  connection: my-csv
   mode: insert
 
 seeds:
   - name: location_sample
     reader:
       type: postgresql
-      connection: dev-pg
+      connection: my-pg
       query: |
         SELECT name AS place_name, region_code, st_astext(geom) AS geom
         FROM dim_location
@@ -573,7 +573,7 @@ tables:
       local_field: pcsid       # 在加载结果中按此列匹配；省略时与 parent_field 同名
     reader:
       type: postgresql
-      connection: dev-pg
+      connection: my-pg
       query: |-
         SELECT pcsid, name
         FROM bas_police_station
@@ -773,7 +773,7 @@ constraints:
 ```yaml
 writer:
   type: postgresql
-  connection: dev-safety
+  connection: my-pg
   mode: insert
 ```
 
@@ -784,10 +784,10 @@ writer:
 ```yaml
 writers:
   - type: postgresql
-    connection: dev-road
+    connection: my-pg
     mode: insert
   - type: clickhouse
-    connection: dev-wf
+    connection: my-ck
     mode: insert
 ```
 
@@ -806,10 +806,10 @@ writers:
 # 任务配置级默认：双写 PG + ClickHouse
 writers:
   - type: postgresql
-    connection: dev-safety
+    connection: my-pg
     mode: insert
   - type: clickhouse
-    connection: dev-wf
+    connection: my-ck
     mode: insert
 
 tables:
@@ -822,7 +822,7 @@ tables:
     # 该表仅写 CSV，覆盖 任务配置级
     writer:
       type: csv
-      connection: traffic-output
+      connection: my-csv
       mode: insert
     schema:
       table: order_items
@@ -846,13 +846,13 @@ tables:
 {
   "configPath": "task-configs/my_job.yaml",
   "writers": [
-    { "type": "postgresql", "connection": "dev-pg", "mode": "insert" },
-    { "type": "clickhouse", "connection": "dev-ck", "mode": "insert" }
+    { "type": "postgresql", "connection": "my-pg", "mode": "insert" },
+    { "type": "clickhouse", "connection": "my-ck", "mode": "insert" }
   ]
 }
 ```
 
-单写仍可使用 `"writer": { "type": "csv", "connection": "local-csv", "mode": "insert" }`。`writer` 与 `writers` 在请求体中亦不可同时使用。
+单写仍可使用 `"writer": { "type": "csv", "connection": "my-csv", "mode": "insert" }`（连接须已在任务 YAML 的 `connections` 中声明）。`writer` 与 `writers` 在请求体中亦不可同时使用。
 
 ### 写入 PostgreSQL 时注意
 
@@ -892,8 +892,8 @@ curl -X POST http://localhost:8080/api/v1/task-runs \
   -d '{
     "configPath": "task-configs/my_job.yaml",
     "writers": [
-      {"type": "postgresql", "connection": "dev-pg", "mode": "insert"},
-      {"type": "clickhouse", "connection": "dev-ck", "mode": "insert"}
+      {"type": "postgresql", "connection": "my-pg", "mode": "insert"},
+      {"type": "clickhouse", "connection": "my-ck", "mode": "insert"}
     ]
   }'
 ```
@@ -938,16 +938,26 @@ curl -X POST http://localhost:8080/api/v1/preview \
 以下为自包含示例（表名、SQL 均为虚构，请按实际业务替换）：
 
 ```yaml
+connections:
+  my-csv:
+    type: csv
+    path: ./output
+  my-pg:
+    type: postgresql
+    url: jdbc:postgresql://host:5432/ROAD_DB
+    username: postgres
+    password: secret
+
 writer:
   type: csv
-  connection: local-csv
+  connection: my-csv
   mode: insert
 
 seeds:
   - name: location_sample
     reader:
       type: postgresql
-      connection: dev-pg
+      connection: my-pg
       query: |
         SELECT st_astext(geom) AS geom, name AS place_name, region_code
         FROM dim_location
@@ -1023,7 +1033,7 @@ tables:
 ## 常见问题
 
 **Q：保存后运行报错「Unknown connection」**  
-A：当 `connection` 为**字符串**时，须在 `application.yml` 的 `connections` 中定义同名连接并重启服务，或在 任务配置顶层 [`connections` 块](#任务配置级-connections-块可选)中声明；若使用 [任务配置内联连接](#任务配置内联连接可选)（直接写 `url`/`username`/`password` 或将 `connection` 写为对象），则无需在 `application.yml` 注册。
+A：当 `connection` 为**字符串**时，须在任务配置顶层 [`connections` 块](#任务配置级-connections-块推荐)中声明同名连接；若使用 [任务配置内联连接](#任务配置内联连接可选)（直接写 `url`/`username`/`password` 或将 `connection` 写为对象），则无需预先注册名称。系统不再支持 `application.yml` 全局连接。
 
 **Q：多写（writers）时各库数据是否一致？**  
 A：一致。引擎只生成一次数据，同一批次会写入 `writers` 中的每个目标；各库表结构、类型映射差异可能导致存储表现略有不同，但源行字段值相同。若某一目标写入失败，其他目标可能已有数据，请查看任务日志与各库实际行数。

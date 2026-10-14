@@ -265,7 +265,7 @@
             <div class="ai-composer">
                 <form id="ai-chat-form" class="ai-composer-form">
                     <textarea id="ai-input" rows="1" spellcheck="false"
-                              placeholder="描述你的造数需求，例如：帮我创建一个包含用户和订单表的任务配置…"></textarea>
+                              placeholder="描述需求即可，例如：给 users 表造 100 条测试数据…"></textarea>
                     <div class="ai-composer-toolbar">
                         <div class="ai-composer-right">
                             <button type="submit" id="ai-send-btn" class="ai-send-btn" aria-label="发送" disabled>
@@ -357,6 +357,19 @@
         <div class="modal-body preview-modal-body scrollbar-overlay">
             <div id="preview-content" class="preview-content"></div>
             <div id="preview-pagination" class="pagination hidden"></div>
+        </div>
+    </div>
+</div>
+
+<div id="ai-preview-enlarge-modal" class="modal hidden">
+    <div class="modal-backdrop" data-ai-preview-enlarge-close="1"></div>
+    <div class="modal-content modal-xwide ai-preview-enlarge-content">
+        <div class="modal-header">
+            <h2 id="ai-preview-enlarge-title">样例预览</h2>
+            <button id="ai-preview-enlarge-close" type="button" class="icon-btn" aria-label="关闭">&times;</button>
+        </div>
+        <div class="modal-body preview-modal-body scrollbar-overlay">
+            <div id="ai-preview-enlarge-body" class="ai-preview-enlarge-body"></div>
         </div>
     </div>
 </div>

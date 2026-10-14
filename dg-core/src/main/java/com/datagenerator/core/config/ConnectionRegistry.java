@@ -27,7 +27,7 @@ public class ConnectionRegistry {
     }
 
     /**
-     * 合并任务级 connections 覆盖层；同名连接以 overlay 为准。
+     * 合并任务级 connections；同名连接以 overlay 为准。
      */
     public ConnectionRegistry withOverlay(Map<String, Map<String, Object>> overlay) {
         if (overlay == null || overlay.isEmpty()) {
@@ -117,7 +117,7 @@ public class ConnectionRegistry {
 
     /**
      * 合并命名连接、内联 connection 对象与 reader/writer 上的连接字段。
-     * 优先级（高 → 低）：reader/writer 直接字段 &gt; connection 内联对象 &gt; 命名连接注册表。
+     * 优先级（高 → 低）：reader/writer 直接字段 &gt; connection 内联对象 &gt; 任务 connections 命名连接。
      */
     private Map<String, Object> resolveConnectionConfig(Map<String, Object> source) {
         Map<String, Object> merged = new HashMap<>();

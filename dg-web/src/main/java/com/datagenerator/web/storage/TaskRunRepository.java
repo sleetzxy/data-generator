@@ -4,7 +4,6 @@ import com.datagenerator.web.dto.ConfigVolumeStat;
 import com.datagenerator.web.dto.DailyRunStat;
 import com.datagenerator.web.dto.TaskRunListFilter;
 import com.datagenerator.web.dto.TaskRunProgress;
-import com.datagenerator.web.dto.TaskRunResponse;
 import com.datagenerator.web.dto.TaskRunStatus;
 import com.datagenerator.web.dto.TableDetail;
 import com.datagenerator.web.dto.TriggerSource;
@@ -71,7 +70,7 @@ public class TaskRunRepository {
         this.objectMapper = objectMapper;
     }
 
-    public void insert(TaskRunResponse taskRun) {
+    public void insert(TaskRunRecord taskRun) {
         TaskRunProgress progress = progressOrEmpty(taskRun);
         jdbcTemplate.update("""
                 INSERT INTO task_runs (
@@ -95,7 +94,7 @@ public class TaskRunRepository {
                 triggerSourceName(taskRun.getTriggerSource()));
     }
 
-    public void update(TaskRunResponse taskRun) {
+    public void update(TaskRunRecord taskRun) {
         TaskRunProgress progress = progressOrEmpty(taskRun);
         jdbcTemplate.update("""
                 UPDATE task_runs SET
@@ -128,17 +127,17 @@ public class TaskRunRepository {
                 taskRun.getRunId());
     }
 
-    public Optional<TaskRunResponse> findById(String runId) {
-        List<TaskRunResponse> results = jdbcTemplate.query(
+    public Optional<TaskRunRecord> findById(String runId) {
+        List<TaskRunRecord> results = jdbcTemplate.query(
                 SELECT_COLUMNS + " WHERE run_id = ?", this::mapRow, runId);
         return results.isEmpty() ? Optional.empty() : Optional.of(results.get(0));
     }
 
-    public List<TaskRunResponse> listAll() {
+    public List<TaskRunRecord> listAll() {
         return jdbcTemplate.query(SELECT_COLUMNS + " ORDER BY submitted_at DESC", this::mapRow);
     }
 
-    public List<TaskRunResponse> listPage(int offset, int limit, TaskRunListFilter filter) {
+    public List<TaskRunRecord> listPage(int offset, int limit, TaskRunListFilter filter) {
         StringBuilder sql = new StringBuilder(SELECT_COLUMNS);
         List<Object> args = new ArrayList<>();
         appendFilter(sql, args, filter);
@@ -156,7 +155,7 @@ public class TaskRunRepository {
         return count == null ? 0L : count;
     }
 
-    public List<TaskRunResponse> findByStatusIn(List<TaskRunStatus> statuses) {
+    public List<TaskRunRecord> findByStatusIn(List<TaskRunStatus> statuses) {
         if (statuses.isEmpty()) {
             return List.of();
         }
@@ -166,7 +165,7 @@ public class TaskRunRepository {
                 SELECT_COLUMNS + " WHERE status IN (" + placeholders + ")", this::mapRow, args);
     }
 
-    public List<TaskRunResponse> findRunningByConfigPath(String configPath) {
+    public List<TaskRunRecord> findRunningByConfigPath(String configPath) {
         return jdbcTemplate.query(
                 SELECT_COLUMNS + " WHERE config_path = ? AND status = 'RUNNING'",
                 this::mapRow, configPath);
@@ -227,12 +226,12 @@ public class TaskRunRepository {
     }
 
     /** 每个配置路径的最新一次运行 */
-    public List<TaskRunResponse> latestRunsByConfigPath() {
+    public List<TaskRunRecord> latestRunsByConfigPath() {
         return jdbcTemplate.query(LATEST_RUN_BY_CONFIG_SQL, this::mapRow);
     }
 
     /** 每个配置路径的活跃运行（等待中/运行中，最新一条） */
-    public List<TaskRunResponse> activeRunsByConfigPath() {
+    public List<TaskRunRecord> activeRunsByConfigPath() {
         return jdbcTemplate.query(ACTIVE_RUN_BY_CONFIG_SQL, this::mapRow);
     }
 
@@ -273,14 +272,19 @@ public class TaskRunRepository {
         }
     }
 
-    private TaskRunResponse mapRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
+    private TaskRunRecord mapRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {
         TaskRunProgress progress = new TaskRunProgress(
                 rs.getInt("total_tables"),
                 rs.getInt("completed_tables"),
                 rs.getLong("total_rows"),
                 rs.getLong("written_rows"),
                 rs.getLong("failed_rows"));
-        TaskRunResponse response = new TaskRunResponse(
+        TriggerSource triggerSource = null;
+        String triggerSourceRaw = rs.getString("trigger_source");
+        if (triggerSourceRaw != null && !triggerSourceRaw.isBlank()) {
+            triggerSource = TriggerSource.valueOf(triggerSourceRaw);
+        }
+        return new TaskRunRecord(
                 rs.getString("run_id"),
                 TaskRunStatus.valueOf(rs.getString("status")),
                 progress,
@@ -289,15 +293,10 @@ public class TaskRunRepository {
                 rs.getString("config_path"),
                 rs.getString("submitted_at"),
                 rs.getString("error_message"),
-                null);
-        String triggerSource = rs.getString("trigger_source");
-        if (triggerSource != null && !triggerSource.isBlank()) {
-            response.setTriggerSource(TriggerSource.valueOf(triggerSource));
-        }
-        return response;
+                triggerSource);
     }
 
-    private static TaskRunProgress progressOrEmpty(TaskRunResponse taskRun) {
+    private static TaskRunProgress progressOrEmpty(TaskRunRecord taskRun) {
         return taskRun.getProgress() == null ? new TaskRunProgress(0, 0, 0, 0, 0) : taskRun.getProgress();
     }
 

@@ -145,8 +145,8 @@ class TaskRunServiceAsyncTest {
 
         assertThat(running.await(5, TimeUnit.SECONDS)).isTrue();
         String runId = context.taskRunRepository().listAll().stream()
-                .filter(TaskRunResponse -> TaskRunResponse.getStatus() == TaskRunStatus.RUNNING)
-                .map(com.datagenerator.web.dto.TaskRunResponse::getRunId)
+                .filter(run -> run.getStatus() == TaskRunStatus.RUNNING)
+                .map(com.datagenerator.web.storage.TaskRunRecord::getRunId)
                 .findFirst()
                 .orElseThrow();
 

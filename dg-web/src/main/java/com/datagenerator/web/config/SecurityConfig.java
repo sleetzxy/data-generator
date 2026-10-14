@@ -50,8 +50,7 @@ public class SecurityConfig {
                                 "/js/lib/csrf.js",
                                 "/api/v1/auth/login",
                                 "/api/v1/health",
-                                "/api/v1/table-schemas/**",
-                                "/api/v1/config/connections")
+                                "/api/v1/table-schemas/**")
                         .permitAll()
                         .anyRequest().authenticated())
                 .formLogin(form -> form

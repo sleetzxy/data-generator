@@ -1,7 +1,9 @@
 package com.datagenerator.plugins.postgresql.autoconfig;
 
+import com.datagenerator.plugins.postgresql.PostgreSqlConnectionInspector;
 import com.datagenerator.plugins.postgresql.PostgreSqlReader;
 import com.datagenerator.plugins.postgresql.PostgreSqlWriter;
+import com.datagenerator.spi.inspector.ConnectionInspector;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.context.annotation.Bean;
 
@@ -16,5 +18,10 @@ public class PostgreSqlPluginAutoConfiguration {
     @Bean
     public PostgreSqlWriter postgreSqlWriter() {
         return new PostgreSqlWriter();
+    }
+
+    @Bean
+    public ConnectionInspector postgreSqlConnectionInspector() {
+        return new PostgreSqlConnectionInspector();
     }
 }

@@ -4,6 +4,7 @@ import com.datagenerator.web.dto.TaskRunResponse;
 import com.datagenerator.web.dto.TaskRunSubmitRequest;
 import com.datagenerator.web.dto.TaskRunSubmitResult;
 import com.datagenerator.web.dto.TriggerSource;
+import com.datagenerator.web.storage.TaskRunMapper;
 import com.datagenerator.web.storage.TaskRunRepository;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Component;
@@ -36,7 +37,9 @@ public class TaskRunQueueExecutor {
             }
             TaskRunResponse queued = taskRunService.createQueuedRun(configPath, trigger);
             queue.items.add(new QueuedItem(queued.getRunId(), trigger, request));
-            TaskRunResponse pending = taskRunRepository.findById(queued.getRunId()).orElseThrow();
+            TaskRunResponse pending = taskRunRepository.findById(queued.getRunId())
+                    .map(TaskRunMapper::toResponse)
+                    .orElseThrow();
             return new TaskRunSubmitResult(pending, true);
         }
     }

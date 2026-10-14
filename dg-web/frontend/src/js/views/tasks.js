@@ -20,9 +20,13 @@ import { createYamlEditor, destroyYamlEditor, getYamlEditorValue } from '../lib/
 
 const DOCS_GUIDE_PATH = '/docs/config-guide.md';
 
-const DEFAULT_TASK_TEMPLATE = `writer:
+const DEFAULT_TASK_TEMPLATE = `connections:
+  my-csv:
+    type: csv
+    path: ./output          # 按需修改输出目录
+writer:
   type: csv
-  connection: local-csv
+  connection: my-csv
   mode: insert
 tables:
   - name: customers
@@ -81,6 +85,7 @@ export function initTasks() {
             const action = item.dataset.action;
             // 先执行动作（confirm 等同步交互优先呈现），再关闭菜单，与原内联顺序一致
             switch (action) {
+                case 'view': viewDefinition(item.dataset.file); break;
                 case 'preview': previewDefinition(item.dataset.name, item.dataset.path); break;
                 case 'logs': viewDefinitionLogs(item.dataset.name, item.dataset.path); break;
                 case 'stop': stopRun(item.dataset.runId); break;
@@ -337,6 +342,7 @@ function renderActionsCell(item, index, displayName, fileName, path, activeRun, 
     const stopDisabled = !activeRun;
     const stopRunId = activeRun?.runId || '';
     const menuItems = `
+        <button type="button" class="action-menu-item" data-action="view" data-file="${escapeAttr(fileName)}">查看</button>
         <button type="button" class="action-menu-item" data-action="preview" data-name="${escapeAttr(displayName)}" data-path="${escapeAttr(path)}">预览</button>
         <button type="button" class="action-menu-item" data-action="logs" data-name="${escapeAttr(displayName)}" data-path="${escapeAttr(path)}">日志</button>
         <button type="button" class="action-menu-item action-stop-btn${stopDisabled ? ' disabled' : ''}" data-action="stop" data-run-id="${escapeAttr(stopRunId)}"
@@ -369,24 +375,36 @@ function closeActionMenus() {
     openActionMenuId = null;
 }
 
-async function openDefinitionModal(fileName, content, schedule = null, displayName = null) {
+async function openDefinitionModal(fileName, content, schedule = null, displayName = null, readOnly = false) {
     editingDefinition = fileName || null;
     const title = fileName
-        ? `编辑任务: ${displayName || fileName}`
+        ? (readOnly ? `查看任务: ${displayName || fileName}` : `编辑任务: ${displayName || fileName}`)
         : '新建任务';
     document.getElementById('modal-title').textContent = title;
     document.getElementById('definition-name').value = displayName || fileName || '';
+    document.getElementById('definition-name').disabled = !!readOnly;
     document.getElementById('name-field').style.display = 'flex';
     document.getElementById('definition-content').value = content || DEFAULT_TASK_TEMPLATE;
-    applyScheduleFields(schedule, !fileName);
+    document.getElementById('modal-save').style.display = readOnly ? 'none' : '';
+    const guideToggle = document.getElementById('guide-toggle');
+    const guidePanel = document.getElementById('guide-panel');
+    guideToggle.style.display = readOnly ? 'none' : '';
+    if (readOnly) {
+        guidePanel.classList.add('hidden');
+        guideToggle.setAttribute('aria-expanded', 'false');
+        guideToggle.textContent = '显示指南';
+    }
+    applyScheduleFields(schedule, !fileName, readOnly);
     document.getElementById('modal').classList.remove('hidden');
-    ensureGuideLoaded();
-    await mountYamlEditor(content || DEFAULT_TASK_TEMPLATE);
+    if (!readOnly) {
+        ensureGuideLoaded();
+    }
+    await mountYamlEditor(content || DEFAULT_TASK_TEMPLATE, readOnly);
 }
 
-async function mountYamlEditor(content) {
+async function mountYamlEditor(content, readOnly = false) {
     const host = document.getElementById('definition-editor');
-    await createYamlEditor(host, content, false);
+    await createYamlEditor(host, content, readOnly);
 }
 
 function toggleGuidePanel() {
@@ -421,11 +439,13 @@ async function ensureGuideLoaded() {
     }
 }
 
-function applyScheduleFields(schedule, isNew) {
+function applyScheduleFields(schedule, isNew, readOnly = false) {
     const sched = schedule || { enabled: false, cron: '' };
     document.getElementById('schedule-fields').classList.remove('hidden');
     document.getElementById('definition-schedule-enabled').checked = !!sched.enabled;
     document.getElementById('definition-schedule-cron').value = sched.cron || '';
+    document.getElementById('definition-schedule-enabled').disabled = !!readOnly;
+    document.getElementById('definition-schedule-cron').disabled = !!readOnly;
     const nextRunEl = document.getElementById('definition-schedule-next-run');
     const nextRunField = document.getElementById('definition-next-run-field');
     if (sched.nextRunAt) {
@@ -453,12 +473,27 @@ function closeModal() {
     document.getElementById('modal').classList.add('hidden');
     destroyYamlEditor();
     editingDefinition = null;
+    // 重置只读态，避免下次新建/编辑残留禁用状态
+    document.getElementById('definition-name').disabled = false;
+    document.getElementById('definition-schedule-enabled').disabled = false;
+    document.getElementById('definition-schedule-cron').disabled = false;
+    document.getElementById('modal-save').style.display = '';
+    document.getElementById('guide-toggle').style.display = '';
+}
+
+async function viewDefinition(fileName) {
+    try {
+        const item = await api(`/task-configs/${encodeURIComponent(fileName)}`);
+        openDefinitionModal(fileName, item.content, item.schedule, item.name, true);
+    } catch (err) {
+        showToast('加载失败: ' + err.message);
+    }
 }
 
 async function editDefinition(fileName) {
     try {
         const item = await api(`/task-configs/${encodeURIComponent(fileName)}`);
-        openDefinitionModal(fileName, item.content, item.schedule, item.name);
+        openDefinitionModal(fileName, item.content, item.schedule, item.name, false);
     } catch (err) {
         showToast('加载失败: ' + err.message);
     }

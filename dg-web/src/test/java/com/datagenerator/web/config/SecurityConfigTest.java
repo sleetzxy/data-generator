@@ -77,7 +77,7 @@ class SecurityConfigTest {
 
     @Test
     void protectedApi_withServiceAuth_returnsOk() throws Exception {
-        mockMvc.perform(get("/api/v1/config/connections")
+        mockMvc.perform(get("/api/v1/task-runs")
                         .header("X-DG-Service-Auth", "service-secret"))
                 .andExpect(status().isOk());
     }

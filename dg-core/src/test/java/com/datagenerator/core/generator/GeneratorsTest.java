@@ -170,7 +170,7 @@ class GeneratorsTest {
 
     @Test
     void registry_resolvesByStrategy() {
-        var registry = new GeneratorRegistry();
+        var registry = GeneratorRegistry.withBuiltins(null);
         assertThat(registry.get("sequence")).isInstanceOf(SequenceGenerator.class);
         assertThat(registry.get("enum")).isInstanceOf(EnumGenerator.class);
         assertThat(registry.get("uuid")).isInstanceOf(UuidGenerator.class);

@@ -11,6 +11,7 @@
     --warning: #d97706;
     --shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
     --radius: 8px;
+    --ai-drawer-width: min(480px, 100vw);
     --scrollbar-size: 8px;
     --scrollbar-track: transparent;
     --scrollbar-thumb: #cbd5e1;
@@ -574,7 +575,7 @@ html:has(body.app-shell) {
     top: 0;
     right: 0;
     bottom: 0;
-    width: min(480px, 100vw);
+    width: var(--ai-drawer-width);
     z-index: 200;
     display: flex;
     flex-direction: column;
@@ -672,7 +673,7 @@ html:has(body.app-shell) {
     justify-content: space-between;
     gap: 1rem;
     padding-bottom: 0.75rem;
-    margin-bottom: 0.75rem;
+    margin-bottom: 0.5rem;
     border-bottom: 1px solid var(--border);
     flex-shrink: 0;
 }
@@ -701,7 +702,7 @@ html:has(body.app-shell) {
 
 #ai-drawer .ai-history-panel {
     position: absolute;
-    top: 3.5rem;
+    top: 5.25rem;
     left: 1rem;
     right: 1rem;
     z-index: 10;
@@ -2643,6 +2644,198 @@ th {
 .ai-tool-content::-webkit-scrollbar-thumb {
     background: #cbd5e1;
     border-radius: 999px;
+}
+
+/* ── 对话内样例预览卡（独立于工具块） ── */
+.ai-preview-card {
+    margin-top: 0.5rem;
+    border: 1px solid var(--border, #e2e8f0);
+    border-radius: 8px;
+    background: #fff;
+    overflow: hidden;
+    max-width: 100%;
+    white-space: normal;
+    display: block;
+    color: #0f172a;
+}
+
+.ai-preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #64748b;
+    letter-spacing: 0.02em;
+    border-bottom: 1px solid var(--border, #e2e8f0);
+    background: #f1f5f9;
+}
+
+.ai-preview-title {
+    flex: 1;
+    min-width: 0;
+}
+
+.ai-preview-enlarge-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #64748b;
+    cursor: pointer;
+}
+
+.ai-preview-enlarge-btn:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+}
+
+.ai-preview-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border-bottom: 1px solid var(--border, #e2e8f0);
+    background: #f8fafc;
+}
+
+.ai-preview-tab {
+    border: none;
+    background: transparent;
+    padding: 0.35rem 0.65rem;
+    font-size: 0.72rem;
+    color: #64748b;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+}
+
+.ai-preview-tab:hover {
+    color: #334155;
+}
+
+.ai-preview-tab.active {
+    color: #0f172a;
+    font-weight: 600;
+    border-bottom-color: #6366f1;
+}
+
+.ai-preview-panel.hidden {
+    display: none;
+}
+
+.ai-preview-empty {
+    margin: 0;
+    padding: 0.6rem;
+    font-size: 0.75rem;
+    color: #94a3b8;
+}
+
+.ai-preview-table-wrap {
+    overflow-x: auto;
+    max-width: 100%;
+}
+
+.ai-preview-tables.is-compact .ai-preview-table-wrap {
+    max-height: 220px;
+    overflow: auto;
+}
+
+.ai-preview-table-wrap table {
+    border-collapse: collapse;
+    width: max-content;
+    min-width: 100%;
+    font-size: 0.72rem;
+}
+
+.ai-preview-tables.is-enlarge .ai-preview-table-wrap table {
+    font-size: 0.85rem;
+}
+
+.ai-preview-table-wrap th,
+.ai-preview-table-wrap td {
+    padding: 0.3rem 0.55rem;
+    border-bottom: 1px solid #e2e8f0;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.ai-preview-tables.is-compact .ai-preview-table-wrap th,
+.ai-preview-tables.is-compact .ai-preview-table-wrap td {
+    max-width: 140px;
+}
+
+.ai-preview-tables.is-enlarge .ai-preview-table-wrap th,
+.ai-preview-tables.is-enlarge .ai-preview-table-wrap td {
+    max-width: 320px;
+    padding: 0.45rem 0.75rem;
+}
+
+.ai-preview-table-wrap th {
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 600;
+}
+
+.ai-preview-cell {
+    display: inline-block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: bottom;
+    color: #0f172a;
+}
+
+.ai-preview-cell.is-compact {
+    max-width: 140px;
+}
+
+.ai-preview-null {
+    color: #94a3b8;
+}
+
+/* 放大预览：固定在 AI 抽屉左侧，等高、不盖住 AI 框 */
+#ai-preview-enlarge-modal {
+    /* 低于 .ai-drawer(200)，保证 AI 框始终可见可点 */
+    z-index: 199;
+    pointer-events: none;
+    background: transparent;
+}
+
+#ai-preview-enlarge-modal .modal-backdrop {
+    display: none;
+}
+
+.ai-preview-enlarge-content {
+    pointer-events: auto;
+    position: fixed;
+    /* 贴 AI 抽屉左缘，定宽，不占满剩余视口 */
+    top: 0;
+    bottom: 0;
+    right: var(--ai-drawer-width);
+    left: auto;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    width: min(560px, calc(100vw - var(--ai-drawer-width) - 1rem));
+    max-width: none;
+    max-height: none;
+    height: auto;
+    margin: 0;
+    border-radius: 0;
+    border-right: 1px solid var(--border);
+    box-shadow: -6px 0 18px rgba(15, 23, 42, 0.1);
+    box-sizing: border-box;
+}
+
+.ai-preview-enlarge-body {
+    min-height: 0;
+    flex: 1 1 auto;
+    overflow: auto;
 }
 
 /* ── 历史对话悬浮面板 ── */

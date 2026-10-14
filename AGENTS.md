@@ -75,7 +75,7 @@ data-generator/
 |---|---|
 | `config/` | `DataGeneratorProperties`、`SecurityConfig`、`DataGeneratorAutoConfiguration` |
 | `storage/` | SQLite 任务持久化（`JobRepository`、`JobLogFileRepository`、`JobStartupRecovery`） |
-| `controller/` | REST 端点（含 `ConfigController` 连接列表） |
+| `controller/` | REST 端点（任务配置、运行、预览、表结构等） |
 | `security/` | `ServiceAuthFilter` — 校验 `X-DG-Service-Auth` 服务间调用 |
 | `service/` | 业务编排（`JobService`、`JobDefinitionService`、`JobLogStore` 等） |
 | `dto/` | API 请求/响应模型 |
@@ -88,7 +88,7 @@ data-generator/
 | `controller/` | `ChatController` — POST `/api/v1/agent/chat/{chatId}` SSE 端点；`KnowledgeController` — 知识库上传/索引/状态 API |
 | `service/` | `AgentService` — HarnessAgent streamEvents → SSE 事件适配（全事件无条件流式输出）；`SessionService` — 会话管理（列表/消息历史查询/删除）；`KnowledgeChunkService` — 文档按 `##` 切分与索引维护 |
 | `embedding/` | `SimpleEmbeddingModel` — OpenAI-compatible Embedding（Ollama/SiliconFlow） |
-| `tool/` | `ConfigTools`（配置 CRUD/Schema/Connection/校验保存）、`KnowledgeTools`（向量语义检索）、`ConfigDraftManager`（配置草稿分片与 YAML 合并） |
+| `tool/` | `ConfigTools`（CRUD + validate/preview/save；大 YAML 走 workspace 提交）、`ConnectionTools`、`KnowledgeTools`（向量语义检索） |
 | `client/` | `DgWebClient` — RestTemplate HTTP 客户端，携带 `X-DG-Service-Auth` 回调 dg-web |
 | `prompt/` | `SystemPrompt` — 统一 System Prompt（领域知识 + 工作流程 + 行为规范） |
 | `dto/` | `ChatRequest`、`ApiResponse`、`ProviderInfo`、`SessionInfo`、`SessionMessages` |

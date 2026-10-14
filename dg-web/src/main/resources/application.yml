@@ -11,26 +11,6 @@ data-generator:
     enabled: true
     username: admin
     password: admin123
-  connections:
-    dev-safety:
-      type: postgresql
-      url: jdbc:postgresql://localhost:5432/safety
-      username: postgres
-      password: changeme
-    dev-road:
-      type: postgresql
-      url: jdbc:postgresql://localhost:5432/road
-      username: postgres
-      password: changeme
-    dev-ch:
-      type: clickhouse
-      url: jdbc:clickhouse://localhost:8123/analytics
-    local-csv:
-      type: csv
-      path: ./output
-    traffic-output:
-      type: csv
-      path: ./output/traffic
   task-run:
     sync-threshold: 5000
     batch-size: 1000
